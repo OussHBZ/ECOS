@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>OSCE Chat Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="role-selection">
+            <h1>OSCE Chat Simulator</h1>
+            <p>Choisissez votre rôle :</p>
+            <div class="role-buttons">
+                <a href="{{ url_for('teacher_interface') }}" class="role-button teacher">Enseignant</a>
+                <a href="{{ url_for('student_interface') }}" class="role-button student">Étudiant</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

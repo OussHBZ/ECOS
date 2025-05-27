@@ -1,0 +1,82 @@
+{
+  "patient_info": {
+    "name": "Ahmed",
+    "gender": "Masculin",
+    "age": 21
+  },
+  "symptoms": [
+    "toux à deux reprises à 3 jours d’intervalle",
+    "toux persistante avec des crachats striés de sang quotidien",
+    "fièvre le soir mais vous n’avez jamais chiffré votre température",
+    "toux avec expectorations blanchâtres parfois striées de sang,  depuis 2 mois cette toux est devenue persistante jour et nuit"
+  ],
+  "evaluation_checklist": [
+    {
+      "description": "Anamnèse avec patient simulé, interprétation de la radiographie thoracique et prescription d’un traitement",
+      "points": 1,
+      "category": "Anamnèse",
+      "completed": false
+    },
+    {
+      "description": "Une chaise pour le candidat, une pour le patient et une pour l’évaluateur",
+      "points": 1,
+      "category": "Général",
+      "completed": false
+    },
+    {
+      "description": "Nom et prénom de l’évaluateur :",
+      "points": 1,
+      "category": "Général",
+      "completed": false
+    },
+    {
+      "description": "A la 6ème minute, poser le diagnostic positif le plus probable",
+      "points": 1,
+      "category": "Diagnostic",
+      "completed": false
+    },
+    {
+      "description": "Affirmer le diagnostic  (Rejet de sang rouge vif, aéré, au cours d’un effort de toux)",
+      "points": 1,
+      "category": "Diagnostic",
+      "completed": false
+    },
+    {
+      "description": "Diagnostic :",
+      "points": 1,
+      "category": "Diagnostic",
+      "completed": false
+    },
+    {
+      "description": "Affirmer le diagnostic  (Rejet de sang rouge vif, aéré, au cours d’un effort de toux)",
+      "points": 1,
+      "category": "Diagnostic",
+      "completed": false
+    },
+    {
+      "description": "Diagnostic :",
+      "points": 1,
+      "category": "Diagnostic",
+      "completed": false
+    },
+    {
+      "description": "Rédiger une ordonnance pour le traitement de la pathologie suspectée dans 3 min",
+      "points": 1,
+      "category": "Prise en charge",
+      "completed": false
+    }
+  ],
+  "diagnosis": "",
+  "directives": "-\tSituation clinique :\nPatient de 21 ans  qui crache du sang. Poids 60 Kg\n-\tInstructions :\n1-\tMener l’interrogatoire dans  3 min\n2-\tInterpréter la radiographie thoracique dans 3 min\n3-\tA la 6ème minute, poser le diagnostic positif le plus probable\n4-\tRédiger une ordonnance pour le traitement de la pathologie suspectée dans 3 min\n",
+  "consultation_time": 10,
+  "custom_sections": [],
+  "images": [
+    {
+      "path": "http://127.0.0.1:5000/static/images/cases/case_9999_image_Radiographie_thoracique_du_patient.jpg",
+      "description": "Image médicale 1",
+      "index": 0
+    }
+  ],
+  "case_number": "9999",
+  "specialty": "pnumo"
+}

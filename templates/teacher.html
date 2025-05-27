@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>OSCE Chat Simulator - Interface Enseignant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="teacher-interface">
+            <h1>Interface Enseignant</h1>
+            <a href="{{ url_for('index') }}" class="back-button">Retour à l'accueil</a>
+            
+            <div class="method-selection">
+                <h2>Ajouter un nouveau cas OSCE</h2>
+                <p class="method-subtitle">Choisissez comment ajouter un nouveau cas :</p>
+                
+                <div class="method-tabs">
+                    <!-- Switch the order of these tabs -->
+                    <button id="manual-tab-btn" class="tab-btn active">Saisie manuelle <span class="recommended-badge">Recommandée</span></button>
+                    <button id="file-tab-btn" class="tab-btn">Par fichier</button>
+                </div>
+            </div>
+            
+            <!-- Manual Entry Section - Now first and visible by default -->
+            <div id="manual-entry-section" class="upload-section">
+                <form id="manual-entry-form">
+                    <div class="form-group">
+                        <label for="manual-case-number">Numéro du cas :</label>
+                        <input type="number" id="manual-case-number" name="case_number" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="manual-specialty">Spécialité :</label>
+                        <input type="text" id="manual-specialty" name="specialty">
+                    </div>
+                    
+                    <!-- Patient Information Section -->
+                    <fieldset class="form-section">
+                        <legend>Informations du patient</legend>
+                        <div class="form-group">
+                            <label for="patient-name">Nom du patient :</label>
+                            <input type="text" id="patient-name" name="patient_name">
+                        </div>
+                        <div class="form-group">
+                            <label for="patient-age">Âge :</label>
+                            <input type="number" id="patient-age" name="patient_age" min="0" max="120">
+                        </div>
+                        <div class="form-group">
+                            <label for="patient-gender">Sexe :</label>
+                            <select id="patient-gender" name="patient_gender">
+                                <option value="">Sélectionnez</option>
+                                <option value="Masculin">Masculin</option>
+                                <option value="Féminin">Féminin</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="patient-occupation">Profession :</label>
+                            <input type="text" id="patient-occupation" name="patient_occupation">
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Symptoms Section -->
+                    <fieldset class="form-section">
+                        <legend>Symptômes et motif de consultation</legend>
+                        <div class="form-group">
+                            <label for="chief-complaint">Motif principal de consultation :</label>
+                            <textarea id="chief-complaint" name="chief_complaint" rows="2"></textarea>
+                        </div>
+                        <div id="symptoms-container">
+                            <div class="symptom-entry">
+                                <div class="form-group">
+                                    <label>Symptôme :</label>
+                                    <input type="text" name="symptoms[]">
+                                </div>
+                                <div class="form-group">
+                                    <label>Depuis quand :</label>
+                                    <input type="text" name="symptom_duration[]">
+                                </div>
+                                <div class="form-group">
+                                    <label>Intensité/Description :</label>
+                                    <textarea name="symptom_description[]" rows="2"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" id="add-symptom" class="secondary-button">+ Ajouter un symptôme</button>
+                    </fieldset>
+                    
+                    <!-- Medical History Section -->
+                    <fieldset class="form-section">
+                        <legend>Antécédents médicaux</legend>
+                        <div class="form-group">
+                            <label for="medical-history">Antécédents médicaux :</label>
+                            <textarea id="medical-history" name="medical_history" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="surgical-history">Antécédents chirurgicaux :</label>
+                            <textarea id="surgical-history" name="surgical_history" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="family-history">Antécédents familiaux :</label>
+                            <textarea id="family-history" name="family_history" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="medications">Traitements actuels :</label>
+                            <textarea id="medications" name="medications" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="allergies">Allergies :</label>
+                            <textarea id="allergies" name="allergies" rows="2"></textarea>
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Images Section -->
+                    <fieldset class="form-section">
+                        <legend>Images et examens complémentaires</legend>
+                        <div class="form-group">
+                            <label for="manual-image-file">Image(s) médicale(s) :</label>
+                            <input type="file" id="manual-image-file" name="manual_images" accept=".jpg,.jpeg,.png" multiple>
+                            <p class="field-help">Sélectionnez plusieurs images en maintenant la touche Ctrl (ou Cmd sur Mac) enfoncée</p>
+                        </div>
+                        <div id="manual-images-preview" class="images-preview"></div>
+                        <div class="form-group">
+                            <label for="image-descriptions">Descriptions des images (une par ligne) :</label>
+                            <textarea id="image-descriptions" name="image_descriptions" rows="3" 
+                                placeholder="Description image 1&#10;Description image 2&#10;Description image 3"></textarea>
+                            <p class="field-help">Entrez une description par ligne, dans le même ordre que les images</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="lab-results">Résultats d'examens complémentaires :</label>
+                            <textarea id="lab-results" name="lab_results" rows="3" placeholder="Ex: NFS: Leucocytes 12.000/mm3, CRP 25 mg/L"></textarea>
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Evaluation Checklist -->
+                    <fieldset class="form-section">
+                        <legend>Grille d'évaluation</legend>
+                        <p class="field-help">Ajoutez les éléments que l'étudiant devrait aborder/réaliser durant la consultation</p>
+                        
+                        <div id="checklist-container">
+                            <!-- Initial checklist item -->
+                            <div class="checklist-item">
+                                <div class="form-group">
+                                    <label>Description :</label>
+                                    <input type="text" name="checklist_descriptions[]" placeholder="Ex: Questionne sur la durée des symptômes">
+                                </div>
+                                <div class="form-group points-group">
+                                    <label>Points :</label>
+                                    <input type="number" name="checklist_points[]" value="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Catégorie :</label>
+                                    <select name="checklist_categories[]">
+                                        <option value="Anamnèse">Anamnèse</option>
+                                        <option value="Examen physique">Examen physique</option>
+                                        <option value="Communication">Communication</option>
+                                        <option value="Diagnostic">Diagnostic</option>
+                                        <option value="Prise en charge">Prise en charge</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" id="add-checklist-item" class="secondary-button">+ Ajouter un élément</button>
+                    </fieldset>
+                    
+                    <!-- Additional Information Section -->
+                    <fieldset class="form-section">
+                        <legend>Informations additionnelles</legend>
+                        <div class="form-group">
+                            <label for="diagnosis">Diagnostic correct :</label>
+                            <input type="text" id="diagnosis" name="diagnosis">
+                        </div>
+                        <div class="form-group">
+                            <label for="differential-diagnosis">Diagnostics différentiels :</label>
+                            <textarea id="differential-diagnosis" name="differential_diagnosis" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="additional-notes">Notes supplémentaires pour le patient simulé :</label>
+                            <textarea id="additional-notes" name="additional_notes" rows="4" placeholder="Ex: Le patient est anxieux et inquiet concernant son diagnostic"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="case-directives">Directives pour l'étudiant:</label>
+                            <textarea id="case-directives" name="case_directives" rows="5" 
+                                placeholder="Ex: 1. Mener l'interrogatoire dans 3 min. 2. Interpréter la radiographie thoracique..."></textarea>
+                            <p class="field-help">Instructions que l'étudiant doit suivre pendant la consultation</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="consultation-time">Durée de la consultation (minutes):</label>
+                            <input type="number" id="consultation-time" name="consultation_time" min="1" max="60" value="10">
+                            <p class="field-help">La durée par défaut est de 10 minutes si non spécifiée.</p>
+                        </div>
+
+                    </fieldset>
+                    
+                    <!-- Custom Sections - NEW FEATURE -->
+                    <fieldset class="form-section">
+                        <legend>Sections personnalisées</legend>
+                        <p class="field-help">Ajoutez des sections personnalisées pour des informations supplémentaires</p>
+                        
+                        <div id="custom-sections-container">
+                            <!-- Custom sections will be added here -->
+                        </div>
+                        <button type="button" id="add-custom-section" class="secondary-button">+ Ajouter une section personnalisée</button>
+                    </fieldset>
+                    
+                    <button type="submit" class="submit-button">Créer le cas</button>
+                </form>
+            </div>
+            
+            <!-- File Upload Section - Now second and hidden by default -->
+            <div id="file-upload-section" class="upload-section hidden">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="case-number">Numéro du cas :</label>
+                        <input type="number" id="case-number" name="case_number" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="specialty">Spécialité :</label>
+                        <input type="text" id="specialty" name="specialty">
+                    </div>
+                    <div class="form-group">
+                        <label for="case-file">Fichier du cas (PDF, Word, etc.) :</label>
+                        <input type="file" id="case-file" name="case_file" accept=".pdf,.doc,.docx">
+                    </div>
+                    <div class="form-group">
+                        <label for="image-files">Images associées :</label>
+                        <input type="file" id="image-files" name="image_files" accept=".jpg,.jpeg,.png" multiple>
+                        <p class="field-help">Sélectionnez plusieurs images en maintenant la touche Ctrl (ou Cmd sur Mac) enfoncée</p>
+                    </div>
+                    <div id="file-images-preview" class="images-preview"></div>
+                    <button type="submit" class="submit-button">Télécharger et traiter</button>
+                </form>
+            </div>
+            
+            <div id="upload-status" class="upload-status hidden">
+                <h3>Statut de l'extraction</h3>
+                <div id="processing-message"></div>
+                <div id="extraction-results" class="extraction-results"></div>
+            </div>
+
+            <div class="case-list">
+                <h2>Cas existants</h2>
+                <div id="existing-cases">
+                    {% if cases %}
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Cas #</th>
+                                    <th>Spécialité</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for case in cases %}
+                                <tr>
+                                    <td>{{ case.case_number }}</td>
+                                    <td>{{ case.specialty }}</td>
+                                    <td>
+                                        <button class="view-button" data-case="{{ case.case_number }}">Voir</button>
+                                        <button class="delete-button" data-case="{{ case.case_number }}">Supprimer</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p>Aucun cas n'a été ajouté.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+
+            
+            <!-- Modal for viewing case details -->
+            <div id="case-details-modal" class="modal hidden">
+                <div class="modal-content">
+                    <span class="close-modal">&times;</span>
+                    <h3>Détails du Cas</h3>
+                    <div id="case-details-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/teacher.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>OSCE Chat Simulator - Interface Étudiant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div id="case-selection" class="case-selection">
+            <h1>OSCE Chat Simulator</h1>
+            <a href="{{ url_for('index') }}" class="back-button">Retour à l'accueil</a>
+            
+            <div class="selection-container">
+                <div class="filter-section">
+                    <div class="form-group">
+                        <label for="case-number-search">Recherche par numéro de cas :</label>
+                        <input type="number" id="case-number-search" class="search-input" placeholder="Entrez un numéro de cas">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="specialty-filter">Filtrer par spécialité :</label>
+                        <select id="specialty-filter" class="filter-select">
+                            <option value="">Toutes les spécialités</option>
+                            {% for specialty in specialties %}
+                            <option value="{{ specialty }}">{{ specialty }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="cases-display">
+                    <h3>Sélectionnez un cas :</h3>
+                    <div id="cases-grid">
+                        {% if cases %}
+                            {% for case in cases %}
+                            <div class="case-card" 
+                                 data-case="{{ case.case_number }}"
+                                 data-specialty="{{ case.specialty }}">
+                                <h4>Cas {{ case.case_number }}</h4>
+                                <p>Spécialité: {{ case.specialty }}</p>
+                                <button class="select-case-btn">Sélectionner</button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p>Aucun cas disponible. Demandez à un enseignant d'ajouter des cas.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <button id="start-chat" class="start-button" disabled>Commencer la consultation</button>
+            </div>
+        </div>
+
+        <div id="chat-container" class="chat-container hidden">
+            <div class="chat-header">
+                <h2>Consultation en cours - <span id="current-case-title"></span></h2>
+                <div class="chat-header-controls">
+                    <button id="view-directives-btn" class="view-button">Voir les directives</button>
+                    <div class="timer-container">
+                        <span id="timer">10:00</span>
+                    </div>
+                    <button id="end-chat" class="end-button">Terminer la consultation</button>
+                </div>
+            </div>
+            <div id="chat-messages"></div>
+            <div class="input-container">
+                <input type="text" id="user-input" placeholder="Tapez votre message...">
+                <button id="send-btn">Envoyer</button>
+            </div>
+        </div>
+        
+        <!-- Directives Modal -->
+        <div id="directives-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-modal directives-close">&times;</span>
+                <h3>Directives pour cette consultation</h3>
+                <div id="directives-content" class="directives-content"></div>
+            </div>
+        </div>
+        
+        <div id="evaluation-container" class="evaluation-container hidden">
+            <div class="evaluation-header">
+                <h2>Évaluation de la consultation</h2>
+                <button id="back-to-cases" class="back-button">Retour aux cas</button>
+            </div>
+            <div class="evaluation-content">
+                <div id="evaluation-results"></div>
+                <div class="evaluation-actions">
+                    <button id="download-evaluation" class="download-button">Télécharger le rapport PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/student.js') }}"></script>
+</body>
+</html>
