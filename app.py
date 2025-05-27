@@ -12,6 +12,9 @@ from werkzeug.utils import secure_filename
 from document_processor import DocumentExtractionAgent
 from evaluation_agent import EvaluationAgent
 from simple_pdf_generator import create_simple_consultation_pdf
+from flask_login import LoginManager, login_required, current_user
+from models import db, Student
+from auth import auth_bp, student_required, teacher_required
 
 import time
 import concurrent.futures
@@ -233,6 +236,33 @@ def create_app():
                 template_folder='templates')
     app.secret_key = os.urandom(24)  # For session management
     
+    # Configure database
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Initialize database
+    db.init_app(app)
+    
+    # Initialize login manager
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.login'
+    login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
+    
+    @login_manager.user_loader
+    def load_user(user_id):
+        if user_id.startswith('student_'):
+            student_id = int(user_id.replace('student_', ''))
+            return Student.query.get(student_id)
+        return None
+    
+    # Register blueprints
+    app.register_blueprint(auth_bp)
+    
+    # Create tables if they don't exist
+    with app.app_context():
+        db.create_all()
+
     # Create upload folder if it doesn't exist
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -256,7 +286,7 @@ def create_app():
     try:
         client = ChatGroq(
             api_key=api_key,
-            model="llama3-70b-8192",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0,  # Keeping temperature at 0 for more consistent responses
             max_tokens=256,  # Limit maximum token output for faster responses            
             http_client=http_client
@@ -449,6 +479,7 @@ def create_app():
         return render_template('home.html')
         
     @app.route('/teacher')
+    @teacher_required
     def teacher_interface():
         """Render the teacher interface"""
         # Get list of existing cases
@@ -456,14 +487,19 @@ def create_app():
         return render_template('teacher.html', cases=cases)
         
     @app.route('/student')
+    @student_required
     def student_interface():
         """Render the student interface"""
-        # Get list of available cases and specialties
+        # Add student name to context
         cases = get_case_metadata()
         specialties = get_unique_specialties()
-        return render_template('student.html', cases=cases, specialties=specialties)
+        return render_template('student.html', 
+                             cases=cases, 
+                             specialties=specialties,
+                             student_name=current_user.name)
         
     @app.route('/process_case_file', methods=['POST'])
+    @teacher_required
     def process_case_file():
         """Process uploaded case file and extract OSCE data with enhanced multi-image support"""
         try:
@@ -554,6 +590,7 @@ def create_app():
             return jsonify({"error": str(e)}), 500
             
     @app.route('/delete_case/<case_number>', methods=['DELETE'])
+    @teacher_required
     def delete_case(case_number):
         """Delete a case"""
         try:
@@ -597,6 +634,7 @@ def create_app():
             return jsonify({"error": str(e)}), 500
             
     @app.route('/initialize_chat', methods=['POST'])
+    @student_required
     def initialize_chat():
         """Initialize a new chat session with selected case"""
         try:
@@ -638,6 +676,7 @@ def create_app():
             return jsonify({"error": "Internal server error"}), 500
 
     @app.route('/chat', methods=['POST'])
+    @student_required
     def chat():
         """Handle chat messages with optimizations for faster responses"""
         try:
@@ -772,6 +811,7 @@ def create_app():
         return optimized
 
     @app.route('/end_chat', methods=['POST'])
+    @student_required
     def end_chat():
         """End the current chat session, evaluate and generate PDF report"""
         try:
@@ -887,6 +927,7 @@ def create_app():
                 "details": str(e)
             }), 500
     @app.route('/process_manual_case', methods=['POST'])
+    @teacher_required
     def process_manual_case():
         """Process manually entered case data with enhanced multiple image support"""
         try:

@@ -9,7 +9,20 @@
     <div class="container">
         <div id="case-selection" class="case-selection">
             <h1>OSCE Chat Simulator</h1>
-            <a href="{{ url_for('index') }}" class="back-button">Retour à l'accueil</a>
+            
+            <!-- ADD THIS NEW SECTION HERE -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div>
+                    <p>Bienvenue, <strong>{{ student_name }}</strong></p>
+                </div>
+                <div>
+                    <a href="{{ url_for('auth.logout') }}" class="back-button">Déconnexion</a>
+                </div>
+            </div>
+            <!-- END OF NEW SECTION -->
+            
+            <!-- Remove or comment out this line since we now have logout -->
+            <!-- <a href="{{ url_for('index') }}" class="back-button">Retour à l'accueil</a> -->
             
             <div class="selection-container">
                 <div class="filter-section">

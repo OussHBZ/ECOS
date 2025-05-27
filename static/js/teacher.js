@@ -33,6 +33,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize validation for extraction preview forms
     setupValidation();
+    
+    // IMPORTANT: Set manual entry as default active tab
+    // This ensures the correct form is visible on page load
+    if (manualTabBtn && fileTabBtn) {
+        manualTabBtn.click(); // This will trigger the tab switching logic
+    }
 });
 
 // Set up tab switching between file upload and manual entry

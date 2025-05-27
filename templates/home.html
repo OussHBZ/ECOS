@@ -9,10 +9,17 @@
     <div class="container">
         <div class="role-selection">
             <h1>OSCE Chat Simulator</h1>
-            <p>Choisissez votre rôle :</p>
-            <div class="role-buttons">
-                <a href="{{ url_for('teacher_interface') }}" class="role-button teacher">Enseignant</a>
-                <a href="{{ url_for('student_interface') }}" class="role-button student">Étudiant</a>
+            <p>Bienvenue sur le simulateur de consultations OSCE</p>
+            
+            <div style="margin-top: 40px;">
+                <a href="{{ url_for('auth.login') }}" class="submit-button" style="display: inline-block; text-decoration: none;">
+                    Se connecter
+                </a>
+            </div>
+            
+            <div style="margin-top: 20px; color: #666;">
+                <p><strong>Étudiants:</strong> Utilisez votre code à 4 chiffres</p>
+                <p><strong>Enseignants:</strong> Utilisez le code d'accès fourni</p>
             </div>
         </div>
     </div>

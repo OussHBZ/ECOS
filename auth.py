@@ -1,0 +1,111 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask_login import login_user, logout_user, login_required, current_user
+from models import db, Student, TeacherAccess
+from datetime import datetime
+import re, os
+# auth.py - Authentication routes for students and teachers     
+
+
+auth_bp = Blueprint('auth', __name__)
+
+# Teacher access code - you can change this or load from environment
+TEACHER_ACCESS_CODE = os.getenv('TEACHER_CODE')
+
+@auth_bp.route('/login', methods=['GET', 'POST'])
+def login():
+    """Unified login page for students and teachers"""
+    if request.method == 'POST':
+        login_type = request.form.get('login_type')
+        
+        if login_type == 'student':
+            student_code = request.form.get('student_code', '').strip()
+            student_name = request.form.get('student_name', '').strip()
+            
+            # Validate student code (4 digits)
+            if not re.match(r'^\d{4}$', student_code):
+                flash('Le code étudiant doit contenir exactement 4 chiffres.', 'error')
+                return redirect(url_for('auth.login'))
+            
+            if not student_name:
+                flash('Le nom est obligatoire.', 'error')
+                return redirect(url_for('auth.login'))
+            
+            # Check if student exists
+            student = Student.query.filter_by(student_code=student_code).first()
+            
+            if student:
+                # Existing student - verify name
+                if student.name.lower() == student_name.lower():
+                    student.last_login = datetime.utcnow()
+                    db.session.commit()
+                    login_user(student)
+                    session['user_type'] = 'student'
+                    return redirect(url_for('student_interface'))
+                else:
+                    flash('Code ou nom incorrect.', 'error')
+                    return redirect(url_for('auth.login'))
+            else:
+                # New student - create account
+                student = Student(
+                    student_code=student_code,
+                    name=student_name
+                )
+                db.session.add(student)
+                db.session.commit()
+                login_user(student)
+                session['user_type'] = 'student'
+                flash('Compte créé avec succès!', 'success')
+                return redirect(url_for('student_interface'))
+                
+        elif login_type == 'teacher':
+            access_code = request.form.get('access_code', '').strip()
+            
+            if access_code == TEACHER_ACCESS_CODE:
+                session['user_type'] = 'teacher'
+                session['teacher_authenticated'] = True
+                
+                # Log teacher access
+                teacher_access = TeacherAccess.query.filter_by(access_code=access_code).first()
+                if not teacher_access:
+                    teacher_access = TeacherAccess(access_code=access_code)
+                    db.session.add(teacher_access)
+                teacher_access.last_used = datetime.utcnow()
+                db.session.commit()
+                
+                return redirect(url_for('teacher_interface'))
+            else:
+                flash('Code d\'accès incorrect.', 'error')
+                return redirect(url_for('auth.login'))
+    
+    return render_template('login.html')
+
+@auth_bp.route('/logout')
+def logout():
+    logout_user()
+    session.clear()
+    return redirect(url_for('index'))
+
+def student_required(f):
+    """Decorator to require student login"""
+    from functools import wraps
+    
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if session.get('user_type') != 'student':
+            flash('Accès réservé aux étudiants.', 'error')
+            return redirect(url_for('auth.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def teacher_required(f):
+    """Decorator to require teacher authentication"""
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
+            flash('Accès réservé aux enseignants.', 'error')
+            return redirect(url_for('auth.login'))
+        return f(*args, **kwargs)
+    return decorated_function
