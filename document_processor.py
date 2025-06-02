@@ -8,6 +8,7 @@ import shutil
 from PIL import Image
 from io import BytesIO
 from langchain_core.messages import HumanMessage
+from models import db, PatientCase, MedicalImage
 
 # Setup logging
 logging.basicConfig(
@@ -626,30 +627,36 @@ class DocumentExtractionAgent:
         return json_str
     
     def save_case_data(self, case_number, specialty, extracted_data):
-        """
-        ensure the extracted_data is well-formed.
-        
-        """
-        logger.info(f"Preparing case data for case {case_number} before database insertion.")
+        """Save extracted case data to the database instead of JSON file."""
+        # Check if case already exists
+        case = PatientCase.query.filter_by(case_number=case_number).first()
+        if not case:
+            case = PatientCase(case_number=case_number)
+            db.session.add(case)
+        # Set/Update fields
+        case.specialty = specialty or extracted_data.get("specialty", "Non spécifié")
+        case.patient_info = extracted_data.get("patient_info", {})
+        case.symptoms = extracted_data.get("symptoms", [])
+        case.evaluation_checklist = extracted_data.get("evaluation_checklist", [])
+        case.diagnosis = extracted_data.get("diagnosis", "")
+        case.directives = extracted_data.get("directives", "")
+        case.consultation_time = extracted_data.get("consultation_time", 10)
+        case.custom_sections = extracted_data.get("custom_sections", [])
+        # Save images
+        db.session.flush()  # Ensure case.id is available
+        # Remove old images
+        MedicalImage.query.filter_by(case_id=case.id).delete()
+        for img in extracted_data.get("images", []):
+            image = MedicalImage(
+                case_id=case.id,
+                filename=img.get("path", "").split("/")[-1],
+                path=img.get("path", ""),
+                description=img.get("description", "")
+            )
+            db.session.add(image)
+        db.session.commit()
+        return case
 
-
-        final_data_structure = {
-            'case_number': str(case_number),
-            'specialty': str(specialty) if specialty else "Non spécifié",
-            'patient_info': extracted_data.get('patient_info', {}),
-            'symptoms': extracted_data.get('symptoms', []),
-            'evaluation_checklist': extracted_data.get('evaluation_checklist', []),
-            'images': extracted_data.get('images', []), # This contains metadata for images saved to filesystem
-            'custom_sections': extracted_data.get('custom_sections', []),
-            'diagnosis': extracted_data.get('diagnosis'),
-            'directives': extracted_data.get('directives'),
-            'consultation_time': extracted_data.get('consultation_time', 10),
-            # Add any other fields that should be in the main extracted_data dict
-        }
-        conceptual_path = f"db_entry_for_case_{case_number}" 
-        logger.info(f"Case data for {case_number} structured and ready for database.")
-        return final_data_structure # Return the dictionary
-    
     def get_validation_issues(self):
         """Get the validation issues found in the extracted data"""
         return self.state.get("validation_issues", [])

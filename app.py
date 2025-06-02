@@ -194,25 +194,19 @@ def create_app():
             raise
             
     def get_case_metadata():
-        """Get metadata for all available cases from the database"""
         cases_metadata = []
         try:
-            # Ensure you are importing PatientCase from your models
-            # from models import PatientCase
-            all_cases_db = PatientCase.query.order_by(PatientCase.case_number).all()
-            for case_db in all_cases_db:
+            cases = PatientCase.query.all()
+            for case in cases:
                 cases_metadata.append({
-                    "case_number": case_db.case_number,
-                    "specialty": case_db.specialty
+                    "case_number": case.case_number,
+                    "specialty": case.specialty,
+                    "created_at": case.created_at,
+                    "updated_at": case.updated_at
                 })
-            return cases_metadata
         except Exception as e:
-            # Log the actual error to understand what's going wrong during the query
-            logger.error(f"Error in get_case_metadata when querying database: {str(e)}")
-            # Also log the full traceback for more details
-            import traceback
-            logger.error(traceback.format_exc())
-            return [] # Return empty list on error
+            logger.error(f"Error fetching case metadata: {e}")
+        return cases_metadata
             
     def get_unique_specialties():
         """Get list of unique specialties from all cases in the database"""
@@ -1030,31 +1024,31 @@ def create_app():
     
     @app.route('/get_case/<case_number>', methods=['GET'])
     def get_case(case_number):
-        """Get case details by case number"""
-        try:
-            # Validate case number
-            if not case_number or case_number == 'None' or case_number == 'null':
-                return jsonify({"error": "Numéro de cas invalide"}), 400
-                
-            # Construct the file path
-            file_path = os.path.join(PATIENT_DATA_FOLDER, f"patient_case_{case_number}.json")
-            
-            # Check if the file exists
-            if not os.path.exists(file_path):
-                logger.warning(f"Case file not found: {file_path}")
-                return jsonify({"error": "Cas non trouvé"}), 404
-                
-            # Load the case data
-            with open(file_path, 'r', encoding='utf-8') as f:
-                case_data = json.load(f)
-                
-            logger.info(f"Successfully retrieved case {case_number}")
-            return jsonify(case_data)
-            
-        except Exception as e:
-            logger.error(f"Error retrieving case {case_number}: {str(e)}")
-            return jsonify({"error": str(e)}), 500
-    
+        case = PatientCase.query.filter_by(case_number=case_number).first()
+        if not case:
+            return jsonify({"error": "Case not found"}), 404
+        # Prepare response as dict
+        case_data = {
+            "patient_info": case.patient_info,
+            "symptoms": case.symptoms,
+            "evaluation_checklist": case.evaluation_checklist,
+            "diagnosis": case.diagnosis,
+            "directives": case.directives,
+            "consultation_time": case.consultation_time,
+            "custom_sections": case.custom_sections,
+            "images": [
+                {
+                    "path": img.path,
+                    "description": img.description,
+                    "index": idx
+                }
+                for idx, img in enumerate(case.images)
+            ],
+            "case_number": case.case_number,
+            "specialty": case.specialty
+        }
+        return jsonify(case_data)
+
     @app.route('/get_case_images/<case_number>')
     def get_case_images(case_number):
         """Get all images for a specific case with enhanced metadata"""
