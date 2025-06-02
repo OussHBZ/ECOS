@@ -1152,3 +1152,468 @@ window.addEventListener('click', (e) => {
         directivesModal.classList.remove('visible');
     }
 });
+
+// Tab navigation
+function showTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all nav tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected tab
+    document.getElementById(tabName).classList.add('active');
+    
+    // Add active class to clicked nav tab
+    event.target.classList.add('active');
+    
+    // Load content for specific tabs
+    if (tabName === 'stats-tab') {
+        loadStudentStats();
+    } else if (tabName === 'stations-tab') {
+        loadStudentStations();
+    }
+}
+
+// Load student statistics
+async function loadStudentStats() {
+    try {
+        const response = await fetch('/student/stats');
+        if (!response.ok) {
+            throw new Error('Failed to load stats');
+        }
+        
+        const stats = await response.json();
+        
+        // Update stats overview
+        document.getElementById('total-workouts').textContent = stats.total_workouts;
+        document.getElementById('unique-stations').textContent = stats.unique_stations;
+        document.getElementById('average-score').textContent = stats.average_score + '%';
+        
+        // Update recent performances table
+        const tableBody = document.getElementById('performance-table-body');
+        tableBody.innerHTML = '';
+        
+        if (stats.recent_performances.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucune performance enregistrée</td></tr>';
+        } else {
+            stats.recent_performances.forEach(perf => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${perf.case_number}</td>
+                    <td>${perf.specialty}</td>
+                    <td>${perf.score}%</td>
+                    <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
+                    <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
+                    <td>${perf.completed_at}</td>
+                    <td>${perf.duration}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading stats:', error);
+        document.getElementById('total-workouts').textContent = 'Erreur';
+        document.getElementById('unique-stations').textContent = 'Erreur';
+        document.getElementById('average-score').textContent = 'Erreur';
+    }
+}
+
+// Load student stations
+async function loadStudentStations(searchQuery = '') {
+    try {
+        let url = '/student/stations';
+        if (searchQuery) {
+            url += `?search=${encodeURIComponent(searchQuery)}`;
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Failed to load stations');
+        }
+        
+        const data = await response.json();
+        const stationsGrid = document.getElementById('stations-grid');
+        stationsGrid.innerHTML = '';
+        
+        if (data.stations.length === 0) {
+            stationsGrid.innerHTML = '<p>Aucune station trouvée.</p>';
+        } else {
+            data.stations.forEach(station => {
+                const stationCard = document.createElement('div');
+                stationCard.className = 'station-card';
+                
+                const gradeDisplay = station.best_score > 0 ? 
+                    `<span class="grade-badge grade-${getGradeFromScore(station.best_score)}">${getGradeFromScore(station.best_score)}</span>` : 
+                    '<span class="grade-badge grade-none">Non tenté</span>';
+                
+                const lastAttemptDisplay = station.last_attempt ? 
+                    `Dernière tentative: ${station.last_attempt}` : 
+                    'Jamais tenté';
+                
+                stationCard.innerHTML = `
+                    <div class="station-header">
+                        <h4>Station ${station.case_number}</h4>
+                        ${gradeDisplay}
+                    </div>
+                    <div class="station-info">
+                        <p><strong>Spécialité:</strong> ${station.specialty}</p>
+                        <p><strong>Durée:</strong> ${station.consultation_time} minutes</p>
+                        <p><strong>Tentatives:</strong> ${station.attempts}</p>
+                        <p><strong>Meilleur score:</strong> ${station.best_score}%</p>
+                        <p class="last-attempt">${lastAttemptDisplay}</p>
+                    </div>
+                    <div class="station-actions">
+                        <button class="select-station-btn" data-case="${station.case_number}" data-specialty="${station.specialty}">
+                            ${station.attempts > 0 ? 'Reprendre' : 'Commencer'}
+                        </button>
+                    </div>
+                `;
+                
+                stationsGrid.appendChild(stationCard);
+            });
+            
+            // Add event listeners to station selection buttons
+            document.querySelectorAll('.select-station-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const caseNumber = e.target.getAttribute('data-case');
+                    const specialty = e.target.getAttribute('data-specialty');
+                    
+                    // Switch to cases tab and select the case
+                    showTab('cases-tab');
+                    selectCase(caseNumber, specialty);
+                });
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading stations:', error);
+        document.getElementById('stations-grid').innerHTML = '<p>Erreur lors du chargement des stations.</p>';
+    }
+}
+
+// Search stations
+function searchStations() {
+    const searchQuery = document.getElementById('stations-search').value.trim();
+    loadStudentStations(searchQuery);
+}
+
+// Helper function to get grade from score
+function getGradeFromScore(score) {
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
+}
+
+// Function to select a case programmatically
+function selectCase(caseNumber, specialty) {
+    // Find the case card and select it
+    const caseCards = document.querySelectorAll('.case-card');
+    caseCards.forEach(card => {
+        if (card.getAttribute('data-case') === caseNumber) {
+            // Deselect previous card if exists
+            if (selectedCaseCard) {
+                selectedCaseCard.classList.remove('selected');
+            }
+            
+            // Select current card
+            card.classList.add('selected');
+            selectedCaseCard = card;
+            currentCase = caseNumber;
+            
+            // Enable start button
+            const startButton = document.getElementById('start-chat');
+            if (startButton) {
+                startButton.disabled = false;
+            }
+            
+            // Scroll to the case
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+}
+
+// Add search functionality for stations
+document.addEventListener('DOMContentLoaded', function() {
+    // Add enter key support for stations search
+    const stationsSearch = document.getElementById('stations-search');
+    if (stationsSearch) {
+        stationsSearch.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchStations();
+            }
+        });
+    }
+    
+    // Load stats when page loads
+    if (document.getElementById('stats-tab').classList.contains('active')) {
+        loadStudentStats();
+    }
+    
+    // Update your existing end_chat function to refresh stats after consultation
+    const originalEndConsultation = endConsultation;
+    endConsultation = async function() {
+        await originalEndConsultation();
+        // Refresh stats if stats tab is visible
+        if (document.getElementById('stats-tab').classList.contains('active')) {
+            setTimeout(loadStudentStats, 1000);
+        }
+    };
+});
+
+// Add CSS styles for the new elements
+const newStyles = `
+/* Navigation Tabs */
+.student-nav-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+    background: white;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+}
+
+.nav-tab {
+    flex: 1;
+    padding: 15px 20px;
+    background: #f5f5f5;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    color: #666;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+}
+
+.nav-tab.active {
+    background: white;
+    color: #2196F3;
+    border-bottom-color: #2196F3;
+}
+
+.nav-tab:hover {
+    background: #e8f4fd;
+    color: #1976D2;
+}
+
+/* Tab Content */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.teacher-tab-content {
+    display: none;
+}
+
+.teacher-tab-content.active {
+    display: block;
+}
+
+/* Stats Overview */
+.stats-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    text-align: center;
+    border-left: 4px solid #2196F3;
+}
+
+.stat-number {
+    font-size: 2.5em;
+    font-weight: bold;
+    color: #2196F3;
+    margin-bottom: 10px;
+}
+
+.stat-label {
+    font-size: 1.1em;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Performance Table */
+.performance-table-container {
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.performance-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.performance-table th {
+    background: #2196F3;
+    color: white;
+    padding: 15px;
+    text-align: left;
+    font-weight: bold;
+}
+
+.performance-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.performance-table tr:hover {
+    background: #f8f9fa;
+}
+
+/* Stations Grid */
+.stations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.station-card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.station-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+}
+
+.station-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.station-header h4 {
+    margin: 0;
+    color: #333;
+}
+
+.station-info p {
+    margin: 8px 0;
+    color: #666;
+}
+
+.station-info .last-attempt {
+    font-style: italic;
+    color: #999;
+    font-size: 0.9em;
+}
+
+.station-actions {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.select-station-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.select-station-btn:hover {
+    background: #45a049;
+}
+
+/* Grade and Status Badges */
+.grade-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.grade-A { background: #4CAF50; color: white; }
+.grade-B { background: #8BC34A; color: white; }
+.grade-C { background: #FFC107; color: black; }
+.grade-D { background: #FF9800; color: white; }
+.grade-F { background: #F44336; color: white; }
+.grade-none { background: #9E9E9E; color: white; }
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.status-excellent { background: #E8F5E8; color: #2E7D32; }
+.status-bon { background: #E3F2FD; color: #1565C0; }
+.status-satisfaisant { background: #FFF3E0; color: #EF6C00; }
+.status-à-améliorer { background: #FFEBEE; color: #C62828; }
+
+/* Search Container */
+.search-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.search-btn {
+    background: #2196F3;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.search-btn:hover {
+    background: #1976D2;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.section-header h2 {
+    margin: 0;
+    color: #333;
+}
+`;
+
+// Add the styles to the document
+const styleSheet = document.createElement('style');
+styleSheet.textContent = newStyles;
+document.head.appendChild(styleSheet);

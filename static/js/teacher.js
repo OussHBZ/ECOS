@@ -2285,3 +2285,497 @@ function updateCaseListRow(caseNumber, editedData) {
         }
     });
 }
+
+// Tab navigation for teacher interface
+function showTeacherTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.teacher-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all nav tabs
+    document.querySelectorAll('.teacher-nav-tabs .nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected tab
+    document.getElementById(tabName).classList.add('active');
+    
+    // Add active class to clicked nav tab
+    event.target.classList.add('active');
+    
+    // Load content for specific tabs
+    if (tabName === 'stations-management-tab') {
+        loadTeacherStations();
+    } else if (tabName === 'student-performance-tab') {
+        loadStudentPerformance();
+    }
+}
+
+// Load teacher stations management
+async function loadTeacherStations(searchQuery = '') {
+    try {
+        let url = '/teacher/stations';
+        if (searchQuery) {
+            url += `?search=${encodeURIComponent(searchQuery)}`;
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Failed to load stations');
+        }
+        
+        const data = await response.json();
+        
+        // Update stats
+        document.getElementById('total-stations').textContent = data.total;
+        
+        // Calculate averages
+        const totalCompletions = data.stations.reduce((sum, station) => sum + station.completion_count, 0);
+        const avgCompletions = data.stations.length > 0 ? Math.round(totalCompletions / data.stations.length) : 0;
+        const avgScore = data.stations.length > 0 ? 
+            Math.round(data.stations.reduce((sum, station) => sum + station.average_score, 0) / data.stations.length) : 0;
+        
+        document.getElementById('avg-completion-rate').textContent = avgCompletions;
+        document.getElementById('avg-station-score').textContent = avgScore + '%';
+        
+        // Update table
+        const tableBody = document.getElementById('teacher-stations-table-body');
+        tableBody.innerHTML = '';
+        
+        if (data.stations.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Aucune station trouvée</td></tr>';
+        } else {
+            data.stations.forEach(station => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${station.case_number}</td>
+                    <td>${station.specialty}</td>
+                    <td>${station.consultation_time}</td>
+                    <td>${station.created_at}</td>
+                    <td>${station.updated_at}</td>
+                    <td><span class="completion-badge">${station.completion_count}</span></td>
+                    <td><span class="score-badge score-${getScoreClass(station.average_score)}">${station.average_score}%</span></td>
+                    <td>
+                        <button class="view-button" data-case="${station.case_number}">Voir</button>
+                        <button class="edit-button" data-case="${station.case_number}">Modifier</button>
+                        <button class="delete-button" data-case="${station.case_number}">Supprimer</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading teacher stations:', error);
+        document.getElementById('teacher-stations-table-body').innerHTML = 
+            '<tr><td colspan="8" style="text-align: center;">Erreur lors du chargement</td></tr>';
+    }
+}
+
+// Load student performance data
+async function loadStudentPerformance(searchQuery = '') {
+    try {
+        let url = '/teacher/students/performance';
+        if (searchQuery) {
+            url += `?search=${encodeURIComponent(searchQuery)}`;
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Failed to load student performance');
+        }
+        
+        const data = await response.json();
+        
+        // Update overview stats
+        document.getElementById('total-students').textContent = data.total;
+        
+        // Calculate active students (those with at least one workout)
+        const activeStudents = data.students.filter(student => student.total_workouts > 0).length;
+        document.getElementById('active-students').textContent = activeStudents;
+        
+        // Calculate overall average score
+        const studentsWithScores = data.students.filter(student => student.average_score > 0);
+        const overallAvgScore = studentsWithScores.length > 0 ? 
+            Math.round(studentsWithScores.reduce((sum, student) => sum + student.average_score, 0) / studentsWithScores.length) : 0;
+        document.getElementById('overall-avg-score').textContent = overallAvgScore + '%';
+        
+        // Update table
+        const tableBody = document.getElementById('students-performance-table-body');
+        tableBody.innerHTML = '';
+        
+        if (data.students.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
+        } else {
+            data.students.forEach(student => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${student.student_code}</td>
+                    <td>${student.name}</td>
+                    <td><span class="workout-badge">${student.total_workouts}</span></td>
+                    <td><span class="station-badge">${student.unique_stations}</span></td>
+                    <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
+                    <td>${student.last_login}</td>
+                    <td>
+                        <button class="detail-button" data-student-id="${student.student_id}" data-student-name="${student.name}">
+                            Voir Détails
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            // Add event listeners to detail buttons
+            document.querySelectorAll('.detail-button').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const studentId = e.target.getAttribute('data-student-id');
+                    const studentName = e.target.getAttribute('data-student-name');
+                    openStudentDetailModal(studentId, studentName);
+                });
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error loading student performance:', error);
+        document.getElementById('students-performance-table-body').innerHTML = 
+            '<tr><td colspan="7" style="text-align: center;">Erreur lors du chargement</td></tr>';
+    }
+}
+
+// Open student detail modal
+async function openStudentDetailModal(studentId, studentName) {
+    try {
+        const response = await fetch(`/teacher/students/${studentId}/detailed_performance`);
+        if (!response.ok) {
+            throw new Error('Failed to load student details');
+        }
+        
+        const data = await response.json();
+        
+        // Update modal header
+        document.getElementById('student-detail-name').textContent = studentName;
+        
+        // Update student stats
+        document.getElementById('detail-total-workouts').textContent = data.student.total_workouts;
+        document.getElementById('detail-unique-stations').textContent = data.student.unique_stations;
+        document.getElementById('detail-average-score').textContent = data.student.average_score + '%';
+        
+        // Update detailed performance table
+        const tableBody = document.getElementById('detailed-performance-table-body');
+        tableBody.innerHTML = '';
+        
+        if (data.performances.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Aucune performance enregistrée</td></tr>';
+        } else {
+            data.performances.forEach(perf => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${perf.completed_at}</td>
+                    <td>${perf.case_number}</td>
+                    <td>${perf.specialty}</td>
+                    <td>${perf.score}%</td>
+                    <td>${perf.points_earned}/${perf.points_total}</td>
+                    <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
+                    <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
+                    <td>${perf.consultation_duration}</td>
+                    <td>
+                        <button class="view-evaluation-btn" data-performance-id="${perf.id}">
+                            Voir Évaluation
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // Show modal
+        document.getElementById('student-detail-modal').classList.remove('hidden');
+        document.getElementById('student-detail-modal').classList.add('visible');
+        
+    } catch (error) {
+        console.error('Error loading student details:', error);
+        alert('Erreur lors du chargement des détails de l\'étudiant');
+    }
+}
+
+// Search functions
+function searchTeacherStations() {
+    const searchQuery = document.getElementById('teacher-stations-search').value.trim();
+    loadTeacherStations(searchQuery);
+}
+
+function searchStudents() {
+    const searchQuery = document.getElementById('student-search').value.trim();
+    loadStudentPerformance(searchQuery);
+}
+
+// Helper function to get score class
+function getScoreClass(score) {
+    if (score >= 90) return 'excellent';
+    if (score >= 80) return 'good';
+    if (score >= 70) return 'average';
+    if (score >= 60) return 'below-average';
+    return 'poor';
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners for search inputs
+    const teacherStationsSearch = document.getElementById('teacher-stations-search');
+    if (teacherStationsSearch) {
+        teacherStationsSearch.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchTeacherStations();
+            }
+        });
+    }
+    
+    const studentSearch = document.getElementById('student-search');
+    if (studentSearch) {
+        studentSearch.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchStudents();
+            }
+        });
+    }
+    
+    // Close student detail modal
+    const studentDetailClose = document.querySelector('.student-detail-close');
+    if (studentDetailClose) {
+        studentDetailClose.addEventListener('click', () => {
+            document.getElementById('student-detail-modal').classList.remove('visible');
+            document.getElementById('student-detail-modal').classList.add('hidden');
+        });
+    }
+    
+    // Close modal when clicking outside
+    window.addEventListener('click', (e) => {
+        const studentDetailModal = document.getElementById('student-detail-modal');
+        if (e.target === studentDetailModal) {
+            studentDetailModal.classList.remove('visible');
+            studentDetailModal.classList.add('hidden');
+        }
+    });
+});
+
+// Add CSS styles for the new teacher elements
+const teacherStyles = `
+/* Teacher Navigation Tabs */
+.teacher-nav-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+    background: white;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+}
+
+.teacher-nav-tabs .nav-tab {
+    flex: 1;
+    padding: 15px 20px;
+    background: #f5f5f5;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    color: #666;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+}
+
+.teacher-nav-tabs .nav-tab.active {
+    background: white;
+    color: #2196F3;
+    border-bottom-color: #2196F3;
+}
+
+.teacher-nav-tabs .nav-tab:hover {
+    background: #e8f4fd;
+    color: #1976D2;
+}
+
+/* Stations Management */
+.stations-management-container,
+.performance-management-container {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.stations-stats,
+.students-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+/* Tables */
+.stations-table-container,
+.students-table-container,
+.detailed-performance-table-container {
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-top: 20px;
+}
+
+.stations-table,
+.students-table,
+.detailed-performance-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.stations-table th,
+.students-table th,
+.detailed-performance-table th {
+    background: #2196F3;
+    color: white;
+    padding: 15px;
+    text-align: left;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.stations-table td,
+.students-table td,
+.detailed-performance-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+.stations-table tr:hover,
+.students-table tr:hover,
+.detailed-performance-table tr:hover {
+    background: #f8f9fa;
+}
+
+/* Badges */
+.completion-badge,
+.workout-badge,
+.station-badge {
+    background: #E3F2FD;
+    color: #1565C0;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.score-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.score-excellent { background: #E8F5E8; color: #2E7D32; }
+.score-good { background: #E3F2FD; color: #1565C0; }
+.score-average { background: #FFF3E0; color: #EF6C00; }
+.score-below-average { background: #FFF8E1; color: #F57F17; }
+.score-poor { background: #FFEBEE; color: #C62828; }
+
+/* Buttons */
+.detail-button,
+.view-evaluation-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+}
+
+.detail-button:hover,
+.view-evaluation-btn:hover {
+    background: #45a049;
+}
+
+/* Student Detail Modal */
+.student-detail-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.detailed-performance-table-container {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .teacher-nav-tabs {
+        flex-direction: column;
+    }
+    
+    .stations-stats,
+    .students-overview,
+    .student-detail-stats {
+        grid-template-columns: 1fr;
+    }
+    
+    .stations-table,
+    .students-table,
+    .detailed-performance-table {
+        font-size: 12px;
+    }
+    
+    .stations-table th,
+    .students-table th,
+    .detailed-performance-table th,
+    .stations-table td,
+    .students-table td,
+    .detailed-performance-table td {
+        padding: 8px;
+    }
+}
+
+/* Section styling */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.section-header h2 {
+    margin: 0;
+    color: #333;
+}
+
+.search-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.search-btn {
+    background: #2196F3;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.search-btn:hover {
+    background: #1976D2;
+}
+`;
+
+// Add the teacher styles to the document
+const teacherStyleSheet = document.createElement('style');
+teacherStyleSheet.textContent = teacherStyles;
+document.head.appendChild(teacherStyleSheet);

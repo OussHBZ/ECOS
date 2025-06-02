@@ -7,10 +7,15 @@
 </head>
 <body>
     <div class="container">
-        <div id="case-selection" class="case-selection">
+        <!-- Navigation Tabs -->
+        <div class="student-nav-tabs">
+            <button class="nav-tab active" onclick="showTab('cases-tab')">Cas disponibles</button>
+            <button class="nav-tab" onclick="showTab('stations-tab')">Stations</button>
+            <button class="nav-tab" onclick="showTab('stats-tab')">Statistiques</button>
+        </div>
+
+        <div class="student-header">
             <h1>OSCE Chat Simulator</h1>
-            
-            <!-- ADD THIS NEW SECTION HERE -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <div>
                     <p>Bienvenue, <strong>{{ student_name }}</strong></p>
@@ -19,52 +24,115 @@
                     <a href="{{ url_for('auth.logout') }}" class="back-button">Déconnexion</a>
                 </div>
             </div>
-            <!-- END OF NEW SECTION -->
-            
-            <!-- Remove or comment out this line since we now have logout -->
-            <!-- <a href="{{ url_for('index') }}" class="back-button">Retour à l'accueil</a> -->
-            
-            <div class="selection-container">
-                <div class="filter-section">
-                    <div class="form-group">
-                        <label for="case-number-search">Recherche par numéro de cas :</label>
-                        <input type="number" id="case-number-search" class="search-input" placeholder="Entrez un numéro de cas">
+        </div>
+
+        <!-- Cases Tab (Original functionality) -->
+        <div id="cases-tab" class="tab-content active">
+            <div id="case-selection" class="case-selection">
+                <div class="selection-container">
+                    <div class="filter-section">
+                        <div class="form-group">
+                            <label for="case-number-search">Recherche par numéro de cas :</label>
+                            <input type="number" id="case-number-search" class="search-input" placeholder="Entrez un numéro de cas">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="specialty-filter">Filtrer par spécialité :</label>
+                            <select id="specialty-filter" class="filter-select">
+                                <option value="">Toutes les spécialités</option>
+                                {% for specialty in specialties %}
+                                <option value="{{ specialty }}">{{ specialty }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="specialty-filter">Filtrer par spécialité :</label>
-                        <select id="specialty-filter" class="filter-select">
-                            <option value="">Toutes les spécialités</option>
-                            {% for specialty in specialties %}
-                            <option value="{{ specialty }}">{{ specialty }}</option>
-                            {% endfor %}
-                        </select>
+                    <div class="cases-display">
+                        <h3>Sélectionnez un cas :</h3>
+                        <div id="cases-grid">
+                            {% if cases %}
+                                {% for case in cases %}
+                                <div class="case-card" 
+                                     data-case="{{ case.case_number }}"
+                                     data-specialty="{{ case.specialty }}">
+                                    <h4>Cas {{ case.case_number }}</h4>
+                                    <p>Spécialité: {{ case.specialty }}</p>
+                                    <button class="select-case-btn">Sélectionner</button>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p>Aucun cas disponible. Demandez à un enseignant d'ajouter des cas.</p>
+                            {% endif %}
+                        </div>
                     </div>
+                    
+                    <button id="start-chat" class="start-button" disabled>Commencer la consultation</button>
                 </div>
-                
-                <div class="cases-display">
-                    <h3>Sélectionnez un cas :</h3>
-                    <div id="cases-grid">
-                        {% if cases %}
-                            {% for case in cases %}
-                            <div class="case-card" 
-                                 data-case="{{ case.case_number }}"
-                                 data-specialty="{{ case.specialty }}">
-                                <h4>Cas {{ case.case_number }}</h4>
-                                <p>Spécialité: {{ case.specialty }}</p>
-                                <button class="select-case-btn">Sélectionner</button>
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <p>Aucun cas disponible. Demandez à un enseignant d'ajouter des cas.</p>
-                        {% endif %}
-                    </div>
-                </div>
-                
-                <button id="start-chat" class="start-button" disabled>Commencer la consultation</button>
             </div>
         </div>
 
+        <!-- Stations Tab -->
+        <div id="stations-tab" class="tab-content">
+            <div class="stations-container">
+                <div class="section-header">
+                    <h2>Toutes les Stations</h2>
+                    <div class="search-container">
+                        <input type="text" id="stations-search" placeholder="Rechercher par numéro ou spécialité..." class="search-input">
+                        <button onclick="searchStations()" class="search-btn">Rechercher</button>
+                    </div>
+                </div>
+
+                <div class="stations-grid" id="stations-grid">
+                    <!-- Stations will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Tab -->
+        <div id="stats-tab" class="tab-content">
+            <div class="stats-container">
+                <h2>Mes Statistiques</h2>
+                
+                <div class="stats-overview">
+                    <div class="stat-card">
+                        <div class="stat-number" id="total-workouts">-</div>
+                        <div class="stat-label">Consultations Effectuées</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="unique-stations">-</div>
+                        <div class="stat-label">Stations Jouées</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="average-score">-</div>
+                        <div class="stat-label">Score Moyen</div>
+                    </div>
+                </div>
+
+                <div class="recent-performances">
+                    <h3>Performances Récentes</h3>
+                    <div class="performance-table-container">
+                        <table class="performance-table" id="performance-table">
+                            <thead>
+                                <tr>
+                                    <th>Cas</th>
+                                    <th>Spécialité</th>
+                                    <th>Score</th>
+                                    <th>Note</th>
+                                    <th>Statut</th>
+                                    <th>Date</th>
+                                    <th>Durée</th>
+                                </tr>
+                            </thead>
+                            <tbody id="performance-table-body">
+                                <!-- Performance data will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Container (existing) -->
         <div id="chat-container" class="chat-container hidden">
             <div class="chat-header">
                 <h2>Consultation en cours - <span id="current-case-title"></span></h2>
@@ -83,7 +151,7 @@
             </div>
         </div>
         
-        <!-- Directives Modal -->
+        <!-- Directives Modal (existing) -->
         <div id="directives-modal" class="modal">
             <div class="modal-content">
                 <span class="close-modal directives-close">&times;</span>
@@ -92,6 +160,7 @@
             </div>
         </div>
         
+        <!-- Evaluation Container (existing) -->
         <div id="evaluation-container" class="evaluation-container hidden">
             <div class="evaluation-header">
                 <h2>Évaluation de la consultation</h2>

@@ -12,15 +12,38 @@ class Student(db.Model, UserMixin):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
     
+    # Relationships
+    performances = db.relationship('StudentPerformance', backref='student', lazy=True, cascade='all, delete-orphan')
+    
     def get_id(self):
         return f"student_{self.id}"
+    
+    def get_total_workouts(self):
+        """Get total number of completed consultations"""
+        return StudentPerformance.query.filter_by(student_id=self.id).count()
+    
+    def get_unique_stations_played(self):
+        """Get number of unique stations/cases played"""
+        return db.session.query(StudentPerformance.case_number).filter_by(student_id=self.id).distinct().count()
+    
+    def get_average_score(self):
+        """Get average percentage score across all performances"""
+        performances = StudentPerformance.query.filter_by(student_id=self.id).all()
+        if not performances:
+            return 0
+        total_score = sum(p.percentage_score for p in performances)
+        return round(total_score / len(performances), 1)
+    
+    def get_recent_performances(self, limit=5):
+        """Get recent performances"""
+        return StudentPerformance.query.filter_by(student_id=self.id)\
+            .order_by(StudentPerformance.completed_at.desc()).limit(limit).all()
 
 class TeacherAccess(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     access_code = db.Column(db.String(20), unique=True, nullable=False)
     last_used = db.Column(db.DateTime)
 
-# NEW: Add Case model for database synchronization
 class PatientCase(db.Model):
     __tablename__ = 'patient_case1'
     
@@ -40,8 +63,68 @@ class PatientCase(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationships
+    performances = db.relationship('StudentPerformance', backref='case', lazy=True)
+    
+    @property
+    def patient_info(self):
+        if self.patient_info_json:
+            try:
+                return json.loads(self.patient_info_json)
+            except:
+                return {}
+        return {}
+    
+    @property
+    def symptoms(self):
+        if self.symptoms_json:
+            try:
+                return json.loads(self.symptoms_json)
+            except:
+                return []
+        return []
+    
+    @property
+    def evaluation_checklist(self):
+        if self.evaluation_checklist_json:
+            try:
+                return json.loads(self.evaluation_checklist_json)
+            except:
+                return []
+        return []
+    
+    @property
+    def differential_diagnosis(self):
+        if self.differential_diagnosis_json:
+            try:
+                return json.loads(self.differential_diagnosis_json)
+            except:
+                return []
+        return []
+    
+    @property
+    def custom_sections(self):
+        if self.custom_sections_json:
+            try:
+                return json.loads(self.custom_sections_json)
+            except:
+                return []
+        return []
+    
     def __repr__(self):
         return f'<PatientCase {self.case_number}>'
+    
+    def get_average_score(self):
+        """Get average score for this case across all students"""
+        performances = StudentPerformance.query.filter_by(case_number=self.case_number).all()
+        if not performances:
+            return 0
+        total_score = sum(p.percentage_score for p in performances)
+        return round(total_score / len(performances), 1)
+    
+    def get_completion_count(self):
+        """Get number of times this case has been completed"""
+        return StudentPerformance.query.filter_by(case_number=self.case_number).count()
     
     @classmethod
     def from_json_data(cls, case_data):
@@ -161,3 +244,100 @@ class PatientCase(db.Model):
                 'custom_sections': [],
                 'images': []
             }
+
+# NEW MODEL: Student Performance Tracking
+class StudentPerformance(db.Model):
+    __tablename__ = 'student_performance'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    case_number = db.Column(db.String(50), db.ForeignKey('patient_case1.case_number'), nullable=False)
+    
+    # Performance metrics
+    points_earned = db.Column(db.Integer, default=0)
+    points_total = db.Column(db.Integer, default=0)
+    percentage_score = db.Column(db.Float, default=0.0)
+    
+    # Timing information
+    consultation_duration = db.Column(db.Integer)  # in seconds
+    time_remaining = db.Column(db.Integer)  # in seconds
+    
+    # Detailed evaluation data (JSON)
+    evaluation_results_json = db.Column(db.Text)  # Store full evaluation results
+    recommendations_json = db.Column(db.Text)  # Store recommendations
+    
+    # Timestamps
+    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<StudentPerformance {self.student.name} - Case {self.case_number} - {self.percentage_score}%>'
+    
+    @property
+    def evaluation_results(self):
+        if self.evaluation_results_json:
+            try:
+                return json.loads(self.evaluation_results_json)
+            except:
+                return {}
+        return {}
+    
+    @property
+    def recommendations(self):
+        if self.recommendations_json:
+            try:
+                return json.loads(self.recommendations_json)
+            except:
+                return []
+        return []
+    
+    def set_evaluation_results(self, results):
+        """Set evaluation results as JSON"""
+        self.evaluation_results_json = json.dumps(results, ensure_ascii=False)
+    
+    def set_recommendations(self, recommendations):
+        """Set recommendations as JSON"""
+        self.recommendations_json = json.dumps(recommendations, ensure_ascii=False)
+    
+    def get_performance_grade(self):
+        """Get letter grade based on percentage score"""
+        if self.percentage_score >= 90:
+            return 'A'
+        elif self.percentage_score >= 80:
+            return 'B'
+        elif self.percentage_score >= 70:
+            return 'C'
+        elif self.percentage_score >= 60:
+            return 'D'
+        else:
+            return 'F'
+    
+    def get_performance_status(self):
+        """Get performance status description"""
+        if self.percentage_score >= 80:
+            return 'Excellent'
+        elif self.percentage_score >= 70:
+            return 'Bon'
+        elif self.percentage_score >= 60:
+            return 'Satisfaisant'
+        else:
+            return 'À améliorer'
+    
+    @classmethod
+    def create_from_evaluation(cls, student_id, case_number, evaluation_results, recommendations=None, consultation_duration=None, time_remaining=None):
+        """Create a new performance record from evaluation results"""
+        performance = cls(
+            student_id=student_id,
+            case_number=case_number,
+            points_earned=evaluation_results.get('points_earned', 0),
+            points_total=evaluation_results.get('points_total', 0),
+            percentage_score=evaluation_results.get('percentage', 0.0),
+            consultation_duration=consultation_duration,
+            time_remaining=time_remaining
+        )
+        
+        performance.set_evaluation_results(evaluation_results)
+        if recommendations:
+            performance.set_recommendations(recommendations)
+        
+        return performance

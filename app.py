@@ -15,7 +15,8 @@ from simple_pdf_generator import create_simple_consultation_pdf
 from flask_login import LoginManager, login_required, current_user
 from models import db, Student
 from auth import auth_bp, student_required, teacher_required
-from models import db, Student, TeacherAccess, PatientCase
+from models import db, Student, TeacherAccess, PatientCase, StudentPerformance
+
 
 
 import time
@@ -479,13 +480,14 @@ def create_app():
                 for msg in conversation
             ]
             session['case_number'] = case_number
+            session['consultation_time'] = consultation_time
+            session['consultation_start_time'] = time.time()  # Track start time for performance tracking
             
             logger.info(f"Chat initialized for case {case_number}")
             return jsonify({
                 "status": "success",
                 "consultation_time": consultation_time,  # Include the consultation time
                 "directives": directives
-
             })
             
         except FileNotFoundError as e:
@@ -630,6 +632,7 @@ def create_app():
         
         return optimized
 
+
     @app.route('/end_chat', methods=['POST'])
     @student_required
     def end_chat():
@@ -643,6 +646,17 @@ def create_app():
             # Get the full conversation from session
             conversation = session['conversation']
             case_number = session.get('case_number', 'Unknown')
+            
+            # Calculate consultation duration (if timer was used)
+            consultation_duration = None
+            time_remaining = None
+            if 'consultation_start_time' in session:
+                import time
+                consultation_duration = int(time.time() - session['consultation_start_time'])
+                # Get remaining time from timer if available
+                if 'consultation_time' in session:
+                    total_time = session['consultation_time'] * 60  # Convert to seconds
+                    time_remaining = max(0, total_time - consultation_duration)
             
             # Start timing
             eval_start = time.time()
@@ -659,6 +673,15 @@ def create_app():
             # Log conversation details
             logger.info(f"Ending conversation for case {case_number}")
             logger.info(f"Number of messages: {len(conversation)}")
+            
+            # Save student performance to database
+            save_student_performance(
+                evaluation, 
+                recommendations, 
+                case_number, 
+                consultation_duration, 
+                time_remaining
+            )
             
             try:
                 # Use the simplified PDF generator
@@ -693,7 +716,28 @@ def create_app():
         except Exception as e:
             logger.error(f"Error in end_chat: {str(e)}")
             return jsonify({"error": "Error ending chat session"}), 500
-        
+    
+    def save_student_performance(evaluation, recommendations, case_number, consultation_duration=None, time_remaining=None):
+        """Save student performance to database"""
+        try:
+            if hasattr(current_user, 'id'):
+                performance = StudentPerformance.create_from_evaluation(
+                    student_id=current_user.id,
+                    case_number=case_number,
+                    evaluation_results=evaluation,
+                    recommendations=recommendations,
+                    consultation_duration=consultation_duration,
+                    time_remaining=time_remaining
+                )
+                
+                db.session.add(performance)
+                db.session.commit()
+                logger.info(f"Saved performance for student {current_user.id}, case {case_number}")
+                
+        except Exception as e:
+            logger.error(f"Error saving student performance: {str(e)}")
+            db.session.rollback()
+
     @app.route('/download_pdf/<filename>')
     def download_pdf(filename):
         """Handle PDF download requests"""
@@ -1219,6 +1263,237 @@ def create_app():
             
         except Exception as e:
             logger.error(f"Error editing case {case_number}: {str(e)}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+    @app.route('/student/stats')
+    @student_required
+    def student_stats():
+        """Get student statistics"""
+        try:
+            # Get current student stats
+            stats = {
+                'total_workouts': current_user.get_total_workouts(),
+                'unique_stations': current_user.get_unique_stations_played(),
+                'average_score': current_user.get_average_score(),
+                'recent_performances': []
+            }
+            
+            # Get recent performances with case details
+            recent_performances = current_user.get_recent_performances(10)
+            for perf in recent_performances:
+                case = PatientCase.query.filter_by(case_number=perf.case_number).first()
+                stats['recent_performances'].append({
+                    'case_number': perf.case_number,
+                    'specialty': case.specialty if case else 'Unknown',
+                    'score': perf.percentage_score,
+                    'grade': perf.get_performance_grade(),
+                    'status': perf.get_performance_status(),
+                    'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
+                    'duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A"
+                })
+            
+            return jsonify(stats)
+            
+        except Exception as e:
+            logger.error(f"Error getting student stats: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/student/stations')
+    @student_required
+    def student_stations():
+        """Get available stations for student with search"""
+        try:
+            search_query = request.args.get('search', '').strip()
+            
+            # Base query
+            query = PatientCase.query
+            
+            # Apply search filter if provided
+            if search_query:
+                query = query.filter(
+                    db.or_(
+                        PatientCase.case_number.contains(search_query),
+                        PatientCase.specialty.contains(search_query)
+                    )
+                )
+            
+            cases = query.order_by(PatientCase.case_number).all()
+            
+            stations = []
+            for case in cases:
+                # Get student's performance for this case
+                student_performances = StudentPerformance.query.filter_by(
+                    student_id=current_user.id,
+                    case_number=case.case_number
+                ).order_by(StudentPerformance.completed_at.desc()).all()
+                
+                best_score = 0
+                attempts = len(student_performances)
+                last_attempt = None
+                
+                if student_performances:
+                    best_score = max(perf.percentage_score for perf in student_performances)
+                    last_attempt = student_performances[0].completed_at.strftime('%d/%m/%Y')
+                
+                stations.append({
+                    'case_number': case.case_number,
+                    'specialty': case.specialty,
+                    'consultation_time': case.consultation_time,
+                    'attempts': attempts,
+                    'best_score': best_score,
+                    'last_attempt': last_attempt,
+                    'grade': StudentPerformance().get_performance_grade() if best_score > 0 else None
+                })
+            
+            return jsonify({
+                'stations': stations,
+                'total': len(stations)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting student stations: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/teacher/stations')
+    @teacher_required
+    def teacher_stations_management():
+        """Get stations for teacher management"""
+        try:
+            search_query = request.args.get('search', '').strip()
+            
+            # Base query
+            query = PatientCase.query
+            
+            # Apply search filter if provided
+            if search_query:
+                query = query.filter(
+                    db.or_(
+                        PatientCase.case_number.contains(search_query),
+                        PatientCase.specialty.contains(search_query)
+                    )
+                )
+            
+            cases = query.order_by(PatientCase.case_number).all()
+            
+            stations = []
+            for case in cases:
+                stations.append({
+                    'case_number': case.case_number,
+                    'specialty': case.specialty,
+                    'consultation_time': case.consultation_time,
+                    'created_at': case.created_at.strftime('%d/%m/%Y'),
+                    'updated_at': case.updated_at.strftime('%d/%m/%Y'),
+                    'completion_count': case.get_completion_count(),
+                    'average_score': case.get_average_score()
+                })
+            
+            return jsonify({
+                'stations': stations,
+                'total': len(stations)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting teacher stations: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/teacher/students/performance')
+    @teacher_required
+    def teacher_student_performance():
+        """Get student performance data for teachers"""
+        try:
+            search_query = request.args.get('search', '').strip()
+            
+            # Base query
+            query = Student.query
+            
+            # Apply search filter if provided
+            if search_query:
+                query = query.filter(
+                    db.or_(
+                        Student.name.contains(search_query),
+                        Student.student_code.contains(search_query)
+                    )
+                )
+            
+            students = query.order_by(Student.name).all()
+            
+            student_performance = []
+            for student in students:
+                performances = StudentPerformance.query.filter_by(student_id=student.id)\
+                    .order_by(StudentPerformance.completed_at.desc()).all()
+                
+                recent_performances = []
+                for perf in performances[:5]:  # Last 5 performances
+                    case = PatientCase.query.filter_by(case_number=perf.case_number).first()
+                    recent_performances.append({
+                        'case_number': perf.case_number,
+                        'specialty': case.specialty if case else 'Unknown',
+                        'score': perf.percentage_score,
+                        'grade': perf.get_performance_grade(),
+                        'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M')
+                    })
+                
+                student_performance.append({
+                    'student_id': student.id,
+                    'student_code': student.student_code,
+                    'name': student.name,
+                    'total_workouts': student.get_total_workouts(),
+                    'unique_stations': student.get_unique_stations_played(),
+                    'average_score': student.get_average_score(),
+                    'last_login': student.last_login.strftime('%d/%m/%Y %H:%M') if student.last_login else 'Never',
+                    'recent_performances': recent_performances
+                })
+            
+            return jsonify({
+                'students': student_performance,
+                'total': len(student_performance)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting student performance: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/teacher/students/<int:student_id>/detailed_performance')
+    @teacher_required
+    def student_detailed_performance(student_id):
+        """Get detailed performance for a specific student"""
+        try:
+            student = Student.query.get_or_404(student_id)
+            
+            performances = StudentPerformance.query.filter_by(student_id=student_id)\
+                .order_by(StudentPerformance.completed_at.desc()).all()
+            
+            detailed_performances = []
+            for perf in performances:
+                case = PatientCase.query.filter_by(case_number=perf.case_number).first()
+                detailed_performances.append({
+                    'id': perf.id,
+                    'case_number': perf.case_number,
+                    'specialty': case.specialty if case else 'Unknown',
+                    'score': perf.percentage_score,
+                    'points_earned': perf.points_earned,
+                    'points_total': perf.points_total,
+                    'grade': perf.get_performance_grade(),
+                    'status': perf.get_performance_status(),
+                    'consultation_duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A",
+                    'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
+                    'evaluation_results': perf.evaluation_results,
+                    'recommendations': perf.recommendations
+                })
+            
+            return jsonify({
+                'student': {
+                    'id': student.id,
+                    'name': student.name,
+                    'student_code': student.student_code,
+                    'total_workouts': student.get_total_workouts(),
+                    'unique_stations': student.get_unique_stations_played(),
+                    'average_score': student.get_average_score()
+                },
+                'performances': detailed_performances
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting detailed student performance: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
     
