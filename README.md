@@ -46,7 +46,7 @@ The OSCE Chat Simulator enables medical students to practice clinical consultati
 - **Real-time Features**: Fetch API for asynchronous communication
 
 ### Storage
-- **Case Data**: JSON files for case storage
+- **Case Data**: Sqlite database for case storage
 - **Images**: File system storage with web-accessible paths
 - **Sessions**: Flask session management
 
@@ -163,7 +163,7 @@ osce-chat-simulator/
 │   │   └── student.js        # Student interface logic
 │   └── images/
 │       └── cases/            # Uploaded medical images
-├── patient_data/             # JSON files for case storage
+├── patient_data/             # JSON files for case storage # remove it and replace it with sqlite databse
 ├── uploads/                  # Temporary file uploads
 └── README.md                 # This file
 ```
