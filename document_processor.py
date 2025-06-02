@@ -8,7 +8,7 @@ import shutil
 from PIL import Image
 from io import BytesIO
 from langchain_core.messages import HumanMessage
-from models import db, PatientCase, MedicalImage
+from models import db, PatientCase
 
 # Setup logging
 logging.basicConfig(
@@ -644,16 +644,6 @@ class DocumentExtractionAgent:
         case.custom_sections = extracted_data.get("custom_sections", [])
         # Save images
         db.session.flush()  # Ensure case.id is available
-        # Remove old images
-        MedicalImage.query.filter_by(case_id=case.id).delete()
-        for img in extracted_data.get("images", []):
-            image = MedicalImage(
-                case_id=case.id,
-                filename=img.get("path", "").split("/")[-1],
-                path=img.get("path", ""),
-                description=img.get("description", "")
-            )
-            db.session.add(image)
         db.session.commit()
         return case
 

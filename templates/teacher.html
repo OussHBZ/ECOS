@@ -257,6 +257,7 @@
                                     <td>{{ case.specialty }}</td>
                                     <td>
                                         <button class="view-button" data-case="{{ case.case_number }}">Voir</button>
+                                        <button class="edit-button" data-case="{{ case.case_number }}">Modifier</button>
                                         <button class="delete-button" data-case="{{ case.case_number }}">Supprimer</button>
                                     </td>
                                 </tr>
@@ -268,8 +269,6 @@
                     {% endif %}
                 </div>
             </div>
-
-
             
             <!-- Modal for viewing case details -->
             <div id="case-details-modal" class="modal hidden">
@@ -277,6 +276,126 @@
                     <span class="close-modal">&times;</span>
                     <h3>Détails du Cas</h3>
                     <div id="case-details-content"></div>
+                </div>
+            </div>
+
+            <!-- Modal for editing case -->
+            <div id="edit-case-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 95%; max-height: 95%; overflow-y: auto;">
+                    <span class="close-modal edit-close">&times;</span>
+                    <h3>Modifier le Cas <span id="edit-case-number-title"></span></h3>
+                    
+                    <form id="edit-case-form">
+                        <!-- Basic Information -->
+                        <fieldset class="form-section">
+                            <legend>Informations générales</legend>
+                            <div class="form-group">
+                                <label for="edit-specialty">Spécialité :</label>
+                                <input type="text" id="edit-specialty" name="specialty">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-consultation-time-edit">Durée de consultation (minutes) :</label>
+                                <input type="number" id="edit-consultation-time-edit" name="consultation_time" min="1" max="60" value="10">
+                            </div>
+                        </fieldset>
+                        
+                        <!-- Patient Information -->
+                        <fieldset class="form-section">
+                            <legend>Informations du patient</legend>
+                            <div class="form-group">
+                                <label for="edit-patient-name">Nom du patient :</label>
+                                <input type="text" id="edit-patient-name" name="patient_name">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-patient-age">Âge :</label>
+                                <input type="number" id="edit-patient-age" name="patient_age" min="0" max="120">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-patient-gender">Sexe :</label>
+                                <select id="edit-patient-gender" name="patient_gender">
+                                    <option value="">Sélectionnez</option>
+                                    <option value="Masculin">Masculin</option>
+                                    <option value="Féminin">Féminin</option>
+                                    <option value="Autre">Autre</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-patient-occupation">Profession :</label>
+                                <input type="text" id="edit-patient-occupation" name="patient_occupation">
+                            </div>
+                        </fieldset>
+                        
+                        <!-- Medical History -->
+                        <fieldset class="form-section">
+                            <legend>Antécédents médicaux</legend>
+                            <div id="edit-medical-history-container">
+                                <!-- Medical history items will be added here -->
+                            </div>
+                            <button type="button" id="edit-add-medical-history" class="secondary-button">+ Ajouter un antécédent</button>
+                        </fieldset>
+                        
+                        <!-- Symptoms -->
+                        <fieldset class="form-section">
+                            <legend>Symptômes</legend>
+                            <div id="edit-symptoms-container">
+                                <!-- Symptoms will be added here -->
+                            </div>
+                            <button type="button" id="edit-add-symptom" class="secondary-button">+ Ajouter un symptôme</button>
+                        </fieldset>
+                        
+                        <!-- Evaluation Checklist -->
+                        <fieldset class="form-section">
+                            <legend>Grille d'évaluation</legend>
+                            <div id="edit-checklist-container">
+                                <!-- Checklist items will be added here -->
+                            </div>
+                            <button type="button" id="edit-add-checklist-item" class="secondary-button">+ Ajouter un élément</button>
+                        </fieldset>
+                        
+                        <!-- Additional Information -->
+                        <fieldset class="form-section">
+                            <legend>Informations additionnelles</legend>
+                            <div class="form-group">
+                                <label for="edit-diagnosis">Diagnostic correct :</label>
+                                <input type="text" id="edit-diagnosis" name="diagnosis">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-differential-diagnosis">Diagnostics différentiels :</label>
+                                <textarea id="edit-differential-diagnosis" name="differential_diagnosis" rows="3"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-directives">Directives pour l'étudiant :</label>
+                                <textarea id="edit-directives" name="directives" rows="5"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-additional-notes">Notes supplémentaires :</label>
+                                <textarea id="edit-additional-notes" name="additional_notes" rows="4"></textarea>
+                            </div>
+                        </fieldset>
+                        
+                        <!-- Custom Sections -->
+                        <fieldset class="form-section">
+                            <legend>Sections personnalisées</legend>
+                            <div id="edit-custom-sections-container">
+                                <!-- Custom sections will be added here -->
+                            </div>
+                            <button type="button" id="edit-add-custom-section" class="secondary-button">+ Ajouter une section personnalisée</button>
+                        </fieldset>
+                        
+                        <!-- Images (read-only for now) -->
+                        <fieldset class="form-section">
+                            <legend>Images associées</legend>
+                            <div id="edit-images-container">
+                                <!-- Images will be displayed here -->
+                            </div>
+                            <p class="field-help">Note: Pour modifier les images, veuillez créer un nouveau cas.</p>
+                        </fieldset>
+                        
+                        <div class="form-actions" style="margin-top: 20px; text-align: center;">
+                            <button type="submit" class="submit-button">Sauvegarder les modifications</button>
+                            <button type="button" class="cancel-button" id="edit-cancel-btn">Annuler</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>

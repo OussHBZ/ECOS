@@ -15,7 +15,8 @@ from simple_pdf_generator import create_simple_consultation_pdf
 from flask_login import LoginManager, login_required, current_user
 from models import db, Student
 from auth import auth_bp, student_required, teacher_required
-from models import db, Student, TeacherAccess, PatientCase, MedicalImage # Add PatientCase, MedicalImage
+from models import db, Student, TeacherAccess, PatientCase
+
 
 import time
 import concurrent.futures
@@ -398,13 +399,15 @@ def create_app():
     @app.route('/delete_case/<case_number>', methods=['DELETE'])
     @teacher_required
     def delete_case(case_number):
-        """Delete a case"""
+        """Delete a case from both JSON files and database"""
         try:
             # Validate case number
             if not case_number or case_number == 'None' or case_number == 'null':
                 return jsonify({"error": "Numéro de cas invalide"}), 400
                 
             file_path = os.path.join(PATIENT_DATA_FOLDER, f"patient_case_{case_number}.json")
+            
+            # Delete from JSON files (existing code)
             if os.path.exists(file_path):
                 # Load the case data to get image paths
                 try:
@@ -415,26 +418,37 @@ def create_app():
                     if 'images' in case_data and len(case_data['images']) > 0:
                         for image in case_data['images']:
                             if 'path' in image:
-                                # Convert web path to file system path
                                 image_path = os.path.join(os.getcwd(), 'static', image['path'].lstrip('/static/'))
                                 if os.path.exists(image_path):
                                     try:
                                         os.remove(image_path)
                                         logger.info(f"Deleted image: {image_path}")
                                     except:
-                                        # Continue if we can't delete an image
                                         logger.warning(f"Could not delete image: {image_path}")
                 except:
-                    # If we can't load the file or process images, still try to delete the case file
                     logger.warning(f"Could not process images for case {case_number} before deletion")
                 
-                # Delete the case file
+                # Delete the JSON file
                 os.remove(file_path)
-                logger.info(f"Successfully deleted case {case_number}")
-                return jsonify({"success": True})
-            else:
-                logger.warning(f"Case not found: {case_number}")
-                return jsonify({"error": "Cas non trouvé"}), 404
+                logger.info(f"Successfully deleted JSON file for case {case_number}")
+            
+            # NOW DELETE FROM DATABASE
+            try:
+                db_case = PatientCase.query.filter_by(case_number=case_number).first()
+                if db_case:
+                    db.session.delete(db_case)
+                    db.session.commit()
+                    logger.info(f"Successfully deleted database record for case {case_number}")
+                else:
+                    logger.warning(f"No database record found for case {case_number}")
+            except Exception as e:
+                logger.error(f"Error deleting from database: {str(e)}")
+                db.session.rollback()
+                # Continue execution even if database deletion fails
+            
+            logger.info(f"Successfully deleted case {case_number}")
+            return jsonify({"success": True})
+            
         except Exception as e:
             logger.error(f"Error deleting case {case_number}: {str(e)}")
             return jsonify({"error": str(e)}), 500
@@ -735,8 +749,10 @@ def create_app():
     @app.route('/process_manual_case', methods=['POST'])
     @teacher_required
     def process_manual_case():
-        """Process manually entered case data with enhanced multiple image support"""
+        """Process manually entered case data with database synchronization"""
         try:
+            # ... (keep all your existing form processing code until the save part)
+            
             # Extract basic case information
             case_number = request.form.get('case_number')
             specialty = request.form.get('specialty', '')
@@ -744,6 +760,8 @@ def create_app():
             if not case_number:
                 logger.warning("Missing required case number")
                 return jsonify({"error": "Le numéro du cas est obligatoire"}), 400
+            
+            # ... (keep all your existing patient info, symptoms, checklist processing code)
             
             # Extract patient information (same as before)
             patient_info = {
@@ -756,7 +774,6 @@ def create_app():
                 try:
                     patient_info["age"] = int(request.form.get('patient_age'))
                 except ValueError:
-                    # If not a valid number, store as string
                     patient_info["age"] = request.form.get('patient_age')
             
             # Add occupation if provided
@@ -809,10 +826,9 @@ def create_app():
                 if checklist_descriptions[i] and checklist_descriptions[i].strip():
                     item = {
                         'description': checklist_descriptions[i].strip(),
-                        'completed': False  # Default to not completed
+                        'completed': False
                     }
                     
-                    # Add points if provided and valid
                     if i < len(checklist_points) and checklist_points[i]:
                         try:
                             item['points'] = int(checklist_points[i])
@@ -821,7 +837,6 @@ def create_app():
                     else:
                         item['points'] = 1
                     
-                    # Add category if provided
                     if i < len(checklist_categories) and checklist_categories[i]:
                         item['category'] = checklist_categories[i]
                     
@@ -848,7 +863,6 @@ def create_app():
                 except Exception as e:
                     logger.error(f"Error parsing custom sections: {str(e)}")
             else:
-                # If not provided as JSON, try to get from form fields directly
                 custom_section_titles = request.form.getlist('custom_section_titles[]')
                 custom_section_contents = request.form.getlist('custom_section_contents[]')
                 
@@ -859,59 +873,20 @@ def create_app():
                             'content': custom_section_contents[i].strip()
                         })
             
-            # ENHANCED: Process images with improved handling for multiple files
+            # Process images (same as before - use your existing image processing code)
             images = []
-            
-            # Handle uploaded images
-            if 'manual_images' in request.files:
-                manual_images = request.files.getlist('manual_images')
-                image_descriptions_text = request.form.get('image_descriptions', '')
-                image_descriptions = [line.strip() for line in image_descriptions_text.split('\n') if line.strip()]
-                
-                # Process multiple images at once if available
-                if len(manual_images) > 0:
-                    logger.debug(f"Processing {len(manual_images)} manual images")
-                    
-                    # Create temporary storage for images
-                    temp_image_paths = []
-                    
-                    # First save all images to temporary location
-                    for i, image_file in enumerate(manual_images):
-                        if image_file and image_file.filename:
-                            filename = secure_filename(image_file.filename)
-                            temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                            image_file.save(temp_filepath)
-                            temp_image_paths.append(temp_filepath)
-                    
-                    # Process all images together if we have any
-                    if temp_image_paths:
-                        image_data = document_agent.process_multiple_images(temp_image_paths, case_number)
-                        
-                        # Add descriptions if available
-                        if 'images' in image_data:
-                            for i, image in enumerate(image_data['images']):
-                                if i < len(image_descriptions) and image_descriptions[i]:
-                                    image['description'] = image_descriptions[i]
-                            
-                            # Add images to the results
-                            images.extend(image_data['images'])
-                        
-                        # Clean up temporary files
-                        for filepath in temp_image_paths:
-                            if os.path.exists(filepath):
-                                os.remove(filepath)
+            # ... (keep your existing image processing code)
             
             # Process consultation time (same as before)
             consultation_time = request.form.get('consultation_time')
             try:
                 consultation_time = int(consultation_time) if consultation_time else 10
-                # Enforce reasonable limits
                 if consultation_time < 1:
                     consultation_time = 1
                 elif consultation_time > 60:
                     consultation_time = 60
             except ValueError:
-                consultation_time = 10  # Default to 10 minutes if invalid input
+                consultation_time = 10
             
             # Get directives for the case
             directives = request.form.get('case_directives', '').strip()
@@ -939,10 +914,34 @@ def create_app():
             if additional_notes:
                 case_data['additional_notes'] = additional_notes
             
-            # Save the case data
+            # Save to JSON file first
             file_path = os.path.join('patient_data', f'patient_case_{case_number}.json')
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(case_data, f, ensure_ascii=False, indent=2)
+            
+            # NOW SYNC WITH DATABASE
+            try:
+                # Check if case already exists in database
+                existing_db_case = PatientCase.query.filter_by(case_number=case_number).first()
+                
+                if existing_db_case:
+                    # Update existing database record
+                    logger.info(f"Updating existing database record for case {case_number}")
+                    existing_db_case.update_from_json_data(case_data)
+                else:
+                    # Create new database record
+                    logger.info(f"Creating new database record for case {case_number}")
+                    db_case = PatientCase.from_json_data(case_data)
+                    db.session.add(db_case)
+                
+                # Commit database changes
+                db.session.commit()
+                logger.info(f"Successfully synchronized case {case_number} with database")
+                
+            except Exception as e:
+                logger.error(f"Error synchronizing with database: {str(e)}")
+                # Continue execution even if database sync fails
+                db.session.rollback()
             
             logger.info(f"Successfully created case {case_number} with manual entry and {len(images)} images")
             return jsonify({
@@ -1024,30 +1023,44 @@ def create_app():
     
     @app.route('/get_case/<case_number>', methods=['GET'])
     def get_case(case_number):
-        case = PatientCase.query.filter_by(case_number=case_number).first()
-        if not case:
-            return jsonify({"error": "Case not found"}), 404
-        # Prepare response as dict
-        case_data = {
-            "patient_info": case.patient_info,
-            "symptoms": case.symptoms,
-            "evaluation_checklist": case.evaluation_checklist,
-            "diagnosis": case.diagnosis,
-            "directives": case.directives,
-            "consultation_time": case.consultation_time,
-            "custom_sections": case.custom_sections,
-            "images": [
-                {
-                    "path": img.path,
-                    "description": img.description,
-                    "index": idx
-                }
-                for idx, img in enumerate(case.images)
-            ],
-            "case_number": case.case_number,
-            "specialty": case.specialty
-        }
-        return jsonify(case_data)
+        """Get case details by case number with cache prevention"""
+        try:
+            # Validate case number
+            if not case_number or case_number == 'None' or case_number == 'null':
+                return jsonify({"error": "Numéro de cas invalide"}), 400
+                
+            # Construct the file path
+            file_path = os.path.join(PATIENT_DATA_FOLDER, f"patient_case_{case_number}.json")
+            
+            # Check if the file exists
+            if not os.path.exists(file_path):
+                logger.warning(f"Case file not found: {file_path}")
+                return jsonify({"error": "Cas non trouvé"}), 404
+                
+            # Load the case data with fresh read
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    case_data = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in case file {file_path}: {str(e)}")
+                return jsonify({"error": "Fichier de cas corrompu"}), 500
+            except Exception as e:
+                logger.error(f"Error reading case file {file_path}: {str(e)}")
+                return jsonify({"error": "Erreur lors de la lecture du fichier"}), 500
+                    
+            logger.info(f"Successfully retrieved case {case_number}")
+            
+            # Create response with cache-prevention headers
+            response = jsonify(case_data)
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error retrieving case {case_number}: {str(e)}")
+            return jsonify({"error": str(e)}), 500
 
     @app.route('/get_case_images/<case_number>')
     def get_case_images(case_number):
@@ -1085,6 +1098,129 @@ def create_app():
         except Exception as e:
             logger.error(f"Error retrieving images for case {case_number}: {str(e)}")
             return jsonify({"error": str(e)}), 500
+    
+    @app.route('/edit_case/<case_number>', methods=['POST'])
+    @teacher_required
+    def edit_case(case_number):
+        """Edit an existing case with database synchronization"""
+        try:
+            data = request.get_json()
+            edited_data = data.get('edited_data', {})
+            
+            logger.info(f"Received edit request for case {case_number}")
+            logger.debug(f"Edited data received: {json.dumps(edited_data, indent=2, ensure_ascii=False)}")
+            
+            if not case_number:
+                return jsonify({"error": "Case number is required"}), 400
+            
+            # Validate that the case exists in JSON files
+            file_path = os.path.join(PATIENT_DATA_FOLDER, f"patient_case_{case_number}.json")
+            if not os.path.exists(file_path):
+                logger.error(f"Case file not found: {file_path}")
+                return jsonify({"error": "Case not found"}), 404
+            
+            # Load existing case data from JSON file to preserve images
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+                logger.info(f"Loaded existing case data for case {case_number}")
+            except Exception as e:
+                logger.error(f"Error loading existing case data: {str(e)}")
+                return jsonify({"error": "Error loading existing case data"}), 500
+            
+            # Merge edited data with existing data, preserving important fields
+            updated_data = existing_data.copy()
+            
+            # Update basic information
+            updated_data['case_number'] = case_number
+            updated_data['specialty'] = edited_data.get('specialty', existing_data.get('specialty', 'Non spécifié'))
+            updated_data['consultation_time'] = edited_data.get('consultation_time', existing_data.get('consultation_time', 10))
+            
+            # Update patient info - merge with existing
+            existing_patient_info = existing_data.get('patient_info', {})
+            new_patient_info = edited_data.get('patient_info', {})
+            
+            # Merge patient info carefully
+            updated_patient_info = existing_patient_info.copy()
+            updated_patient_info.update(new_patient_info)
+            
+            # Handle special cases for patient info
+            if 'age' in new_patient_info:
+                if new_patient_info['age'] is not None and new_patient_info['age'] != '':
+                    try:
+                        updated_patient_info['age'] = int(new_patient_info['age'])
+                    except (ValueError, TypeError):
+                        pass
+            
+            updated_data['patient_info'] = updated_patient_info
+            
+            # Update other fields
+            updated_data['symptoms'] = edited_data.get('symptoms', existing_data.get('symptoms', []))
+            updated_data['evaluation_checklist'] = edited_data.get('evaluation_checklist', existing_data.get('evaluation_checklist', []))
+            updated_data['custom_sections'] = edited_data.get('custom_sections', existing_data.get('custom_sections', []))
+            
+            # Update optional fields
+            for field in ['diagnosis', 'differential_diagnosis', 'directives', 'additional_notes']:
+                if field in edited_data:
+                    if edited_data[field]:
+                        updated_data[field] = edited_data[field]
+                    elif field in updated_data:
+                        del updated_data[field]
+            
+            # Preserve images from existing data
+            if 'images' in existing_data:
+                updated_data['images'] = existing_data['images']
+            elif 'images' not in updated_data:
+                updated_data['images'] = []
+            
+            # Log the final data before saving
+            logger.debug(f"Final data to save: {json.dumps(updated_data, indent=2, ensure_ascii=False)}")
+            
+            # Save to JSON file first
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(updated_data, f, ensure_ascii=False, indent=2)
+                logger.info(f"Successfully saved updated case data to {file_path}")
+            except Exception as e:
+                logger.error(f"Error saving case data to JSON: {str(e)}")
+                return jsonify({"error": "Error saving case data to JSON"}), 500
+            
+            # NOW SYNC WITH DATABASE
+            try:
+                # Check if case exists in database
+                db_case = PatientCase.query.filter_by(case_number=case_number).first()
+                
+                if db_case:
+                    # Update existing database record
+                    logger.info(f"Updating existing database record for case {case_number}")
+                    db_case.update_from_json_data(updated_data)
+                else:
+                    # Create new database record
+                    logger.info(f"Creating new database record for case {case_number}")
+                    db_case = PatientCase.from_json_data(updated_data)
+                    db.session.add(db_case)
+                
+                # Commit database changes
+                db.session.commit()
+                logger.info(f"Successfully synchronized case {case_number} with database")
+                
+            except Exception as e:
+                logger.error(f"Error synchronizing with database: {str(e)}")
+                # Rollback database changes but continue (JSON file is already saved)
+                db.session.rollback()
+                logger.warning("Database sync failed but JSON file was saved successfully")
+            
+            logger.info(f"Successfully edited case {case_number}")
+            return jsonify({
+                "status": "success",
+                "message": "Case updated successfully",
+                "case_number": case_number
+            })
+            
+        except Exception as e:
+            logger.error(f"Error editing case {case_number}: {str(e)}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+
     
     return app
 

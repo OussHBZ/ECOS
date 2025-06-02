@@ -1417,3 +1417,210 @@ body {
     border-color: #f44336;
     color: #f44336;
 }
+
+/* Add these styles to styles.css for the edit functionality */
+
+.edit-button {
+    background-color: #FF9800;
+    color: white;
+    padding: 6px 12px;
+    margin-right: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.edit-button:hover {
+    background-color: #F57C00;
+}
+
+.edit-button:before {
+    content: "✏️";
+    margin-right: 5px;
+}
+
+/* Edit modal specific styles */
+#edit-case-modal .modal-content {
+    max-width: 95%;
+    max-height: 95%;
+    width: 90%;
+    overflow-y: auto;
+}
+
+#edit-case-modal .form-section {
+    margin-bottom: 25px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background-color: #fafafa;
+}
+
+#edit-case-modal .form-section legend {
+    background-color: #2196F3;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 4px;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+.edit-medical-history, .edit-symptom {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px;
+}
+
+.edit-medical-history input, .edit-symptom input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.edit-medical-history .remove-medical-history,
+.edit-symptom .remove-symptom {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.edit-medical-history .remove-medical-history:hover,
+.edit-symptom .remove-symptom:hover {
+    background-color: #d32f2f;
+}
+
+.form-actions {
+    border-top: 1px solid #ddd;
+    padding-top: 20px;
+    margin-top: 30px;
+    text-align: center;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.form-actions .submit-button {
+    background-color: #4CAF50;
+    min-width: 200px;
+}
+
+.form-actions .cancel-button {
+    background-color: #9E9E9E;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+.form-actions .cancel-button:hover {
+    background-color: #757575;
+}
+
+/* Responsive adjustments for edit modal */
+@media (max-width: 768px) {
+    #edit-case-modal .modal-content {
+        width: 95%;
+        max-width: 95%;
+        margin: 2% auto;
+        padding: 15px;
+    }
+    
+    .edit-medical-history, .edit-symptom {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .form-actions .submit-button,
+    .form-actions .cancel-button {
+        min-width: auto;
+        width: 100%;
+    }
+}
+
+/* Better spacing for edit form elements */
+#edit-case-form .form-group {
+    margin-bottom: 15px;
+}
+
+#edit-case-form .form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+
+#edit-case-form .form-group input,
+#edit-case-form .form-group select,
+#edit-case-form .form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+#edit-case-form .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* Image display in edit modal */
+#edit-images-container .case-images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+#edit-images-container .case-image-item {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #f9f9f9;
+}
+
+#edit-images-container .case-image-item img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    cursor: pointer;
+}
+
+#edit-images-container .case-image-item p {
+    padding: 10px;
+    margin: 0;
+    text-align: center;
+    background-color: #f0f0f0;
+    font-size: 14px;
+}
+
+/* Loading state for edit button */
+.edit-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+.edit-button.loading {
+    background-color: #cccccc;
+    cursor: wait;
+}
+
+.edit-button.loading:before {
+    content: "⏳";
+    margin-right: 5px;
+}

@@ -1,17 +1,17 @@
 {
-  "case_number": "3",
+  "case_number": "4",
   "specialty": "pnumo",
   "patient_info": {
-    "name": "Said",
+    "name": "Oussama",
     "gender": "Masculin",
     "occupation": "",
     "age": 21
   },
   "symptoms": [
-    "toux persistante avec des crachats striés de sang quotidien",
-    "toux à deux reprises à 3 jours d’intervalle",
     "fièvre le soir mais vous n’avez jamais chiffré votre température",
-    "toux avec expectorations blanchâtres parfois striées de sang,  depuis 2 mois cette toux est devenue persistante jour et nuit"
+    "toux avec expectorations blanchâtres parfois striées de sang,  depuis 2 mois cette toux est devenue persistante jour et nuit",
+    "toux à deux reprises à 3 jours d’intervalle",
+    "toux persistante avec des crachats striés de sang quotidien"
   ],
   "evaluation_checklist": [
     {
