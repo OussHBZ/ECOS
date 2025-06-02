@@ -15,6 +15,7 @@ from simple_pdf_generator import create_simple_consultation_pdf
 from flask_login import LoginManager, login_required, current_user
 from models import db, Student
 from auth import auth_bp, student_required, teacher_required
+from models import db, Student, TeacherAccess, PatientCase, MedicalImage # Add PatientCase, MedicalImage
 
 import time
 import concurrent.futures
@@ -114,20 +115,35 @@ def create_app():
 
     
     def load_patient_case(case_number):
-        """Load patient case data from JSON file"""
+        """Load patient case data from the database"""
         try:
-            file_path = os.path.join("patient_data", f"patient_case_{case_number}.json")
-            logger.debug(f"Loading patient case from: {file_path}")
-            
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"Patient case file not found: {file_path}")
-                
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                logger.info(f"Successfully loaded patient case {case_number}")
-                return data
+            # Query the database for the case
+            case_data_db = PatientCase.query.filter_by(case_number=str(case_number)).first()
+
+            if not case_data_db:
+                raise FileNotFoundError(f"Patient case {case_number} not found in database.")
+
+            # Convert the SQLAlchemy object to a dictionary-like structure
+            # if your downstream code expects it.
+            data = {
+                "case_number": case_data_db.case_number,
+                "specialty": case_data_db.specialty,
+                "patient_info": case_data_db.patient_info, # Uses the @property
+                "symptoms": case_data_db.symptoms, # Uses the @property
+                "evaluation_checklist": case_data_db.evaluation_checklist, # Uses the @property
+                "diagnosis": case_data_db.diagnosis,
+                "differential_diagnosis": case_data_db.differential_diagnosis, # Uses the @property
+                "directives": case_data_db.directives,
+                "consultation_time": case_data_db.consultation_time,
+                "additional_notes": case_data_db.additional_notes,
+                "lab_results": case_data_db.lab_results,
+                "custom_sections": case_data_db.custom_sections, # Uses the @property
+                "images": [{"path": img.path, "description": img.description, "filename": img.filename} for img in case_data_db.images]
+            }
+            logger.info(f"Successfully loaded patient case {case_number} from database")
+            return data
         except Exception as e:
-            logger.error(f"Error loading patient case {case_number}: {str(e)}")
+            logger.error(f"Error loading patient case {case_number} from database: {str(e)}")
             raise
 
     def load_system_template():
@@ -178,53 +194,39 @@ def create_app():
             raise
             
     def get_case_metadata():
-        """Get metadata for all available cases"""
-        cases = []
+        """Get metadata for all available cases from the database"""
+        cases_metadata = []
         try:
-            for filename in os.listdir(PATIENT_DATA_FOLDER):
-                if filename.startswith("patient_case_") and filename.endswith(".json"):
-                    file_path = os.path.join(PATIENT_DATA_FOLDER, filename)
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        try:
-                            data = json.load(f)
-                            
-                            # Extract case number from JSON first, fall back to filename
-                            case_number = data.get("case_number")
-                            if not case_number or case_number == "None":
-                                # Extract from filename (patient_case_X.json)
-                                match = re.search(r'patient_case_(.+?)\.json', filename)
-                                if match:
-                                    case_number = match.group(1)
-                            
-                            cases.append({
-                                "case_number": case_number,
-                                "specialty": data.get("specialty", "Non spécifié")
-                            })
-                        except json.JSONDecodeError:
-                            logger.error(f"Error parsing JSON in file {filename}")
-                            # Still try to extract case number from filename
-                            match = re.search(r'patient_case_(.+?)\.json', filename)
-                            if match:
-                                case_number = match.group(1)
-                                cases.append({
-                                    "case_number": case_number,
-                                    "specialty": "Non spécifié"
-                                })
-            
-            # Fix the sorting by ensuring all case numbers are strings
-            cases.sort(key=lambda x: str(x.get("case_number", "0")))
-            return cases
+            # Ensure you are importing PatientCase from your models
+            # from models import PatientCase
+            all_cases_db = PatientCase.query.order_by(PatientCase.case_number).all()
+            for case_db in all_cases_db:
+                cases_metadata.append({
+                    "case_number": case_db.case_number,
+                    "specialty": case_db.specialty
+                })
+            return cases_metadata
         except Exception as e:
-            logger.error(f"Error getting case metadata: {str(e)}")
-            return []
+            # Log the actual error to understand what's going wrong during the query
+            logger.error(f"Error in get_case_metadata when querying database: {str(e)}")
+            # Also log the full traceback for more details
+            import traceback
+            logger.error(traceback.format_exc())
+            return [] # Return empty list on error
             
     def get_unique_specialties():
-        """Get list of unique specialties from all cases"""
+        """Get list of unique specialties from all cases in the database"""
         specialties = set()
-        for case in get_case_metadata():
-            if case.get("specialty"):
-                specialties.add(case.get("specialty"))
-        return sorted(list(specialties))
+        try:
+            # Query distinct specialties directly from the database
+            distinct_specialties = db.session.query(PatientCase.specialty).distinct().all()
+            for spec_tuple in distinct_specialties:
+                if spec_tuple[0]: # Ensure specialty is not None or empty
+                    specialties.add(spec_tuple[0])
+            return sorted(list(specialties))
+        except Exception as e:
+            logger.error(f"Error getting unique specialties from database: {str(e)}")
+            return []
     
     def evaluate_conversation(conversation, case_number):
         """Evaluate the conversation using the EvaluationAgent with optimizations"""

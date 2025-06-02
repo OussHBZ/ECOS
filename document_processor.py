@@ -221,59 +221,84 @@ class DocumentExtractionAgent:
         raw_text = self.state.get("raw_text", "")
         if not raw_text and not self.state.get("images"):
             logger.warning("No text or images to extract from")
+            self.state["extracted_data"] = self._get_default_extracted_data() # Ensure extracted_data is initialized
             return
         
-        # Craft the prompt for the LLM
         prompt = self._create_extraction_prompt(raw_text)
-        
+        raw_llm_response_content = "" # Initialize to store raw LLM output
+
         try:
-            # Call the LLM
             response = self.llm_client.invoke([HumanMessage(content=prompt)])
+            raw_llm_response_content = response.content # Store raw response
             
-            # Extract JSON from the response
-            import json
-            import re
+            # Attempt to extract JSON from the response
+            json_match = re.search(r'```json\s*({.*?})\s*```', raw_llm_response_content, re.DOTALL)
+            if not json_match: # If not wrapped in markdown, try finding a raw JSON object
+                json_match = re.search(r'({.*})', raw_llm_response_content, re.DOTALL)
             
-            json_match = re.search(r'({.*})', response.content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
+                logger.debug(f"Attempting to parse JSON from LLM: {json_str[:500]}...") # Log start of JSON
                 try:
                     data = json.loads(json_str)
-                    logger.info(f"Successfully extracted structured data using LLM")
-                    
-                    # Add images to the extracted data
-                    if "images" not in data:
-                        data["images"] = []
-                    data["images"].extend(self.state.get("images", []))
-                    
-                    self.state["extracted_data"] = data
-                    
+                    logger.info("Successfully extracted structured data using LLM.")
+                    self._finalize_extracted_data(data)
+                    return # Success
                 except json.JSONDecodeError as e:
-                    logger.error(f"JSON parsing error: {str(e)}")
-                    # Attempt to clean and fix common JSON issues
-                    cleaned_json = self._clean_json_string(json_str)
+                    logger.error(f"Initial JSON parsing error: {str(e)}. Original JSON string part: {json_str[:500]}")
+                    logger.info("Attempting to clean and re-parse JSON...")
+                    cleaned_json_str = self._clean_json_string(json_str)
                     try:
-                        data = json.loads(cleaned_json)
-                        logger.info(f"Successfully parsed JSON after cleaning")
-                        
-                        # Add images to the extracted data
-                        if "images" not in data:
-                            data["images"] = []
-                        data["images"].extend(self.state.get("images", []))
-                        
-                        self.state["extracted_data"] = data
-                        
-                    except:
-                        logger.error("Failed to parse JSON even after cleaning")
-                        self._extract_structured_data_with_patterns()
+                        data = json.loads(cleaned_json_str)
+                        logger.info("Successfully parsed JSON after cleaning.")
+                        self._finalize_extracted_data(data)
+                        return # Success after cleaning
+                    except json.JSONDecodeError as e2:
+                        logger.error(f"Failed to parse JSON even after cleaning: {str(e2)}. Cleaned JSON string part: {cleaned_json_str[:500]}")
+                        # Log the full raw response if cleaning fails, for deeper inspection
+                        logger.error(f"Full problematic raw LLM response was: {raw_llm_response_content}")
             else:
-                logger.error("Failed to extract JSON from LLM response")
-                self._extract_structured_data_with_patterns()
-                
+                logger.error("Failed to extract any JSON-like structure from LLM response.")
+                logger.error(f"Full raw LLM response was: {raw_llm_response_content}")
+
         except Exception as e:
-            logger.error(f"Error using LLM for extraction: {str(e)}")
-            self._extract_structured_data_with_patterns()
+            logger.error(f"Error during LLM call or initial processing: {str(e)}")
+            if raw_llm_response_content: # Log if we have it
+                 logger.error(f"Full raw LLM response during error was: {raw_llm_response_content}")
+        
+        # Fallback if LLM extraction fails at any point
+        logger.warning("Falling back to pattern-based extraction due to LLM JSON issues.")
+        self._extract_structured_data_with_patterns()
     
+    def _finalize_extracted_data(self, data_from_llm):
+        """Helper to add images and set state after successful LLM extraction."""
+        if "images" not in data_from_llm:
+            data_from_llm["images"] = []
+        # Ensure existing images from file processing are preserved/merged correctly
+        # This logic might need refinement based on whether LLM can also identify images.
+        # Assuming LLM doesn't list file-system images, so we add them.
+        existing_images = self.state.get("images", [])
+        llm_image_paths = {img.get("path") for img in data_from_llm["images"] if img.get("path")}
+        for img in existing_images:
+            if img.get("path") not in llm_image_paths:
+                data_from_llm["images"].append(img)
+        
+        self.state["extracted_data"] = data_from_llm
+
+    def _get_default_extracted_data(self):
+        """Provides a default structure for extracted_data if extraction fails early."""
+        return {
+            'patient_info': {},
+            'symptoms': [],
+            'evaluation_checklist': [],
+            'images': self.state.get("images", []), # Preserve any images processed so far
+            'specialty': self.state.get("specialty", "Non spécifié"),
+            'case_number': self.state.get("case_number", "unknown"),
+            'diagnosis': None,
+            'directives': None,
+            'custom_sections': []
+        }
+
     def _create_extraction_prompt(self, text):
         """Create a detailed prompt for the LLM to extract structured data"""
         case_number = self.state.get("case_number", "unknown")
@@ -569,52 +594,61 @@ class DocumentExtractionAgent:
         return issues
     
     def _clean_json_string(self, json_str):
-        """Clean and fix common JSON formatting issues"""
-        # Replace single quotes with double quotes
-        json_str = re.sub(r"'", '"', json_str)
-        # Fix trailing commas in arrays and objects
-        json_str = re.sub(r",\s*}", "}", json_str)
-        json_str = re.sub(r",\s*]", "]", json_str)
-        # Add quotes to unquoted keys
+        """Clean and fix common JSON formatting issues from LLM output."""
+        logger.debug(f"Attempting to clean JSON string (original start): {json_str[:200]}")
+        
+        # Remove common LLM artifacts like ```json and ```
+        json_str = re.sub(r'^```json\s*', '', json_str, flags=re.IGNORECASE)
+        json_str = re.sub(r'\s*```$', '', json_str)
+        json_str = json_str.strip()
+
+        # Replace Pythonic None, True, False with JSON null, true, false
+        json_str = re.sub(r'\bNone\b', 'null', json_str)
+        json_str = re.sub(r'\bTrue\b', 'true', json_str)
+        json_str = re.sub(r'\bFalse\b', 'false', json_str)
+        
+        # Replace single quotes with double quotes for keys and string values
+        # Be careful not to replace single quotes within already double-quoted strings
+        json_str = re.sub(r"(?<![\\])(?<!['\w])'(?!['\s])", '"', json_str) # Start of string/key
+        json_str = re.sub(r"(?<![\\])'(?=['\s,{}\]:\)])", '"', json_str) # End of string/key
+
+        # Remove trailing commas from objects and arrays
+        json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+        
+        # Add quotes to unquoted keys (basic attempt)
         json_str = re.sub(r'([{,])\s*([a-zA-Z0-9_]+)\s*:', r'\1"\2":', json_str)
+
+        # Remove comments (if LLM adds them)
+        json_str = re.sub(r'//.*?($|\n)', '\n', json_str) # Remove // comments
+        json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL) # Remove /* */ comments
+        
+        logger.debug(f"Cleaned JSON string (attempted start): {json_str[:200]}")
         return json_str
     
     def save_case_data(self, case_number, specialty, extracted_data):
-        """Save the processed case data to a JSON file"""
-        logger.info(f"Saving case data for case {case_number}")
+        """
+        ensure the extracted_data is well-formed.
         
-            # Ensure case_number and specialty are strings
-        case_number_str = str(case_number)
-        specialty_str = str(specialty) if specialty else "Non spécifié"
+        """
+        logger.info(f"Preparing case data for case {case_number} before database insertion.")
 
-        # Make sure extracted_data has all the required fields
-        case_data = {
-            'case_number': case_number_str,  # Explicitly set as string
-            'specialty': specialty_str,      # Explicitly set as string
+
+        final_data_structure = {
+            'case_number': str(case_number),
+            'specialty': str(specialty) if specialty else "Non spécifié",
             'patient_info': extracted_data.get('patient_info', {}),
             'symptoms': extracted_data.get('symptoms', []),
             'evaluation_checklist': extracted_data.get('evaluation_checklist', []),
-            'images': extracted_data.get('images', []),
-            'custom_sections': extracted_data.get('custom_sections', [])
+            'images': extracted_data.get('images', []), # This contains metadata for images saved to filesystem
+            'custom_sections': extracted_data.get('custom_sections', []),
+            'diagnosis': extracted_data.get('diagnosis'),
+            'directives': extracted_data.get('directives'),
+            'consultation_time': extracted_data.get('consultation_time', 10),
+            # Add any other fields that should be in the main extracted_data dict
         }
-
-        
-        # Add other fields if they exist
-        if 'custom_sections' in extracted_data:
-            case_data['custom_sections'] = extracted_data['custom_sections']
-        if 'diagnosis' in extracted_data:
-            case_data['diagnosis'] = extracted_data['diagnosis']
-            
-        # Ensure the directory exists
-        os.makedirs('patient_data', exist_ok=True)
-        
-        # Write to file
-        file_path = os.path.join('patient_data', f'patient_case_{case_number}.json')
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(case_data, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"Case data saved to {file_path}")
-        return file_path
+        conceptual_path = f"db_entry_for_case_{case_number}" 
+        logger.info(f"Case data for {case_number} structured and ready for database.")
+        return final_data_structure # Return the dictionary
     
     def get_validation_issues(self):
         """Get the validation issues found in the extracted data"""

@@ -5,10 +5,10 @@
     "age": 21
   },
   "symptoms": [
-    "toux avec expectorations blanchâtres parfois striées de sang,  depuis 2 mois cette toux est devenue persistante jour et nuit",
+    "toux persistante avec des crachats striés de sang quotidien",
     "fièvre le soir mais vous n’avez jamais chiffré votre température",
-    "toux à deux reprises à 3 jours d’intervalle",
-    "toux persistante avec des crachats striés de sang quotidien"
+    "toux avec expectorations blanchâtres parfois striées de sang,  depuis 2 mois cette toux est devenue persistante jour et nuit",
+    "toux à deux reprises à 3 jours d’intervalle"
   ],
   "evaluation_checklist": [
     {
@@ -72,11 +72,11 @@
   "custom_sections": [],
   "images": [
     {
-      "path": "http://127.0.0.1:5000/static/images/cases/case_12321_image_Radiographie_thoracique_du_patient.jpg",
+      "path": "http://127.0.0.1:5000/static/images/cases/case_2_image_Radiographie_thoracique_du_patient.jpg",
       "description": "Image médicale 1",
       "index": 0
     }
   ],
-  "case_number": "12321",
-  "specialty": "pneumo"
+  "case_number": "2",
+  "specialty": "pnumo"
 }
