@@ -627,25 +627,63 @@ class DocumentExtractionAgent:
         return json_str
     
     def save_case_data(self, case_number, specialty, extracted_data):
-        """Save extracted case data to the database instead of JSON file."""
-        # Check if case already exists
-        case = PatientCase.query.filter_by(case_number=case_number).first()
-        if not case:
-            case = PatientCase(case_number=case_number)
-            db.session.add(case)
-        # Set/Update fields
-        case.specialty = specialty or extracted_data.get("specialty", "Non spécifié")
-        case.patient_info = extracted_data.get("patient_info", {})
-        case.symptoms = extracted_data.get("symptoms", [])
-        case.evaluation_checklist = extracted_data.get("evaluation_checklist", [])
-        case.diagnosis = extracted_data.get("diagnosis", "")
-        case.directives = extracted_data.get("directives", "")
-        case.consultation_time = extracted_data.get("consultation_time", 10)
-        case.custom_sections = extracted_data.get("custom_sections", [])
-        # Save images
-        db.session.flush()  # Ensure case.id is available
-        db.session.commit()
-        return case
+        """Save extracted case data to the database with proper handling of images."""
+        from models import PatientCase, CaseImage, db
+        
+        try:
+            # Check if case already exists
+            case = PatientCase.query.filter_by(case_number=case_number).first()
+            if not case:
+                case = PatientCase(case_number=case_number)
+                db.session.add(case)
+            
+            # Set/Update basic fields directly (not using properties for these)
+            case.specialty = specialty or extracted_data.get("specialty", "Non spécifié")
+            case.diagnosis = extracted_data.get("diagnosis", "")
+            case.directives = extracted_data.get("directives", "")
+            case.consultation_time = extracted_data.get("consultation_time", 10)
+            case.additional_notes = extracted_data.get("additional_notes", "")
+            
+            # Handle patient info lab results
+            patient_info = extracted_data.get("patient_info", {})
+            case.lab_results = patient_info.get("lab_results", "")
+            
+            # Use properties with setters for JSON fields
+            case.patient_info = extracted_data.get("patient_info", {})
+            case.symptoms = extracted_data.get("symptoms", [])
+            case.evaluation_checklist = extracted_data.get("evaluation_checklist", [])
+            case.differential_diagnosis = extracted_data.get("differential_diagnosis", [])
+            case.custom_sections = extracted_data.get("custom_sections", [])
+            
+            # Flush to get the case ID
+            db.session.flush()
+            
+            # Handle images - create CaseImage records
+            images_data = extracted_data.get("images", [])
+            if images_data:
+                # Delete existing images for this case first
+                CaseImage.query.filter_by(case_number=case_number).delete()
+                
+                # Add new images
+                for img_data in images_data:
+                    case_image = CaseImage(
+                        case_number=case_number,
+                        filename=img_data.get('filename', 'unknown'),
+                        path=img_data.get('path', ''),
+                        description=img_data.get('description', 'Image médicale')
+                    )
+                    db.session.add(case_image)
+            
+            # Commit all changes
+            db.session.commit()
+            
+            logger.info(f"Successfully saved case {case_number} to database")
+            return case
+            
+        except Exception as e:
+            logger.error(f"Error saving case data to database: {str(e)}")
+            db.session.rollback()
+            raise
 
     def get_validation_issues(self):
         """Get the validation issues found in the extracted data"""

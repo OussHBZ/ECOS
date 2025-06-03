@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-Database migration script to add new performance tracking tables.
-Run this script to update your database with the new StudentPerformance table.
+Updated database migration script to fix image relationship issues.
+Run this script to update your database with the new CaseImage table and fix relationships.
 """
 
 import os
 import sys
+import json
 from datetime import datetime
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
-from models import db, Student, TeacherAccess, PatientCase, StudentPerformance
+from models import db, Student, TeacherAccess, PatientCase, StudentPerformance, CaseImage
 
 def migrate_database():
-    """Create new tables and update existing ones"""
+    """Create new tables and migrate existing image data"""
     
     app = create_app()
     
@@ -26,27 +27,22 @@ def migrate_database():
             # Create all tables (this will create new ones and skip existing ones)
             db.create_all()
             
-            # Check if StudentPerformance table was created
-            if StudentPerformance.query.first() is None:
-                print("✅ StudentPerformance table created successfully")
-            else:
-                print("✅ StudentPerformance table already exists")
-            
-            # Verify all tables exist
+            # Check if new tables were created
             inspector = db.inspect(db.engine)
             tables = inspector.get_table_names()
             
-            expected_tables = ['student', 'teacher_access', 'patient_case1', 'student_performance']
-            missing_tables = [table for table in expected_tables if table not in tables]
-            
-            if missing_tables:
-                print(f"⚠️  Missing tables: {missing_tables}")
-                return False
+            if 'case_images' in tables:
+                print("✅ CaseImage table created successfully")
             else:
-                print("✅ All required tables exist")
+                print("ℹ️  CaseImage table already exists")
+                
+            if 'student_performance' in tables:
+                print("✅ StudentPerformance table exists")
+            else:
+                print("⚠️  StudentPerformance table missing")
             
-            # Add some sample performance data if needed (optional)
-            # create_sample_performance_data()
+            # Migrate existing image data from JSON files to database
+            migrate_images_from_json()
             
             print("🎉 Database migration completed successfully!")
             return True
@@ -55,59 +51,83 @@ def migrate_database():
             print(f"❌ Error during migration: {str(e)}")
             return False
 
-def create_sample_performance_data():
-    """Create some sample performance data for testing (optional)"""
+def migrate_images_from_json():
+    """Migrate image data from JSON files to the database"""
     try:
-        # Check if we have students and cases
-        students = Student.query.all()
-        cases = PatientCase.query.all()
+        patient_data_folder = 'patient_data'
         
-        if not students or not cases:
-            print("⚠️  No students or cases found - skipping sample data creation")
+        if not os.path.exists(patient_data_folder):
+            print("ℹ️  No patient_data folder found - skipping image migration")
             return
         
-        # Create sample performance for first student and first case
-        sample_student = students[0]
-        sample_case = cases[0]
+        # Get all JSON case files
+        case_files = [f for f in os.listdir(patient_data_folder) 
+                     if f.startswith('patient_case_') and f.endswith('.json')]
         
-        # Check if performance already exists
-        existing_perf = StudentPerformance.query.filter_by(
-            student_id=sample_student.id,
-            case_number=sample_case.case_number
-        ).first()
+        if not case_files:
+            print("ℹ️  No case files found - skipping image migration")
+            return
         
-        if not existing_perf:
-            sample_evaluation = {
-                'points_earned': 8,
-                'points_total': 10,
-                'percentage': 80.0,
-                'checklist': [],
-                'feedback': 'Sample consultation evaluation'
-            }
-            
-            sample_recommendations = [
-                'Continue practicing patient communication',
-                'Review diagnostic procedures',
-                'Focus on time management'
-            ]
-            
-            performance = StudentPerformance.create_from_evaluation(
-                student_id=sample_student.id,
-                case_number=sample_case.case_number,
-                evaluation_results=sample_evaluation,
-                recommendations=sample_recommendations,
-                consultation_duration=600,  # 10 minutes
-                time_remaining=0
-            )
-            
-            db.session.add(performance)
+        print(f"📁 Found {len(case_files)} case files, checking for images...")
+        
+        migrated_images = 0
+        
+        for case_file in case_files:
+            try:
+                # Extract case number from filename
+                case_number = case_file.replace('patient_case_', '').replace('.json', '')
+                
+                # Load JSON data
+                file_path = os.path.join(patient_data_folder, case_file)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    case_data = json.load(f)
+                
+                # Check if case has images
+                images = case_data.get('images', [])
+                if not images:
+                    continue
+                
+                print(f"📋 Case {case_number}: Found {len(images)} images")
+                
+                # Check if case exists in database
+                db_case = PatientCase.query.filter_by(case_number=case_number).first()
+                if not db_case:
+                    print(f"⚠️  Case {case_number} not found in database - skipping image migration")
+                    continue
+                
+                # Migrate each image
+                for img_data in images:
+                    # Check if image already exists in database
+                    existing_img = CaseImage.query.filter_by(
+                        case_number=case_number,
+                        path=img_data.get('path', '')
+                    ).first()
+                    
+                    if not existing_img:
+                        # Create new image record
+                        new_image = CaseImage(
+                            case_number=case_number,
+                            filename=img_data.get('filename', 'unknown'),
+                            path=img_data.get('path', ''),
+                            description=img_data.get('description', 'Image médicale')
+                        )
+                        db.session.add(new_image)
+                        migrated_images += 1
+                        print(f"   ➕ Added image: {new_image.filename}")
+                
+            except Exception as e:
+                print(f"   ❌ Error processing {case_file}: {str(e)}")
+                continue
+        
+        # Commit all changes
+        if migrated_images > 0:
             db.session.commit()
-            print("✅ Sample performance data created")
+            print(f"✅ Successfully migrated {migrated_images} images to database")
         else:
-            print("✅ Sample performance data already exists")
+            print("ℹ️  No new images to migrate")
             
     except Exception as e:
-        print(f"⚠️  Error creating sample data: {str(e)}")
+        print(f"❌ Error during image migration: {str(e)}")
         db.session.rollback()
 
 def verify_migration():
@@ -118,69 +138,89 @@ def verify_migration():
         try:
             print("\n🔍 Verifying migration...")
             
-            # Test StudentPerformance model
-            performance_count = StudentPerformance.query.count()
-            print(f"📊 StudentPerformance records: {performance_count}")
+            # Check tables exist
+            inspector = db.inspect(db.engine)
+            tables = inspector.get_table_names()
+            
+            expected_tables = ['student', 'teacher_access', 'patient_case1', 'student_performance', 'case_images']
+            missing_tables = [table for table in expected_tables if table not in tables]
+            
+            if missing_tables:
+                print(f"❌ Missing tables: {missing_tables}")
+                return False
+            else:
+                print("✅ All required tables exist")
             
             # Test relationships
-            students = Student.query.all()
-            for student in students[:3]:  # Check first 3 students
-                perf_count = len(student.performances)
-                total_workouts = student.get_total_workouts()
-                unique_stations = student.get_unique_stations_played()
-                avg_score = student.get_average_score()
-                
-                print(f"👤 {student.name}: {perf_count} performances, {total_workouts} workouts, {unique_stations} stations, {avg_score}% avg")
+            case_count = PatientCase.query.count()
+            image_count = CaseImage.query.count()
+            performance_count = StudentPerformance.query.count()
             
-            # Test PatientCase enhancements
-            cases = PatientCase.query.all()
-            for case in cases[:3]:  # Check first 3 cases
-                completion_count = case.get_completion_count()
-                avg_score = case.get_average_score()
-                print(f"📋 Case {case.case_number}: {completion_count} completions, {avg_score}% avg score")
+            print(f"📊 Database contents:")
+            print(f"   📋 Cases: {case_count}")
+            print(f"   🖼️  Images: {image_count}")
+            print(f"   📈 Performances: {performance_count}")
+            
+            # Test a case with images
+            case_with_images = PatientCase.query.filter(PatientCase.images.any()).first()
+            if case_with_images:
+                print(f"   ✅ Case {case_with_images.case_number} has {len(case_with_images.images)} images")
             
             print("✅ Migration verification completed successfully!")
+            return True
             
         except Exception as e:
             print(f"❌ Error during verification: {str(e)}")
+            return False
 
-def rollback_migration():
-    """Rollback migration (use with caution)"""
+def fix_existing_cases():
+    """Fix existing cases that might be missing image relationships"""
     app = create_app()
     
     with app.app_context():
-        response = input("⚠️  Are you sure you want to DROP the StudentPerformance table? This will delete all performance data! (yes/no): ")
-        
-        if response.lower() == 'yes':
-            try:
-                # Drop only the new table
-                StudentPerformance.__table__.drop(db.engine, checkfirst=True)
-                print("🗑️  StudentPerformance table dropped successfully")
-            except Exception as e:
-                print(f"❌ Error during rollback: {str(e)}")
-        else:
-            print("❌ Rollback cancelled")
+        try:
+            print("🔧 Fixing existing cases...")
+            
+            # Ensure all existing cases have proper structure
+            cases = PatientCase.query.all()
+            
+            for case in cases:
+                try:
+                    # Test that the case data can be loaded
+                    case_data = case.to_json_data()
+                    if 'images' not in case_data:
+                        print(f"⚠️  Case {case.case_number} missing images structure")
+                    else:
+                        print(f"✅ Case {case.case_number} structure OK")
+                        
+                except Exception as e:
+                    print(f"❌ Error with case {case.case_number}: {str(e)}")
+            
+            print("✅ Case fixing completed")
+            
+        except Exception as e:
+            print(f"❌ Error fixing cases: {str(e)}")
 
 def show_help():
     """Show help message"""
     print("""
-🔧 Database Migration Utility for OSCE Simulator
+🔧 Database Migration Utility for OSCE Simulator (Image Fix)
 
 Usage:
-    python migrate_db.py [command]
+    python migrate_db_fix.py [command]
 
 Commands:
-    migrate   - Run database migration (default)
+    migrate   - Run database migration with image fixes (default)
     verify    - Verify migration was successful
-    rollback  - Rollback migration (DANGEROUS - deletes data)
+    fix       - Fix existing cases structure
     help      - Show this help message
 
 Examples:
-    python migrate_db.py           # Run migration
-    python migrate_db.py migrate   # Same as above
-    python migrate_db.py verify    # Verify migration
-    python migrate_db.py rollback  # Rollback (DANGEROUS)
-    python migrate_db.py help      # Show help
+    python migrate_db_fix.py           # Run migration
+    python migrate_db_fix.py migrate   # Same as above
+    python migrate_db_fix.py verify    # Verify migration
+    python migrate_db_fix.py fix       # Fix existing cases
+    python migrate_db_fix.py help      # Show help
     """)
 
 if __name__ == "__main__":
@@ -190,14 +230,16 @@ if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else 'migrate'
     
     if command == 'migrate':
-        migrate_database()
+        success = migrate_database()
+        if success:
+            verify_migration()
     elif command == 'verify':
         verify_migration()
-    elif command == 'rollback':
-        rollback_migration()
+    elif command == 'fix':
+        fix_existing_cases()
     elif command == 'help':
         show_help()
     else:
         print(f"❌ Unknown command: {command}")
-        print("Run 'python migrate_db.py help' for usage information")
+        print("Run 'python migrate_db_fix.py help' for usage information")
         sys.exit(1)

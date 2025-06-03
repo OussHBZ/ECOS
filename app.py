@@ -117,35 +117,75 @@ def create_app():
 
     
     def load_patient_case(case_number):
-        """Load patient case data from the database"""
+        """Load patient case data from the database with fallback to JSON files"""
         try:
-            # Query the database for the case
+            # First try to load from database
             case_data_db = PatientCase.query.filter_by(case_number=str(case_number)).first()
 
-            if not case_data_db:
-                raise FileNotFoundError(f"Patient case {case_number} not found in database.")
-
-            # Convert the SQLAlchemy object to a dictionary-like structure
-            # if your downstream code expects it.
-            data = {
-                "case_number": case_data_db.case_number,
-                "specialty": case_data_db.specialty,
-                "patient_info": case_data_db.patient_info, # Uses the @property
-                "symptoms": case_data_db.symptoms, # Uses the @property
-                "evaluation_checklist": case_data_db.evaluation_checklist, # Uses the @property
-                "diagnosis": case_data_db.diagnosis,
-                "differential_diagnosis": case_data_db.differential_diagnosis, # Uses the @property
-                "directives": case_data_db.directives,
-                "consultation_time": case_data_db.consultation_time,
-                "additional_notes": case_data_db.additional_notes,
-                "lab_results": case_data_db.lab_results,
-                "custom_sections": case_data_db.custom_sections, # Uses the @property
-                "images": [{"path": img.path, "description": img.description, "filename": img.filename} for img in case_data_db.images]
-            }
-            logger.info(f"Successfully loaded patient case {case_number} from database")
-            return data
+            if case_data_db:
+                # Convert the SQLAlchemy object to a dictionary-like structure
+                data = {
+                    "case_number": case_data_db.case_number,
+                    "specialty": case_data_db.specialty,
+                    "patient_info": case_data_db.patient_info,
+                    "symptoms": case_data_db.symptoms,
+                    "evaluation_checklist": case_data_db.evaluation_checklist,
+                    "diagnosis": case_data_db.diagnosis,
+                    "differential_diagnosis": case_data_db.differential_diagnosis,
+                    "directives": case_data_db.directives,
+                    "consultation_time": case_data_db.consultation_time,
+                    "additional_notes": case_data_db.additional_notes,
+                    "lab_results": case_data_db.lab_results,
+                    "custom_sections": case_data_db.custom_sections,
+                    "images": []
+                }
+                
+                # Add images from database relationship
+                if hasattr(case_data_db, 'images') and case_data_db.images:
+                    for img in case_data_db.images:
+                        data["images"].append({
+                            "path": img.path,
+                            "description": img.description,
+                            "filename": img.filename
+                        })
+                
+                logger.info(f"Successfully loaded patient case {case_number} from database")
+                return data
+                
+            else:
+                # Fallback to JSON file if not in database
+                logger.warning(f"Case {case_number} not found in database, trying JSON file")
+                return load_patient_case_from_json(case_number)
+                
         except Exception as e:
             logger.error(f"Error loading patient case {case_number} from database: {str(e)}")
+            # Fallback to JSON file
+            try:
+                return load_patient_case_from_json(case_number)
+            except:
+                raise FileNotFoundError(f"Patient case {case_number} not found in database or JSON files.")
+
+    def load_patient_case_from_json(case_number):
+        """Load patient case data from JSON files (fallback method)"""
+        try:
+            PATIENT_DATA_FOLDER = os.path.join(os.getcwd(), 'patient_data')
+            file_path = os.path.join(PATIENT_DATA_FOLDER, f"patient_case_{case_number}.json")
+            
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Patient case JSON file {case_number} not found.")
+
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            # Ensure images key exists
+            if "images" not in data:
+                data["images"] = []
+                
+            logger.info(f"Successfully loaded patient case {case_number} from JSON file")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error loading patient case {case_number} from JSON: {str(e)}")
             raise
 
     def load_system_template():

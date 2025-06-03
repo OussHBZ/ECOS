@@ -44,7 +44,7 @@ class TeacherAccess(db.Model):
     access_code = db.Column(db.String(20), unique=True, nullable=False)
     last_used = db.Column(db.DateTime)
 
-# Image model for patient cases
+# NEW: Image model for patient cases
 class CaseImage(db.Model):
     __tablename__ = 'case_images'
     
@@ -90,13 +90,6 @@ class PatientCase(db.Model):
                 return {}
         return {}
     
-    @patient_info.setter
-    def patient_info(self, value):
-        if value is None:
-            self.patient_info_json = None
-        else:
-            self.patient_info_json = json.dumps(value, ensure_ascii=False)
-    
     @property
     def symptoms(self):
         if self.symptoms_json:
@@ -105,13 +98,6 @@ class PatientCase(db.Model):
             except:
                 return []
         return []
-    
-    @symptoms.setter
-    def symptoms(self, value):
-        if value is None:
-            self.symptoms_json = None
-        else:
-            self.symptoms_json = json.dumps(value, ensure_ascii=False)
     
     @property
     def evaluation_checklist(self):
@@ -122,13 +108,6 @@ class PatientCase(db.Model):
                 return []
         return []
     
-    @evaluation_checklist.setter
-    def evaluation_checklist(self, value):
-        if value is None:
-            self.evaluation_checklist_json = None
-        else:
-            self.evaluation_checklist_json = json.dumps(value, ensure_ascii=False)
-    
     @property
     def differential_diagnosis(self):
         if self.differential_diagnosis_json:
@@ -138,20 +117,6 @@ class PatientCase(db.Model):
                 return []
         return []
     
-    @differential_diagnosis.setter
-    def differential_diagnosis(self, value):
-        if value is None:
-            self.differential_diagnosis_json = None
-        else:
-            if isinstance(value, list):
-                self.differential_diagnosis_json = json.dumps(value, ensure_ascii=False)
-            elif isinstance(value, str) and value.strip():
-                # If it's a string, split by commas and create a list
-                diff_list = [item.strip() for item in value.split(',') if item.strip()]
-                self.differential_diagnosis_json = json.dumps(diff_list, ensure_ascii=False) if diff_list else None
-            else:
-                self.differential_diagnosis_json = None
-    
     @property
     def custom_sections(self):
         if self.custom_sections_json:
@@ -160,13 +125,6 @@ class PatientCase(db.Model):
             except:
                 return []
         return []
-    
-    @custom_sections.setter
-    def custom_sections(self, value):
-        if value is None:
-            self.custom_sections_json = None
-        else:
-            self.custom_sections_json = json.dumps(value, ensure_ascii=False)
     
     def __repr__(self):
         return f'<PatientCase {self.case_number}>'
@@ -201,7 +159,7 @@ class PatientCase(db.Model):
         else:
             diff_diagnosis_json = None
         
-        case = cls(
+        return cls(
             case_number=str(case_data.get('case_number', '')),
             specialty=case_data.get('specialty', ''),
             patient_info_json=json.dumps(patient_info, ensure_ascii=False) if patient_info else None,
@@ -215,8 +173,6 @@ class PatientCase(db.Model):
             lab_results=patient_info.get('lab_results', ''),
             custom_sections_json=json.dumps(case_data.get('custom_sections', []), ensure_ascii=False)
         )
-        
-        return case
     
     def update_from_json_data(self, case_data):
         """Update existing PatientCase instance from JSON case data"""
@@ -280,13 +236,12 @@ class PatientCase(db.Model):
             }
             
             # Add images from relationship
-            if hasattr(self, 'images') and self.images:
-                for image in self.images:
-                    case_data['images'].append({
-                        'path': image.path,
-                        'description': image.description or 'Image médicale',
-                        'filename': image.filename
-                    })
+            for image in self.images:
+                case_data['images'].append({
+                    'path': image.path,
+                    'description': image.description or 'Image médicale',
+                    'filename': image.filename
+                })
             
             # Add optional fields only if they have values
             if self.diagnosis:
