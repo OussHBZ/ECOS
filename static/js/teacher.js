@@ -2481,11 +2481,24 @@ async function openStudentDetailModal(studentId, studentName) {
                     <td>${perf.consultation_duration}</td>
                     <td>
                         <button class="view-evaluation-btn" data-performance-id="${perf.id}">
-                            Voir Évaluation
+                            Télécharger PDF
                         </button>
                     </td>
-                `;
+                `; // Changed button text for clarity
                 tableBody.appendChild(row);
+            });
+
+            // Add event listeners for the newly created "Télécharger PDF" buttons
+            tableBody.querySelectorAll('.view-evaluation-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const performanceId = e.target.getAttribute('data-performance-id');
+                    if (performanceId) {
+                        // Trigger download by navigating to the new endpoint
+                        window.location.href = `/teacher/download_student_report/${performanceId}`;
+                    } else {
+                        alert("ID de performance non trouvé.");
+                    }
+                });
             });
         }
         
