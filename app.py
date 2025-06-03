@@ -682,7 +682,7 @@ def create_app():
                 logger.warning("No active conversation found")
                 return jsonify({"error": "No active conversation"}), 400
             
-            conversation_from_session = session.get('conversation', []) # <-- Get conversation
+            conversation_from_session = session['conversation'] # Get conversation
             case_number = session.get('case_number', 'Unknown')
             
             consultation_duration = None
@@ -700,19 +700,19 @@ def create_app():
             eval_time = time.time() - eval_start
             logger.info(f"Evaluation completed in {eval_time:.2f} seconds")
             
-            # Save student performance to database, now including the conversation
+            # Save student performance, now including the conversation transcript
             save_student_performance(
                 evaluation, 
                 recommendations, 
-                case_number,
-                conversation_from_session, # <-- PASS THE CONVERSATION
+                case_number, 
                 consultation_duration, 
-                time_remaining
+                time_remaining,
+                conversation_transcript=conversation_from_session # Pass the transcript
             )
             
             try:
                 pdf_filename = create_simple_consultation_pdf(
-                    conversation_from_session, # <-- PASS CONVERSATION TO PDF
+                    conversation_from_session, 
                     case_number, 
                     evaluation,
                     recommendations
@@ -724,40 +724,36 @@ def create_app():
                     "evaluation": evaluation,
                     "recommendations": recommendations
                 })
-            # ... (rest of the function remains the same) ...
             except Exception as pdf_error:
                 logger.error(f"PDF generation error: {str(pdf_error)}")
-                session.clear() # Clear session even if PDF fails but evaluation and save were attempted
+                session.clear()
                 return jsonify({
                     "status": "partial_success",
                     "error": "PDF generation failed, but evaluation completed successfully",
                     "evaluation": evaluation,
                     "recommendations": recommendations
                 })
-                
         except Exception as e:
             logger.error(f"Error in end_chat: {str(e)}")
             return jsonify({"error": "Error ending chat session"}), 500
     
-    def save_student_performance(evaluation, recommendations, case_number, 
-                                conversation_transcript, # <-- ADDED PARAMETER
-                                consultation_duration=None, time_remaining=None):
+    def save_student_performance(evaluation, recommendations, case_number, consultation_duration=None, time_remaining=None, conversation_transcript=None): # Add conversation_transcript parameter
         """Save student performance to database"""
         try:
-            if hasattr(current_user, 'id'): # Ensure current_user is a Student instance
+            if hasattr(current_user, 'id'):
                 performance = StudentPerformance.create_from_evaluation(
                     student_id=current_user.id,
                     case_number=case_number,
                     evaluation_results=evaluation,
                     recommendations=recommendations,
-                    conversation_transcript=conversation_transcript, # <-- PASS TO MODEL METHOD
                     consultation_duration=consultation_duration,
-                    time_remaining=time_remaining
+                    time_remaining=time_remaining,
+                    conversation_transcript=conversation_transcript # Pass it here
                 )
                 
                 db.session.add(performance)
                 db.session.commit()
-                logger.info(f"Saved performance for student {current_user.id}, case {case_number} (including conversation)")
+                logger.info(f"Saved performance for student {current_user.id}, case {case_number}")
                 
         except Exception as e:
             logger.error(f"Error saving student performance: {str(e)}")
@@ -1522,57 +1518,52 @@ def create_app():
             return jsonify({"error": str(e)}), 500
         
     @app.route('/teacher/download_student_report/<int:performance_id>')
-    @teacher_required
+    @teacher_required # Assuming this decorator exists or use appropriate one
     def download_student_report(performance_id):
         try:
-            performance = StudentPerformance.query.get(performance_id)
+            # Use db.session.get for SQLAlchemy 2.0 compatibility, or stick to .get() if on 1.x
+            # performance = StudentPerformance.query.get(performance_id) # Legacy
+            performance = db.session.get(StudentPerformance, performance_id) # Preferred for SQLAlchemy 2.0+
+            
             if not performance:
-                logger.error(f"StudentPerformance record not found for ID: {performance_id}")
-                return jsonify({"error": "Rapport non trouvé"}), 404
+                logger.error(f"Performance record not found for ID: {performance_id}")
+                return jsonify({"error": "Rapport de performance non trouvé"}), 404
+
+            # Now 'performance.conversation_transcript' will call the property in models.py
+            conversation_for_pdf = performance.conversation_transcript 
+            
+            if not conversation_for_pdf:
+                logger.error(f"No conversation transcript found for performance ID: {performance_id}")
+                return jsonify({"error": "Aucun historique de conversation trouvé pour ce rapport"}), 404
 
             case_number = performance.case_number
             evaluation_results = performance.evaluation_results
             recommendations = performance.recommendations
-            conversation_for_pdf = performance.conversation_transcript # <-- GET STORED CONVERSATION
 
             pdf_filename = create_simple_consultation_pdf(
-                conversation=conversation_for_pdf, # <-- PASS STORED CONVERSATION
-                case_number=case_number,
-                evaluation_results=evaluation_results,
-                recommendations=recommendations
+                conversation_for_pdf,
+                case_number,
+                evaluation_results,
+                recommendations
             )
-
+            
+            # Assuming create_simple_consultation_pdf saves to a temp directory
             temp_dir = tempfile.gettempdir()
-            if '..' in pdf_filename or '/' in pdf_filename: # Basic security check
-                logger.warning(f"Invalid PDF filename generated by create_simple_consultation_pdf: {pdf_filename}")
-                return jsonify({"error": "Nom de fichier PDF invalide"}), 400
-            
-            file_path = os.path.join(temp_dir, pdf_filename)
-            if not os.path.exists(file_path):
-                 logger.error(f"Generated PDF file not found: {file_path}")
-                 return jsonify({"error": "Fichier PDF généré non trouvé"}), 404
-
-            student_code = performance.student.student_code if performance.student else "unknown"
-            download_name = f"evaluation_etudiant_{student_code}_cas_{case_number}_{datetime.now().strftime('%Y%m%d')}.pdf"
-            
-            # ... (rest of send_from_directory logic as implemented in the previous turn)
-            response = send_from_directory(
+            return send_from_directory(
                 temp_dir,
                 pdf_filename,
                 as_attachment=True,
-                download_name=download_name,
+                download_name=f"student_report_{performance.student.student_code}_case_{case_number}_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mimetype='application/pdf'
             )
-            
-            response.headers["Content-Security-Policy"] = "default-src 'self'"
-            response.headers["X-Content-Type-Options"] = "nosniff"
-            
-            logger.info(f"Student report PDF downloaded successfully: {pdf_filename} for performance ID {performance_id}")
-            return response
 
+        except AttributeError as ae: # Catch the specific error if it persists for debugging
+            logger.error(f"AttributeError generating student report PDF for performance ID {performance_id}: {str(ae)}", exc_info=True)
+            return jsonify({"error": "Erreur d'attribut lors de la génération du rapport PDF"}), 500
         except Exception as e:
             logger.error(f"Error generating student report PDF for performance ID {performance_id}: {str(e)}", exc_info=True)
             return jsonify({"error": "Erreur lors de la génération du rapport PDF"}), 500
+
 
 
     

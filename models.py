@@ -331,9 +331,11 @@ class StudentPerformance(db.Model):
     time_remaining = db.Column(db.Integer)  # in seconds
     
     # Detailed evaluation data (JSON)
-    evaluation_results_json = db.Column(db.Text)
-    recommendations_json = db.Column(db.Text)
-    conversation_transcript_json = db.Column(db.Text, nullable=True) # <-- ADDED FIELD
+    evaluation_results_json = db.Column(db.Text)  # Store full evaluation results
+    recommendations_json = db.Column(db.Text)  # Store recommendations
+    
+    # Add this line to store the conversation transcript
+    conversation_transcript_json = db.Column(db.Text) # Stores the list of message dicts as JSON
 
     # Timestamps
     started_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -351,12 +353,10 @@ class StudentPerformance(db.Model):
                 return {}
         return {}
     
-    @evaluation_results.setter # <-- ADDED for completeness, though set_evaluation_results is used
-    def evaluation_results(self, value):
-        if value is None:
-            self.evaluation_results_json = None
-        else:
-            self.evaluation_results_json = json.dumps(value, ensure_ascii=False)
+    @evaluation_results.setter
+    def evaluation_results(self, results):
+        """Set evaluation results as JSON"""
+        self.evaluation_results_json = json.dumps(results, ensure_ascii=False)
 
     @property
     def recommendations(self):
@@ -367,46 +367,53 @@ class StudentPerformance(db.Model):
                 return []
         return []
 
-    @recommendations.setter # <-- ADDED for completeness
-    def recommendations(self, value):
-        if value is None:
-            self.recommendations_json = None
-        else:
-            self.recommendations_json = json.dumps(value, ensure_ascii=False)
+    @recommendations.setter
+    def recommendations(self, recommendations_list):
+        """Set recommendations as JSON"""
+        self.recommendations_json = json.dumps(recommendations_list, ensure_ascii=False)
 
+    # Add this property to access the conversation transcript
     @property
-    def conversation_transcript(self): # <-- ADDED PROPERTY
+    def conversation_transcript(self):
         if self.conversation_transcript_json:
             try:
                 return json.loads(self.conversation_transcript_json)
             except:
-                return [] # Return empty list on error
-        return []
+                return [] # Return empty list if JSON is invalid
+        return [] # Return empty list if no transcript stored
 
-    @conversation_transcript.setter # <-- ADDED SETTER
-    def conversation_transcript(self, value):
-        if value is None:
-            self.conversation_transcript_json = None
-        else:
-            # Ensure value is a list of dicts suitable for JSON serialization
-            if isinstance(value, list):
-                self.conversation_transcript_json = json.dumps(value, ensure_ascii=False)
-            else:
-                # Handle cases where 'value' might not be in the expected format
-                self.conversation_transcript_json = json.dumps([], ensure_ascii=False)
-
-
-    def set_evaluation_results(self, results):
-        self.evaluation_results_json = json.dumps(results, ensure_ascii=False)
+    @conversation_transcript.setter
+    def conversation_transcript(self, conversation_list):
+        """Set conversation transcript as JSON"""
+        self.conversation_transcript_json = json.dumps(conversation_list, ensure_ascii=False)
     
-    def set_recommendations(self, recommendations_list): # Renamed for clarity
-        self.recommendations_json = json.dumps(recommendations_list, ensure_ascii=False)
-
-    # Modified create_from_evaluation to accept conversation_transcript
+    def get_performance_grade(self):
+        """Get letter grade based on percentage score"""
+        if self.percentage_score >= 90:
+            return 'A'
+        elif self.percentage_score >= 80:
+            return 'B'
+        elif self.percentage_score >= 70:
+            return 'C'
+        elif self.percentage_score >= 60:
+            return 'D'
+        else:
+            return 'F'
+    
+    def get_performance_status(self):
+        """Get performance status description"""
+        if self.percentage_score >= 80:
+            return 'Excellent'
+        elif self.percentage_score >= 70:
+            return 'Bon'
+        elif self.percentage_score >= 60:
+            return 'Satisfaisant'
+        else:
+            return 'À améliorer'
+    
     @classmethod
-    def create_from_evaluation(cls, student_id, case_number, evaluation_results, recommendations=None, 
-                               conversation_transcript=None, # <-- ADDED PARAMETER
-                               consultation_duration=None, time_remaining=None):
+    def create_from_evaluation(cls, student_id, case_number, evaluation_results, recommendations=None, consultation_duration=None, time_remaining=None, conversation_transcript=None):
+        """Create a new performance record from evaluation results"""
         performance = cls(
             student_id=student_id,
             case_number=case_number,
@@ -417,10 +424,10 @@ class StudentPerformance(db.Model):
             time_remaining=time_remaining
         )
         
-        performance.set_evaluation_results(evaluation_results)
+        performance.evaluation_results = evaluation_results # Use setter
         if recommendations:
-            performance.set_recommendations(recommendations)
-        if conversation_transcript: # <-- SETTING THE TRANSCRIPT
-            performance.conversation_transcript = conversation_transcript # Uses the setter
+            performance.recommendations = recommendations # Use setter
+        if conversation_transcript:
+            performance.conversation_transcript = conversation_transcript # Use setter
         
         return performance
