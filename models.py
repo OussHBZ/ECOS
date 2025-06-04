@@ -14,6 +14,7 @@ class Student(db.Model, UserMixin):
     
     # Relationships
     performances = db.relationship('StudentPerformance', backref='student', lazy=True, cascade='all, delete-orphan')
+    session_participants = db.relationship('SessionParticipant', backref='student', lazy=True, cascade='all, delete-orphan')
     
     def get_id(self):
         return f"student_{self.id}"
@@ -43,6 +44,66 @@ class TeacherAccess(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     access_code = db.Column(db.String(20), unique=True, nullable=False)
     last_used = db.Column(db.DateTime)
+
+class AdminAccess(db.Model):
+    """Model for Administrator access tracking"""
+    id = db.Column(db.Integer, primary_key=True)
+    access_code = db.Column(db.String(20), unique=True, nullable=False)
+    last_used = db.Column(db.DateTime)
+
+class OSCESession(db.Model):
+    """Model for OSCE examination sessions"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(50))  # Who created the session
+    status = db.Column(db.String(20), default='scheduled')  # scheduled, active, completed, cancelled
+    
+    # Relationships
+    participants = db.relationship('SessionParticipant', backref='session', lazy=True, cascade='all, delete-orphan')
+    station_assignments = db.relationship('SessionStationAssignment', backref='session', lazy=True, cascade='all, delete-orphan')
+    
+    def get_participant_count(self):
+        """Get number of participants in this session"""
+        return len(self.participants)
+    
+    def get_assigned_stations_count(self):
+        """Get number of stations assigned to this session"""
+        return len(self.station_assignments)
+    
+    def get_status_display(self):
+        """Get display-friendly status"""
+        status_map = {
+            'scheduled': 'Programmé',
+            'active': 'En cours',
+            'completed': 'Terminé',
+            'cancelled': 'Annulé'
+        }
+        return status_map.get(self.status, self.status)
+
+class SessionParticipant(db.Model):
+    """Model for tracking which students are in which sessions"""
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('osce_session.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Unique constraint to prevent duplicate participants
+    __table_args__ = (db.UniqueConstraint('session_id', 'student_id', name='unique_session_student'),)
+
+class SessionStationAssignment(db.Model):
+    """Model for tracking which stations are assigned to which sessions"""
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('osce_session.id'), nullable=False)
+    case_number = db.Column(db.String(50), db.ForeignKey('patient_case1.case_number'), nullable=False)
+    station_order = db.Column(db.Integer)  # Order of stations in the session
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Unique constraint to prevent duplicate station assignments
+    __table_args__ = (db.UniqueConstraint('session_id', 'case_number', name='unique_session_station'),)
 
 # Image model for patient cases
 class CaseImage(db.Model):
@@ -80,6 +141,7 @@ class PatientCase(db.Model):
     # Relationships
     performances = db.relationship('StudentPerformance', backref='case', lazy=True)
     images = db.relationship('CaseImage', backref='case', lazy=True, cascade='all, delete-orphan')
+    session_assignments = db.relationship('SessionStationAssignment', backref='case', lazy=True, cascade='all, delete-orphan')
     
     @property
     def patient_info(self):

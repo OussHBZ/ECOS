@@ -1,19 +1,18 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
-from models import db, Student, TeacherAccess
+from models import db, Student, TeacherAccess, AdminAccess
 from datetime import datetime
 import re, os
-# auth.py - Authentication routes for students and teachers     
-
 
 auth_bp = Blueprint('auth', __name__)
 
-# Teacher access code - you can change this or load from environment
-TEACHER_ACCESS_CODE = os.getenv('TEACHER_CODE')
+# Access codes - you can change these or load from environment
+TEACHER_ACCESS_CODE = os.getenv('TEACHER_CODE', 'TEACHER123')
+ADMIN_ACCESS_CODE = os.getenv('ADMIN_CODE', 'ADMIN123')
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Unified login page for students and teachers"""
+    """Unified login page for students, teachers, and administrators"""
     if request.method == 'POST':
         login_type = request.form.get('login_type')
         
@@ -76,6 +75,26 @@ def login():
             else:
                 flash('Code d\'accès incorrect.', 'error')
                 return redirect(url_for('auth.login'))
+                
+        elif login_type == 'admin':
+            access_code = request.form.get('access_code', '').strip()
+            
+            if access_code == ADMIN_ACCESS_CODE:
+                session['user_type'] = 'admin'
+                session['admin_authenticated'] = True
+                
+                # Log admin access
+                admin_access = AdminAccess.query.filter_by(access_code=access_code).first()
+                if not admin_access:
+                    admin_access = AdminAccess(access_code=access_code)
+                    db.session.add(admin_access)
+                admin_access.last_used = datetime.utcnow()
+                db.session.commit()
+                
+                return redirect(url_for('admin_interface'))
+            else:
+                flash('Code d\'accès administrateur incorrect.', 'error')
+                return redirect(url_for('auth.login'))
     
     return render_template('login.html')
 
@@ -106,6 +125,18 @@ def teacher_required(f):
     def decorated_function(*args, **kwargs):
         if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
             flash('Accès réservé aux enseignants.', 'error')
+            return redirect(url_for('auth.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """Decorator to require administrator authentication"""
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if session.get('user_type') != 'admin' or not session.get('admin_authenticated'):
+            flash('Accès réservé aux administrateurs.', 'error')
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function

@@ -4,22 +4,161 @@
     <meta charset="UTF-8">
     <title>OSCE Chat Simulator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .role-selection {
+            background-color: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 800px;
+            margin: 50px auto;
+        }
+        
+        .role-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+        
+        .role-button {
+            display: block;
+            padding: 30px 20px;
+            text-align: center;
+            border-radius: 15px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .role-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+            pointer-events: none;
+        }
+        
+        .role-button:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+        
+        .role-button.student {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        .role-button.student:hover {
+            box-shadow: 0 15px 35px rgba(76, 175, 80, 0.4);
+        }
+        
+        .role-button.teacher {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+        }
+        
+        .role-button.teacher:hover {
+            box-shadow: 0 15px 35px rgba(33, 150, 243, 0.4);
+        }
+        
+        .role-button.admin {
+            background: linear-gradient(135deg, #ff7e5f, #feb47b);
+            color: white;
+        }
+        
+        .role-button.admin:hover {
+            box-shadow: 0 15px 35px rgba(255, 126, 95, 0.4);
+        }
+        
+        .role-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .role-title {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .role-description {
+            font-size: 14px;
+            opacity: 0.9;
+            line-height: 1.4;
+        }
+        
+        .main-title {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 18px;
+            margin-bottom: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .role-buttons {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .role-selection {
+                margin: 20px;
+                padding: 30px 20px;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <div class="role-selection">
-            <h1>OSCE Chat Simulator</h1>
-            <p>Bienvenue sur le simulateur de consultations OSCE</p>
+            <h1 class="main-title">OSCE Chat Simulator</h1>
+            <p class="subtitle">Plateforme de simulation pour examens cliniques objectifs structurés</p>
             
-            <div style="margin-top: 40px;">
-                <a href="{{ url_for('auth.login') }}" class="submit-button" style="display: inline-block; text-decoration: none;">
-                    Se connecter
+            <div class="role-buttons">
+                <a href="{{ url_for('auth.login') }}?role=student" class="role-button student">
+                    <span class="role-icon">🎓</span>
+                    <div class="role-title">Étudiant</div>
+                    <div class="role-description">
+                        Pratiquez vos consultations avec des patients virtuels et recevez des évaluations détaillées
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('auth.login') }}?role=teacher" class="role-button teacher">
+                    <span class="role-icon">👨‍🏫</span>
+                    <div class="role-title">Enseignant</div>
+                    <div class="role-description">
+                        Créez et gérez des cas cliniques, suivez les performances des étudiants
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('auth.login') }}?role=admin" class="role-button admin">
+                    <span class="role-icon">⚙️</span>
+                    <div class="role-title">Administrateur</div>
+                    <div class="role-description">
+                        Gérez les sessions OSCE, supervisez les stations et administrez le système
+                    </div>
                 </a>
             </div>
             
-            <div style="margin-top: 20px; color: #666;">
-                <p><strong>Étudiants:</strong> Utilisez votre code à 4 chiffres</p>
-                <p><strong>Enseignants:</strong> Utilisez le code d'accès fourni</p>
+            <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 14px;">
+                    Besoin d'aide ? Contactez votre coordinateur pédagogique.
+                </p>
             </div>
         </div>
     </div>

@@ -67,7 +67,7 @@
     }
   ],
   "diagnosis": "",
-  "directives": "",
+  "directives": "test test",
   "consultation_time": 10,
   "custom_sections": [],
   "images": [
