@@ -1563,7 +1563,41 @@ def create_app():
         except Exception as e:
             logger.error(f"Error generating student report PDF for performance ID {performance_id}: {str(e)}", exc_info=True)
             return jsonify({"error": "Erreur lors de la génération du rapport PDF"}), 500
-
+    
+    @app.route('/check_case_number/<case_number>', methods=['GET'])
+    @teacher_required
+    def check_case_number(case_number):
+        """Check if a case number already exists"""
+        try:
+            # Validate case number
+            if not case_number or case_number.strip() == '':
+                return jsonify({"error": "Numéro de cas invalide"}), 400
+            
+            # Check in database first
+            db_case = PatientCase.query.filter_by(case_number=str(case_number)).first()
+            if db_case:
+                return jsonify({
+                    "exists": True,
+                    "message": f"Le numéro de cas {case_number} existe déjà dans la base de données"
+                })
+            
+            # Check in JSON files as fallback
+            file_path = os.path.join(PATIENT_DATA_FOLDER, f"patient_case_{case_number}.json")
+            if os.path.exists(file_path):
+                return jsonify({
+                    "exists": True,
+                    "message": f"Le numéro de cas {case_number} existe déjà dans les fichiers"
+                })
+            
+            # Case number is available
+            return jsonify({
+                "exists": False,
+                "message": f"Le numéro de cas {case_number} est disponible"
+            })
+            
+        except Exception as e:
+            logger.error(f"Error checking case number {case_number}: {str(e)}")
+            return jsonify({"error": "Erreur lors de la vérification du numéro de cas"}), 500
 
 
     

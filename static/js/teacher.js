@@ -39,11 +39,25 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize validation for extraction preview forms
     setupValidation();
     
+    // Set up case number validation for both forms
+    const fileUploadCaseNumber = document.getElementById('case-number');
+    const manualEntryCaseNumber = document.getElementById('manual-case-number');
+    
+    if (fileUploadCaseNumber) {
+        setupCaseNumberValidation(fileUploadCaseNumber, false);
+    }
+    
+    if (manualEntryCaseNumber) {
+        setupCaseNumberValidation(manualEntryCaseNumber, false);
+    }
+    
     // IMPORTANT: Set manual entry as default active tab
     // This ensures the correct form is visible on page load
     if (manualTabBtn && fileTabBtn) {
         manualTabBtn.click(); // This will trigger the tab switching logic
     }
+    
+    console.log('Case number validation set up for teacher interface');
 });
 
 // Set up tab switching between file upload and manual entry
@@ -333,6 +347,53 @@ function populateEditForm(caseData) {
     
     // Images (display only)
     populateEditImages(caseData.images || []);
+    setupEditModalEventHandlers();
+}
+
+function setupEditModalEventHandlers() {
+    // Remove any existing event listeners to prevent duplicates
+    const existingHandlers = document.querySelectorAll('[data-edit-handler]');
+    existingHandlers.forEach(element => {
+        element.removeAttribute('data-edit-handler');
+    });
+
+    // Add Medical History button
+    const addMedicalHistoryBtn = document.getElementById('edit-add-medical-history');
+    if (addMedicalHistoryBtn && !addMedicalHistoryBtn.hasAttribute('data-edit-handler')) {
+        addMedicalHistoryBtn.setAttribute('data-edit-handler', 'true');
+        addMedicalHistoryBtn.addEventListener('click', function() {
+            addEditMedicalHistoryItem('');
+        });
+    }
+
+    // Add Symptom button
+    const addSymptomBtn = document.getElementById('edit-add-symptom');
+    if (addSymptomBtn && !addSymptomBtn.hasAttribute('data-edit-handler')) {
+        addSymptomBtn.setAttribute('data-edit-handler', 'true');
+        addSymptomBtn.addEventListener('click', function() {
+            addEditSymptomItem('');
+        });
+    }
+
+    // Add Checklist Item button
+    const addChecklistBtn = document.getElementById('edit-add-checklist-item');
+    if (addChecklistBtn && !addChecklistBtn.hasAttribute('data-edit-handler')) {
+        addChecklistBtn.setAttribute('data-edit-handler', 'true');
+        addChecklistBtn.addEventListener('click', function() {
+            addEditChecklistItem('', 1, 'Général');
+        });
+    }
+
+    // Add Custom Section button
+    const addCustomSectionBtn = document.getElementById('edit-add-custom-section');
+    if (addCustomSectionBtn && !addCustomSectionBtn.hasAttribute('data-edit-handler')) {
+        addCustomSectionBtn.setAttribute('data-edit-handler', 'true');
+        addCustomSectionBtn.addEventListener('click', function() {
+            addEditCustomSection('', '');
+        });
+    }
+
+    console.log('Edit modal event handlers set up successfully');
 }
 
 // Populate medical history section
@@ -372,6 +433,9 @@ async function openEditModal(caseNumber) {
         // Populate the edit form with case data
         populateEditForm(caseData);
         
+        // Set up event handlers for the edit modal buttons
+        setupEditModalEventHandlers();
+        
         // Show the modal
         editCaseModal.classList.remove('hidden');
         editCaseModal.classList.add('visible');
@@ -381,7 +445,6 @@ async function openEditModal(caseNumber) {
         alert(`Erreur lors de la récupération des données du cas: ${error.message}`);
     }
 }
-
 // Add medical history item to edit form
 function addEditMedicalHistoryItem(value = '') {
     const container = document.getElementById('edit-medical-history-container');
@@ -389,7 +452,7 @@ function addEditMedicalHistoryItem(value = '') {
     const historyDiv = document.createElement('div');
     historyDiv.className = 'edit-medical-history';
     historyDiv.innerHTML = `
-        <input type="text" class="medical-history-input" value="${value}">
+        <input type="text" class="medical-history-input" value="${value}" placeholder="Entrez l'antécédent médical">
         <button type="button" class="remove-medical-history">×</button>
     `;
     
@@ -484,6 +547,7 @@ function addEditChecklistItem(description = '', points = 1, category = '') {
         itemDiv.remove();
     });
 }
+
 
 // NEW: Populate custom sections
 function populateEditCustomSections(customSections) {
@@ -811,19 +875,26 @@ function setupValidation() {
 async function handleUploadFormSubmit(event) {
     event.preventDefault();
     
+    // Get case number and validate it
+    const caseNumberInput = document.getElementById('case-number');
+    const caseNumber = caseNumberInput.value.trim();
+    
+    // Validate case number before proceeding
+    const isValidCaseNumber = await validateCaseNumberBeforeSubmit(caseNumber, caseNumberInput);
+    
+    if (!isValidCaseNumber) {
+        alert('Veuillez corriger le numéro de cas avant de continuer.');
+        caseNumberInput.focus();
+        return;
+    }
+    
     // Show processing status
     uploadStatus.classList.remove('hidden');
     processingMessage.textContent = 'Téléchargement et traitement du fichier en cours...';
     extractionResults.innerHTML = '';
     
-    // Get form data - validate case number
+    // Get form data
     const formData = new FormData(uploadForm);
-    const caseNumber = formData.get('case_number');
-    
-    if (!caseNumber || caseNumber.trim() === '') {
-        processingMessage.textContent = "Erreur: Le numéro du cas est obligatoire";
-        return;
-    }
     
     // Get image files from the input 
     const imageFiles = document.getElementById('image-files').files;
@@ -869,6 +940,19 @@ async function handleUploadFormSubmit(event) {
 async function handleManualFormSubmit(event) {
     event.preventDefault();
     
+    // Get case number and validate it
+    const caseNumberInput = document.getElementById('manual-case-number');
+    const caseNumber = caseNumberInput.value.trim();
+    
+    // Validate case number before proceeding
+    const isValidCaseNumber = await validateCaseNumberBeforeSubmit(caseNumber, caseNumberInput);
+    
+    if (!isValidCaseNumber) {
+        alert('Veuillez corriger le numéro de cas avant de continuer.');
+        caseNumberInput.focus();
+        return;
+    }
+    
     // Show processing status
     uploadStatus.classList.remove('hidden');
     processingMessage.textContent = 'Traitement des données en cours...';
@@ -876,13 +960,6 @@ async function handleManualFormSubmit(event) {
     
     // Create FormData from manual form
     const formData = new FormData(manualEntryForm);
-    
-    // Validate case number
-    const caseNumber = formData.get('case_number');
-    if (!caseNumber || caseNumber.trim() === '') {
-        processingMessage.textContent = "Erreur: Le numéro du cas est obligatoire";
-        return;
-    }
     
     // Add all tracked uploaded images to the form data
     uploadedImages.forEach((image, index) => {
@@ -965,6 +1042,11 @@ async function handleManualFormSubmit(event) {
             imagesPreview.innerHTML = '';
             customSectionsContainer.innerHTML = '';
             
+            // Clear validation state
+            clearCaseNumberValidation(caseNumberInput);
+            lastValidatedCaseNumber = null;
+            isCurrentCaseNumberValid = false;
+            
             // Refresh the page after 3 seconds to show updated case list
             setTimeout(() => {
                 window.location.reload();
@@ -1008,6 +1090,9 @@ function showExtractionPreview(data) {
     // Display the preview
     extractionResults.innerHTML = previewHTML;
     
+    // IMPORTANT: Set up event handlers for the dynamically created buttons
+    setupExtractionPreviewEventHandlers();
+    
     // Add event listeners for save and cancel buttons
     document.getElementById('save-extraction').addEventListener('click', () => {
         // Use the advanced validation if available, otherwise proceed
@@ -1037,6 +1122,363 @@ function showExtractionPreview(data) {
             });
         });
 }
+
+// handles event listeners for extraction preview buttons
+function setupExtractionPreviewEventHandlers() {
+    console.log('Setting up extraction preview event handlers...');
+    
+    // Add Patient Field button
+    const addPatientFieldBtn = document.getElementById('add-patient-field');
+    if (addPatientFieldBtn) {
+        addPatientFieldBtn.addEventListener('click', function() {
+            addCustomPatientField();
+        });
+    }
+
+    // Add Medical History button
+    const addMedicalHistoryBtn = document.getElementById('add-medical-history-btn');
+    if (addMedicalHistoryBtn) {
+        addMedicalHistoryBtn.addEventListener('click', function() {
+            addPreviewMedicalHistoryItem('');
+        });
+    }
+
+    // Add Symptom button
+    const addSymptomBtn = document.getElementById('add-symptom-btn');
+    if (addSymptomBtn) {
+        addSymptomBtn.addEventListener('click', function() {
+            addPreviewSymptomItem('');
+        });
+    }
+
+    // Add Symptom Category button
+    const addSymptomCategoryBtn = document.getElementById('add-symptom-category');
+    if (addSymptomCategoryBtn) {
+        addSymptomCategoryBtn.addEventListener('click', function() {
+            addSymptomCategory();
+        });
+    }
+
+    // Add Checklist Item button
+    const addChecklistBtn = document.getElementById('add-checklist-btn');
+    if (addChecklistBtn) {
+        addChecklistBtn.addEventListener('click', function() {
+            addPreviewChecklistItem('', 1, 'Général');
+        });
+    }
+
+    // Add Checklist Category button
+    const addChecklistCategoryBtn = document.getElementById('add-checklist-category');
+    if (addChecklistCategoryBtn) {
+        addChecklistCategoryBtn.addEventListener('click', function() {
+            addChecklistCategory();
+        });
+    }
+
+    // Add Differential Diagnosis button
+    const addDifferentialBtn = document.getElementById('add-differential-btn');
+    if (addDifferentialBtn) {
+        addDifferentialBtn.addEventListener('click', function() {
+            addDifferentialDiagnosis('');
+        });
+    }
+
+    // Add Custom Section button
+    const addPreviewCustomSectionBtn = document.getElementById('add-preview-custom-section');
+    if (addPreviewCustomSectionBtn) {
+        addPreviewCustomSectionBtn.addEventListener('click', function() {
+            addPreviewCustomSection('', '');
+        });
+    }
+
+    // Set up existing remove buttons
+    setupExistingRemoveButtons();
+    
+    console.log('Extraction preview event handlers set up successfully');
+}
+
+// Function to set up remove buttons for existing items
+function setupExistingRemoveButtons() {
+    // Medical history remove buttons
+    document.querySelectorAll('.remove-medical-history').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.edit-medical-history').remove();
+        });
+    });
+
+    // Symptom remove buttons
+    document.querySelectorAll('.remove-symptom').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.edit-symptom').remove();
+        });
+    });
+
+    // Category remove buttons
+    document.querySelectorAll('.remove-category').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.symptom-category, .checklist-category').remove();
+        });
+    });
+
+    // Checklist item remove buttons
+    document.querySelectorAll('.remove-checklist-item').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.edit-checklist-item').remove();
+        });
+    });
+
+    // Differential diagnosis remove buttons
+    document.querySelectorAll('.remove-differential').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.edit-differential').remove();
+        });
+    });
+
+    // Custom section remove buttons
+    document.querySelectorAll('.remove-custom-section').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.edit-custom-section').remove();
+        });
+    });
+
+    // Custom field remove buttons
+    document.querySelectorAll('.remove-custom-field').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.custom-field').remove();
+        });
+    });
+}
+
+// Add custom patient field
+function addCustomPatientField() {
+    const container = document.querySelector('.editable-preview .preview-section');
+    
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'edit-field custom-field';
+    fieldDiv.innerHTML = `
+        <label>Nom du champ:</label>
+        <input type="text" class="custom-field-name" value="">
+        <label>Valeur:</label>
+        <input type="text" class="custom-field-value" value="">
+        <button type="button" class="remove-custom-field">×</button>
+    `;
+    
+    // Insert before the "add patient field" button
+    const addBtn = document.getElementById('add-patient-field');
+    addBtn.parentNode.insertBefore(fieldDiv, addBtn);
+    
+    // Add remove functionality
+    fieldDiv.querySelector('.remove-custom-field').addEventListener('click', function() {
+        fieldDiv.remove();
+    });
+}
+
+// Add medical history item in preview
+function addPreviewMedicalHistoryItem(value = '') {
+    const container = document.getElementById('edit-medical-history-container');
+    
+    const historyDiv = document.createElement('div');
+    historyDiv.className = 'edit-medical-history';
+    historyDiv.innerHTML = `
+        <input type="text" class="medical-history-input" value="${value}" placeholder="Entrez l'antécédent médical">
+        <button type="button" class="remove-medical-history">×</button>
+    `;
+    
+    container.appendChild(historyDiv);
+    
+    // Add remove functionality
+    historyDiv.querySelector('.remove-medical-history').addEventListener('click', function() {
+        historyDiv.remove();
+    });
+}
+
+// Add symptom item in preview
+function addPreviewSymptomItem(value = '') {
+    const container = document.getElementById('edit-symptoms-container');
+    
+    const symptomDiv = document.createElement('div');
+    symptomDiv.className = 'edit-symptom';
+    symptomDiv.innerHTML = `
+        <input type="text" class="symptom-input" value="${value}" placeholder="Décrivez le symptôme">
+        <button type="button" class="remove-symptom">×</button>
+    `;
+    
+    container.appendChild(symptomDiv);
+    
+    // Add remove functionality
+    symptomDiv.querySelector('.remove-symptom').addEventListener('click', function() {
+        symptomDiv.remove();
+    });
+}
+
+// Add symptom category
+function addSymptomCategory() {
+    const container = document.getElementById('edit-symptoms-container');
+    
+    const categoryDiv = document.createElement('div');
+    categoryDiv.className = 'symptom-category';
+    categoryDiv.innerHTML = `
+        <div class="category-header">
+            <input type="text" class="category-name" value="" placeholder="Nom de la catégorie">
+            <button type="button" class="remove-category">×</button>
+        </div>
+        <div class="category-symptoms">
+        </div>
+        <button type="button" class="add-category-symptom secondary-button">+ Ajouter un symptôme à cette catégorie</button>
+    `;
+    
+    container.appendChild(categoryDiv);
+    
+    // Add remove functionality for category
+    categoryDiv.querySelector('.remove-category').addEventListener('click', function() {
+        categoryDiv.remove();
+    });
+    
+    // Add functionality for adding symptoms to this category
+    categoryDiv.querySelector('.add-category-symptom').addEventListener('click', function() {
+        const categorySymptoms = categoryDiv.querySelector('.category-symptoms');
+        
+        const symptomDiv = document.createElement('div');
+        symptomDiv.className = 'edit-symptom';
+        symptomDiv.innerHTML = `
+            <input type="text" class="symptom-input" value="" placeholder="Décrivez le symptôme">
+            <button type="button" class="remove-symptom">×</button>
+        `;
+        
+        categorySymptoms.appendChild(symptomDiv);
+        
+        // Add remove functionality
+        symptomDiv.querySelector('.remove-symptom').addEventListener('click', function() {
+            symptomDiv.remove();
+        });
+    });
+}
+
+// Add checklist item in preview
+function addPreviewChecklistItem(description = '', points = 1, category = '') {
+    const container = document.getElementById('edit-checklist-container');
+    
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'edit-checklist-item';
+    itemDiv.innerHTML = `
+        <div class="edit-field-group">
+            <label>Description:</label>
+            <input type="text" class="checklist-description" value="${description}" placeholder="Description de l'élément">
+        </div>
+        <div class="edit-field-group small">
+            <label>Points:</label>
+            <input type="number" class="checklist-points" value="${points}" min="1">
+        </div>
+        <div class="edit-field-group">
+            <label>Catégorie:</label>
+            <input type="text" class="checklist-category" value="${category}" placeholder="Catégorie">
+        </div>
+        <button type="button" class="remove-checklist-item">×</button>
+    `;
+    
+    container.appendChild(itemDiv);
+    
+    // Add remove functionality
+    itemDiv.querySelector('.remove-checklist-item').addEventListener('click', function() {
+        itemDiv.remove();
+    });
+}
+
+// Add checklist category
+function addChecklistCategory() {
+    const container = document.getElementById('edit-checklist-container');
+    
+    const categoryDiv = document.createElement('div');
+    categoryDiv.className = 'checklist-category';
+    categoryDiv.innerHTML = `
+        <div class="category-header">
+            <input type="text" class="category-name" value="" placeholder="Nom de la catégorie">
+            <button type="button" class="remove-category">×</button>
+        </div>
+        <div class="category-items">
+        </div>
+        <button type="button" class="add-category-item secondary-button">+ Ajouter un élément à cette catégorie</button>
+    `;
+    
+    container.appendChild(categoryDiv);
+    
+    // Add remove functionality for category
+    categoryDiv.querySelector('.remove-category').addEventListener('click', function() {
+        categoryDiv.remove();
+    });
+    
+    // Add functionality for adding items to this category
+    categoryDiv.querySelector('.add-category-item').addEventListener('click', function() {
+        const categoryItems = categoryDiv.querySelector('.category-items');
+        
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'edit-checklist-item';
+        itemDiv.innerHTML = `
+            <div class="edit-field-group">
+                <label>Description:</label>
+                <input type="text" class="checklist-description" value="" placeholder="Description de l'élément">
+            </div>
+            <div class="edit-field-group small">
+                <label>Points:</label>
+                <input type="number" class="checklist-points" value="1" min="1">
+            </div>
+            <button type="button" class="remove-checklist-item">×</button>
+        `;
+        
+        categoryItems.appendChild(itemDiv);
+        
+        // Add remove functionality
+        itemDiv.querySelector('.remove-checklist-item').addEventListener('click', function() {
+            itemDiv.remove();
+        });
+    });
+}
+
+// Add differential diagnosis
+function addDifferentialDiagnosis(value = '') {
+    const container = document.getElementById('edit-differential-container');
+    
+    const differentialDiv = document.createElement('div');
+    differentialDiv.className = 'edit-differential';
+    differentialDiv.innerHTML = `
+        <input type="text" class="differential-input" value="${value}" placeholder="Diagnostic différentiel">
+        <button type="button" class="remove-differential">×</button>
+    `;
+    
+    container.appendChild(differentialDiv);
+    
+    // Add remove functionality
+    differentialDiv.querySelector('.remove-differential').addEventListener('click', function() {
+        differentialDiv.remove();
+    });
+}
+
+// Add custom section in preview
+function addPreviewCustomSection(title = '', content = '') {
+    const container = document.getElementById('edit-custom-sections-container');
+    
+    const sectionDiv = document.createElement('div');
+    sectionDiv.className = 'edit-custom-section';
+    sectionDiv.innerHTML = `
+        <div class="edit-field">
+            <label>Titre:</label>
+            <input type="text" class="custom-section-title" value="${title}" placeholder="Titre de la section">
+        </div>
+        <div class="edit-field">
+            <label>Contenu:</label>
+            <textarea class="custom-section-content" rows="4" placeholder="Contenu de la section">${content}</textarea>
+        </div>
+        <button type="button" class="remove-custom-section">×</button>
+    `;
+    
+    container.appendChild(sectionDiv);
+    
+    // Add remove functionality
+    sectionDiv.querySelector('.remove-custom-section').addEventListener('click', function() {
+        sectionDiv.remove();
+    });
+}
+
 
 // Function to save edited case data
 function saveEditedCase(previewData) {
@@ -2251,7 +2693,6 @@ async function handleEditFormSubmit(event) {
         if (data.error) {
             alert(`Erreur: ${data.error}`);
         } else {
-            // Show success message with more details
             alert(`Cas ${currentEditingCaseNumber} modifié avec succès!\n\nLes modifications ont été sauvegardées.`);
             closeEditModal();
             
@@ -2273,6 +2714,7 @@ async function handleEditFormSubmit(event) {
         submitButton.textContent = originalText;
     }
 }
+
 function updateCaseListRow(caseNumber, editedData) {
     const rows = document.querySelectorAll('table tbody tr');
     rows.forEach(row => {
@@ -2792,3 +3234,199 @@ const teacherStyles = `
 const teacherStyleSheet = document.createElement('style');
 teacherStyleSheet.textContent = teacherStyles;
 document.head.appendChild(teacherStyleSheet);
+
+let caseNumberValidationInProgress = false;
+let lastValidatedCaseNumber = null;
+let isCurrentCaseNumberValid = false;
+
+// Function to check case number availability
+async function checkCaseNumberAvailability(caseNumber, inputElement, isEdit = false, originalCaseNumber = null) {
+    if (!caseNumber || caseNumber.trim() === '') {
+        clearCaseNumberValidation(inputElement);
+        return false;
+    }
+    
+    // If editing and the case number is the same as original, it's valid
+    if (isEdit && originalCaseNumber && caseNumber === originalCaseNumber) {
+        // For editing the same case number, show it's the current case
+        showEditingCurrentCase(inputElement);
+        return true;
+    }
+    
+    // Avoid duplicate API calls
+    if (caseNumber === lastValidatedCaseNumber) {
+        return isCurrentCaseNumberValid;
+    }
+    
+    caseNumberValidationInProgress = true;
+    showCaseNumberChecking(inputElement);
+    
+    try {
+        const response = await fetch(`/check_case_number/${encodeURIComponent(caseNumber)}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        lastValidatedCaseNumber = caseNumber;
+        
+        if (data.exists) {
+            showCaseNumberError(inputElement, data.message);
+            isCurrentCaseNumberValid = false;
+            return false;
+        } else {
+            // Case number is available - just show green border, no message
+            showCaseNumberValid(inputElement, data.message);
+            isCurrentCaseNumberValid = true;
+            return true;
+        }
+        
+    } catch (error) {
+        console.error('Error checking case number:', error);
+        showCaseNumberError(inputElement, 'Erreur lors de la vérification du numéro de cas');
+        isCurrentCaseNumberValid = false;
+        return false;
+    } finally {
+        caseNumberValidationInProgress = false;
+    }
+}
+
+function showEditingCurrentCase(inputElement) {
+    clearCaseNumberValidation(inputElement);
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'case-number-validation current';
+    messageDiv.innerHTML = `<span class="validation-icon">ℹ️</span> Numéro de cas actuel`;
+    
+    inputElement.parentNode.appendChild(messageDiv);
+    inputElement.classList.add('current');
+    inputElement.classList.remove('error', 'valid', 'checking');
+}
+
+// Show checking state
+function showCaseNumberChecking(inputElement) {
+    clearCaseNumberValidation(inputElement);
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'case-number-validation checking';
+    messageDiv.innerHTML = '<span class="validation-icon">⏳</span> Vérification en cours...';
+    
+    inputElement.parentNode.appendChild(messageDiv);
+    inputElement.classList.add('checking');
+}
+
+// Show error state
+function showCaseNumberError(inputElement, message) {
+    clearCaseNumberValidation(inputElement);
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'case-number-validation error';
+    messageDiv.innerHTML = `<span class="validation-icon">❌</span> ${message}`;
+    
+    inputElement.parentNode.appendChild(messageDiv);
+    inputElement.classList.add('error');
+    inputElement.classList.remove('valid', 'checking');
+}
+
+// Show valid state
+function showCaseNumberValid(inputElement, message) {
+    clearCaseNumberValidation(inputElement);
+    
+    // Only add the green border, no message for available case numbers
+    inputElement.classList.add('valid');
+    inputElement.classList.remove('error', 'checking');
+    
+    // Don't create any validation message div for available case numbers
+}
+
+
+// Clear validation state
+function clearCaseNumberValidation(inputElement) {
+    const existingValidation = inputElement.parentNode.querySelector('.case-number-validation');
+    if (existingValidation) {
+        existingValidation.remove();
+    }
+    inputElement.classList.remove('error', 'valid', 'checking', 'current');
+}
+
+// Debounce function to avoid too many API calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Set up case number validation for an input
+function setupCaseNumberValidation(inputElement, isEdit = false, originalCaseNumber = null) {
+    // Create debounced validation function
+    const debouncedValidation = debounce(async (caseNumber) => {
+        await checkCaseNumberAvailability(caseNumber, inputElement, isEdit, originalCaseNumber);
+    }, 500); // Wait 500ms after user stops typing
+    
+    // Add event listeners
+    inputElement.addEventListener('input', function() {
+        const caseNumber = this.value.trim();
+        
+        // Reset validation state for new input
+        lastValidatedCaseNumber = null;
+        isCurrentCaseNumberValid = false;
+        
+        if (caseNumber === '') {
+            clearCaseNumberValidation(this);
+            return;
+        }
+        
+        // Validate that it's a positive number
+        if (!/^\d+$/.test(caseNumber)) {
+            showCaseNumberError(this, 'Le numéro de cas doit contenir uniquement des chiffres');
+            return;
+        }
+        
+        // Check if it's zero
+        if (parseInt(caseNumber) === 0) {
+            showCaseNumberError(this, 'Le numéro de cas doit être supérieur à 0');
+            return;
+        }
+        
+        // If it's a valid number, check availability
+        debouncedValidation(caseNumber);
+    });
+    
+    inputElement.addEventListener('blur', function() {
+        const caseNumber = this.value.trim();
+        if (caseNumber && !caseNumberValidationInProgress) {
+            // Final validation on blur
+            checkCaseNumberAvailability(caseNumber, this, isEdit, originalCaseNumber);
+        }
+    });
+}
+
+// Function to check if case number is valid before form submission
+async function validateCaseNumberBeforeSubmit(caseNumber, inputElement, isEdit = false, originalCaseNumber = null) {
+    if (!caseNumber || caseNumber.trim() === '') {
+        showCaseNumberError(inputElement, 'Le numéro de cas est obligatoire');
+        return false;
+    }
+    
+    // If validation is in progress, wait for it
+    if (caseNumberValidationInProgress) {
+        // Wait a bit and try again
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return validateCaseNumberBeforeSubmit(caseNumber, inputElement, isEdit, originalCaseNumber);
+    }
+    
+    // If we haven't validated this case number yet, do it now
+    if (caseNumber !== lastValidatedCaseNumber) {
+        return await checkCaseNumberAvailability(caseNumber, inputElement, isEdit, originalCaseNumber);
+    }
+    
+    return isCurrentCaseNumberValid;
+}
