@@ -5,10 +5,10 @@
     "age": 21
   },
   "symptoms": [
-    "toux à deux reprises à 3 jours d’intervalle",
-    "fièvre le soir mais vous n’avez jamais chiffré votre température",
     "toux avec expectorations blanchâtres parfois striées de sang,  depuis 2 mois cette toux est devenue persistante jour et nuit",
-    "toux persistante avec des crachats striés de sang quotidien"
+    "toux persistante avec des crachats striés de sang quotidien",
+    "toux à deux reprises à 3 jours d’intervalle",
+    "fièvre le soir mais vous n’avez jamais chiffré votre température"
   ],
   "evaluation_checklist": [
     {
@@ -78,5 +78,5 @@
     }
   ],
   "case_number": "2",
-  "specialty": "pnumol"
+  "specialty": "pnumo"
 }

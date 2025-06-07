@@ -22,6 +22,12 @@ const viewDirectivesBtn = document.getElementById('view-directives-btn');
 const directivesContent = document.getElementById('directives-content');
 const directivesClose = document.querySelector('.directives-close');
 
+let competitionUpdateInterval = null;
+let stationTimer = null;
+let countdownTimer = null;
+let currentCompetitionId = null;
+let currentStationData = null;
+let isTimerRunning = false;
 
 let currentCase = null;
 let selectedCaseCard = null;
@@ -1312,6 +1318,901 @@ function getGradeFromScore(score) {
     return 'F';
 }
 
+// FIXED: Tab switching function
+function showStudentTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.student-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all nav tabs
+    document.querySelectorAll('.student-nav-tabs .nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected tab
+    document.getElementById(tabName).classList.add('active');
+    
+    // Add active class to clicked nav tab
+    document.querySelector(`.student-nav-tabs .nav-tab[onclick*="${tabName}"]`).classList.add('active');
+    
+    // Load content for specific tabs
+    if (tabName === 'practice-tab') {
+        loadPracticeData();
+    } else if (tabName === 'competition-tab') {
+        loadAvailableCompetitions();
+    } else if (tabName === 'stats-tab') {
+        loadStudentStats();
+    }
+    
+    // Stop competition polling if leaving competition tab
+    if (tabName !== 'competition-tab') {
+        stopCompetitionPolling();
+    }
+}
+
+// FIXED: Competition status polling with proper cleanup
+function startCompetitionPolling(sessionId) {
+    // Clean up any existing interval
+    if (competitionUpdateInterval) {
+        clearInterval(competitionUpdateInterval);
+    }
+    
+    console.log('Starting competition polling for session:', sessionId);
+    
+    // Initial update
+    updateCompetitionStatus(sessionId);
+    
+    // Set up interval
+    competitionUpdateInterval = setInterval(() => {
+        updateCompetitionStatus(sessionId);
+    }, 3000); // Poll every 3 seconds
+}
+
+// FIXED: Update competition interface with better state management
+function updateCompetitionInterface(status) {
+    console.log('Updating competition interface with status:', status);
+    
+    // Update session name and progress
+    document.getElementById('competition-session-name').textContent = status.session_name;
+    
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    
+    if (progressFill && progressText) {
+        progressFill.style.width = `${status.progress_percentage}%`;
+        progressText.textContent = `${status.completed_stations}/${status.total_stations} stations`;
+    }
+
+    // Handle different student states
+    switch (status.student_status) {
+        case 'logged_in':
+            showWaitingState();
+            break;
+        case 'active':
+            if (status.current_station) {
+                showStationInterface(status.current_station, status.time_per_station, status.total_stations);
+            }
+            break;
+        case 'between_stations':
+            showBetweenStations(status.time_between_stations);
+            break;
+        case 'completed':
+            showFinalResults(status);
+            stopCompetitionPolling();
+            break;
+        default:
+            console.log('Unknown student status:', status.student_status);
+    }
+}
+
+// FIXED: Station interface with proper initialization
+function showStationInterface(station, timePerStation, totalStations) {
+    console.log('Showing station interface for:', station);
+    
+    hideAllCompetitionScreens();
+    document.getElementById('station-interface').classList.remove('hidden');
+    
+    // Update station info
+    document.getElementById('current-station-number').textContent = station.station_order;
+    document.getElementById('total-station-count').textContent = totalStations;
+    document.getElementById('station-specialty').textContent = station.specialty;
+    
+    // Only start timer if not already running
+    if (!isTimerRunning) {
+        startStationTimer(timePerStation * 60); // Convert to seconds
+    }
+    
+    // Initialize chat if this is a new station
+    if (!currentStationData || currentStationData.case_number !== station.case_number) {
+        currentStationData = station;
+        initializeCompetitionStationChat(station.case_number);
+    }
+}
+
+// FIXED: Station timer with proper cleanup
+function startStationTimer(seconds) {
+    // Prevent multiple timers
+    if (isTimerRunning) {
+        console.log('Timer already running, skipping...');
+        return;
+    }
+    
+    if (stationTimer) {
+        clearInterval(stationTimer);
+    }
+    
+    isTimerRunning = true;
+    let timeLeft = seconds;
+    const timerElement = document.getElementById('station-timer');
+    
+    if (!timerElement) {
+        console.error('Timer element not found');
+        isTimerRunning = false;
+        return;
+    }
+    
+    function updateTimer() {
+        const minutes = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        timerElement.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+        
+        // Change color when time is running out
+        if (timeLeft <= 60) {
+            timerElement.style.background = '#FFCDD2';
+            timerElement.style.color = '#D32F2F';
+        } else if (timeLeft <= 180) {
+            timerElement.style.background = '#FFF3E0';
+            timerElement.style.color = '#F57C00';
+        } else {
+            timerElement.style.background = '#FFEBEE';
+            timerElement.style.color = '#C62828';
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(stationTimer);
+            isTimerRunning = false;
+            // Auto-end station
+            endCurrentStation();
+        }
+        timeLeft--;
+    }
+    
+    updateTimer();
+    stationTimer = setInterval(updateTimer, 1000);
+    console.log('Station timer started with', seconds, 'seconds');
+}
+
+// FIXED: Initialize competition station chat
+async function initializeCompetitionStationChat(caseNumber) {
+    try {
+        console.log('Initializing station chat for case:', caseNumber);
+        
+        const response = await fetch(`/student/competition/${currentCompetitionId}/start-station`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Station initialized:', data);
+            
+            // Display directives
+            const directivesElement = document.getElementById('station-directives');
+            if (data.directives && directivesElement) {
+                directivesElement.innerHTML = 
+                    `<p><strong>Instructions:</strong> ${data.directives.replace(/\n/g, '<br>')}</p>`;
+            }
+            
+            // Clear chat messages
+            const chatMessages = document.getElementById('competition-chat-messages');
+            if (chatMessages) {
+                chatMessages.innerHTML = '';
+            }
+            
+            // Handle images
+            if (data.images && data.images.length > 0) {
+                document.getElementById('view-competition-images').style.display = 'inline-block';
+                // Store images for viewing
+                window.currentStationImages = data.images;
+            }
+            
+        } else {
+            throw new Error('Failed to start station');
+        }
+    } catch (error) {
+        console.error('Error initializing station:', error);
+        showError('Erreur lors de l\'initialisation de la station');
+    }
+}
+
+
+async function sendCompetitionMessage() {
+    const input = document.getElementById('competition-chat-input');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Add user message to chat
+    addMessageToCompetitionChat('user', message);
+    input.value = '';
+    
+    try {
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: message
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            addMessageToCompetitionChat('ai', data.reply);
+        } else {
+            throw new Error('Failed to send message');
+        }
+    } catch (error) {
+        console.error('Error sending message:', error);
+        addMessageToCompetitionChat('system', 'Erreur lors de l\'envoi du message');
+    }
+}
+
+// FIXED: Add message to competition chat with image display
+function addMessageToCompetitionChat(sender, message) {
+    const chatMessages = document.getElementById('competition-chat-messages');
+    if (!chatMessages) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    // Process message for images
+    let processedMessage = message;
+    
+    // Check for image markers in the format [IMAGE:path|description]
+    const imageRegex = /\[IMAGE:([^|]+)\|([^\]]+)\]/g;
+    processedMessage = processedMessage.replace(imageRegex, (match, path, description) => {
+        return `<div class="message-image">
+            <img src="${path}" alt="${description}" onclick="showImageModal('${path}', '${description}')" style="max-width: 200px; cursor: pointer; border-radius: 8px; margin: 10px 0;">
+            <p style="font-style: italic; margin: 5px 0;">${description}</p>
+        </div>`;
+    });
+    
+    // Also check for direct image paths
+    if (processedMessage.includes('/static/images/')) {
+        document.getElementById('view-competition-images').style.display = 'inline-block';
+    }
+    
+    if (sender === 'user') {
+        messageDiv.innerHTML = `<strong>Vous:</strong> ${processedMessage}`;
+    } else if (sender === 'ai') {
+        messageDiv.innerHTML = `<strong>Patient:</strong> ${processedMessage}`;
+    } else {
+        messageDiv.innerHTML = processedMessage;
+    }
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// FIXED: Show between stations with proper countdown
+function showBetweenStations(timeBetween) {
+    hideAllCompetitionScreens();
+    document.getElementById('between-stations').classList.remove('hidden');
+    
+    // Start countdown timer
+    startCountdownTimer(timeBetween * 60); // Convert to seconds
+}
+
+// FIXED: Countdown timer with proper cleanup
+function startCountdownTimer(seconds) {
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+    }
+    
+    let timeLeft = seconds;
+    const countdownElement = document.getElementById('countdown-timer');
+    const startButton = document.getElementById('start-next-station');
+    
+    if (!countdownElement || !startButton) {
+        console.error('Countdown elements not found');
+        return;
+    }
+    
+    function updateCountdown() {
+        countdownElement.textContent = timeLeft;
+        
+        if (timeLeft <= 0) {
+            clearInterval(countdownTimer);
+            startButton.disabled = false;
+            startButton.textContent = 'Démarrer la prochaine station';
+        }
+        timeLeft--;
+    }
+    
+    updateCountdown();
+    countdownTimer = setInterval(updateCountdown, 1000);
+}
+
+// FIXED: Start next station function
+async function startNextStation() {
+    const button = document.getElementById('start-next-station');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Préparation...';
+    }
+    
+    // The polling system will handle the transition
+    console.log('Starting next station...');
+}
+
+// FIXED: End current station
+async function endCurrentStation() {
+    // Stop the timer
+    if (stationTimer) {
+        clearInterval(stationTimer);
+        isTimerRunning = false;
+    }
+    
+    try {
+        const response = await fetch('/student/competition/complete-station', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            if (result.success) {
+                showStationFeedback(result);
+            } else {
+                throw new Error('Failed to complete station');
+            }
+        } else {
+            throw new Error('Failed to complete station');
+        }
+    } catch (error) {
+        console.error('Error ending station:', error);
+        showError('Erreur lors de la finalisation de la station');
+    }
+}
+
+// FIXED: Show station feedback
+function showStationFeedback(result) {
+    hideAllCompetitionScreens();
+    document.getElementById('between-stations').classList.remove('hidden');
+    
+    // Update feedback display
+    document.getElementById('completed-station-number').textContent = result.current_station;
+    document.getElementById('station-score').textContent = `${result.evaluation.percentage || 0}%`;
+    
+    // Display detailed feedback
+    const feedbackDetails = document.getElementById('feedback-details');
+    let feedbackHTML = '<h5>Détails de l\'évaluation:</h5>';
+    
+    if (result.evaluation.checklist) {
+        feedbackHTML += '<ul class="feedback-list">';
+        result.evaluation.checklist.forEach(item => {
+            const status = item.completed ? '✅' : '❌';
+            feedbackHTML += `<li class="${item.completed ? 'completed' : 'not-completed'}">
+                ${status} ${item.description} (${item.points} pts)
+                ${item.justification ? `<br><small>${item.justification}</small>` : ''}
+            </li>`;
+        });
+        feedbackHTML += '</ul>';
+    }
+    
+    if (result.recommendations && result.recommendations.length > 0) {
+        feedbackHTML += '<h6>Recommandations:</h6><ul class="recommendations-list">';
+        result.recommendations.forEach(rec => {
+            feedbackHTML += `<li>${rec}</li>`;
+        });
+        feedbackHTML += '</ul>';
+    }
+    
+    feedbackDetails.innerHTML = feedbackHTML;
+    
+    // If not finished, start countdown
+    if (!result.is_finished) {
+        startCountdownTimer(result.next_station_delay || 120);
+    } else {
+        // Show final results after a short delay
+        setTimeout(() => {
+            showFinalResults(result);
+        }, 3000);
+    }
+}
+
+// FIXED: Stop competition polling with proper cleanup
+function stopCompetitionPolling() {
+    console.log('Stopping competition polling...');
+    
+    if (competitionUpdateInterval) {
+        clearInterval(competitionUpdateInterval);
+        competitionUpdateInterval = null;
+    }
+    if (stationTimer) {
+        clearInterval(stationTimer);
+        stationTimer = null;
+    }
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    
+    isTimerRunning = false;
+    currentStationData = null;
+}
+
+// FIXED: View competition images
+function viewCompetitionImages() {
+    if (window.currentStationImages && window.currentStationImages.length > 0) {
+        showImagesModal(window.currentStationImages);
+    } else {
+        showError('Aucune image disponible pour cette station');
+    }
+}
+
+// FIXED: Show images modal
+function showImagesModal(images) {
+    const modal = document.getElementById('images-modal');
+    const content = document.getElementById('images-content');
+    
+    if (!modal || !content) {
+        console.error('Images modal elements not found');
+        return;
+    }
+    
+    let imagesHTML = '<div class="images-grid">';
+    
+    images.forEach((image, index) => {
+        imagesHTML += `
+            <div class="image-item">
+                <h4>${image.description || `Image ${index + 1}`}</h4>
+                <img src="${image.path}" alt="${image.description || 'Image médicale'}" 
+                     onclick="showImageModal('${image.path}', '${image.description || 'Image médicale'}')"
+                     style="max-width: 100%; cursor: pointer; border-radius: 8px;">
+            </div>
+        `;
+    });
+    
+    imagesHTML += '</div>';
+    content.innerHTML = imagesHTML;
+    modal.classList.remove('hidden');
+}
+
+// FIXED: Show single image modal
+function showImageModal(imagePath, description) {
+    // Create full-screen image modal
+    const fullModal = document.createElement('div');
+    fullModal.className = 'full-image-modal';
+    fullModal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        cursor: pointer;
+    `;
+    
+    fullModal.innerHTML = `
+        <div style="max-width: 90%; max-height: 90%; text-align: center;">
+            <img src="${imagePath}" alt="${description}" 
+                 style="max-width: 100%; max-height: 80vh; object-fit: contain;">
+            <p style="color: white; margin-top: 20px; font-size: 18px;">${description}</p>
+            <p style="color: #ccc; margin-top: 10px;">Cliquez pour fermer</p>
+        </div>
+    `;
+    
+    fullModal.onclick = () => document.body.removeChild(fullModal);
+    document.body.appendChild(fullModal);
+}
+
+// FIXED: Close images modal
+function closeImagesModal() {
+    const modal = document.getElementById('images-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// FIXED: Handle competition chat keypress
+function handleCompetitionChatKeypress(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendCompetitionMessage();
+    }
+}
+
+// FIXED: Load available competitions
+async function loadAvailableCompetitions() {
+    try {
+        const response = await fetch('/student/available-competitions');
+        if (!response.ok) throw new Error('Failed to load competitions');
+        
+        const data = await response.json();
+        displayAvailableCompetitions(data.competitions);
+        
+    } catch (error) {
+        console.error('Error loading competitions:', error);
+        document.getElementById('available-competitions-container').innerHTML = 
+            '<div class="error-message">Erreur lors du chargement des compétitions</div>';
+    }
+}
+
+// FIXED: Display available competitions
+function displayAvailableCompetitions(competitions) {
+    const container = document.getElementById('available-competitions-container');
+    
+    if (!container) {
+        console.error('Competitions container not found');
+        return;
+    }
+    
+    if (competitions.length === 0) {
+        container.innerHTML = `
+            <div class="no-competitions">
+                <h3>Aucune compétition disponible</h3>
+                <p>Vous n'êtes inscrit(e) à aucune compétition pour le moment.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '<div class="competitions-grid">';
+    
+    competitions.forEach(competition => {
+        const canJoin = competition.can_join && competition.student_status === 'registered';
+        const canContinue = competition.can_continue && ['logged_in', 'active', 'between_stations'].includes(competition.student_status);
+        
+        html += `
+            <div class="competition-card ${competition.status}">
+                <div class="competition-header">
+                    <h3>${competition.name}</h3>
+                    <span class="competition-status-badge status-${competition.status}">${competition.status_display}</span>
+                </div>
+                
+                <div class="competition-info">
+                    <p><strong>Début:</strong> ${competition.start_time}</p>
+                    <p><strong>Fin:</strong> ${competition.end_time}</p>
+                    <p><strong>Stations:</strong> ${competition.stations_per_session} stations de ${competition.time_per_station} min</p>
+                    <p><strong>Participants:</strong> ${competition.logged_in_count}/${competition.participant_count} connectés</p>
+                </div>
+
+                <div class="student-progress">
+                    <p><strong>Mon statut:</strong> ${getStudentStatusDisplay(competition.student_status)}</p>
+                    ${competition.progress > 0 ? `<p><strong>Progrès:</strong> ${competition.progress}%</p>` : ''}
+                </div>
+
+                <div class="competition-actions">
+                    ${canJoin ? `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>` : ''}
+                    ${canContinue ? `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>` : ''}
+                    ${competition.status === 'completed' ? `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// FIXED: Join competition
+async function joinCompetition(sessionId) {
+    try {
+        const response = await fetch(`/student/join-competition/${sessionId}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentCompetitionId = sessionId;
+            
+            // Hide competitions list and show competition interface
+            document.getElementById('available-competitions-container').style.display = 'none';
+            document.getElementById('competition-session-interface').classList.remove('hidden');
+            
+            if (result.waiting_for_others) {
+                showWaitingRoom(sessionId);
+            } else {
+                startCompetitionSession(sessionId);
+            }
+        } else {
+            showError(result.error || 'Erreur lors de la connexion');
+        }
+        
+    } catch (error) {
+        console.error('Error joining competition:', error);
+        showError('Erreur lors de la connexion à la compétition');
+    }
+}
+
+// FIXED: Continue competition
+async function continueCompetition(sessionId) {
+    currentCompetitionId = sessionId;
+    
+    // Hide competitions list and show competition interface
+    document.getElementById('available-competitions-container').style.display = 'none';
+    document.getElementById('competition-session-interface').classList.remove('hidden');
+    
+    await updateCompetitionStatus(sessionId);
+}
+
+// FIXED: Show waiting room
+function showWaitingRoom(sessionId) {
+    hideAllCompetitionScreens();
+    document.getElementById('waiting-room').classList.remove('hidden');
+    
+    // Start polling for status updates
+    startCompetitionPolling(sessionId);
+}
+
+// FIXED: Start competition session
+function startCompetitionSession(sessionId) {
+    hideAllCompetitionScreens();
+    
+    // Start status updates
+    startCompetitionPolling(sessionId);
+}
+
+// FIXED: Hide all competition screens
+function hideAllCompetitionScreens() {
+    const screens = ['waiting-room', 'station-interface', 'between-stations', 'final-results'];
+    screens.forEach(screenId => {
+        const element = document.getElementById(screenId);
+        if (element) {
+            element.classList.add('hidden');
+        }
+    });
+}
+
+// FIXED: Return to competitions
+function returnToCompetitions() {
+    stopCompetitionPolling();
+    hideAllCompetitionScreens();
+    
+    // Hide competition interface and show competitions list
+    document.getElementById('competition-session-interface').classList.add('hidden');
+    document.getElementById('available-competitions-container').style.display = 'block';
+    
+    currentCompetitionId = null;
+    currentStationData = null;
+    window.currentStationImages = null;
+    
+    // Reload competitions
+    loadAvailableCompetitions();
+}
+
+// FIXED: Update competition status
+async function updateCompetitionStatus(sessionId) {
+    try {
+        const response = await fetch(`/student/competition/${sessionId}/status`);
+        if (!response.ok) {
+            console.error('Failed to get competition status:', response.status);
+            return;
+        }
+        
+        const status = await response.json();
+        updateCompetitionInterface(status);
+        
+    } catch (error) {
+        console.error('Error updating competition status:', error);
+        // Don't show error to user for polling failures
+    }
+}
+// Helper functions
+function getStudentStatusDisplay(status) {
+    const statusMap = {
+        'registered': 'Inscrit',
+        'logged_in': 'Connecté',
+        'active': 'En cours',
+        'between_stations': 'Entre stations',
+        'completed': 'Terminé'
+    };
+    return statusMap[status] || status;
+}
+
+function showError(message) {
+    // Create a better error display
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-notification';
+    errorDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #f44336;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        z-index: 9999;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+    errorDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px;">&times;</button>
+        </div>
+    `;
+    
+    document.body.appendChild(errorDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (errorDiv.parentElement) {
+            errorDiv.remove();
+        }
+    }, 5000);
+}
+
+// FIXED: Show final results
+function showFinalResults(result) {
+    hideAllCompetitionScreens();
+    document.getElementById('final-results').classList.remove('hidden');
+    
+    // Update final scores and ranking
+    if (result.final_score !== undefined) {
+        document.getElementById('final-average-score').textContent = `${result.final_score}%`;
+    }
+    
+    if (result.rank !== undefined) {
+        document.getElementById('final-rank').textContent = result.rank;
+        document.getElementById('total-competitors').textContent = result.total_participants || 0;
+    }
+    
+    if (result.total_stations !== undefined) {
+        document.getElementById('total-stations-completed').textContent = result.total_stations;
+    }
+    
+    if (result.total_score !== undefined) {
+        document.getElementById('total-score-earned').textContent = result.total_score;
+    }
+    
+    // Display leaderboard
+    if (result.leaderboard) {
+        displayFinalLeaderboard(result.leaderboard);
+    }
+}
+
+// FIXED: Display final leaderboard
+function displayFinalLeaderboard(leaderboard) {
+    const container = document.getElementById('final-leaderboard');
+    
+    if (!container) return;
+    
+    let html = '<table class="leaderboard-table"><thead><tr>';
+    html += '<th>Rang</th><th>Étudiant</th><th>Score Moyen</th></tr></thead><tbody>';
+    
+    leaderboard.forEach(entry => {
+        html += `<tr>
+            <td>${entry.rank}</td>
+            <td>${entry.student_name}</td>
+            <td>${entry.average_score}%</td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+// Practice functions (preserved)
+function loadPracticeData() {
+    console.log('Loading practice data...');
+}
+
+function filterPracticeCases() {
+    const caseNumber = document.getElementById('case-number-search')?.value || '';
+    const specialty = document.getElementById('specialty-filter')?.value || '';
+    
+    const cases = document.querySelectorAll('.practice-case-card');
+    cases.forEach(caseCard => {
+        const cardCaseNumber = caseCard.dataset.case;
+        const cardSpecialty = caseCard.dataset.specialty;
+        
+        const matchesNumber = !caseNumber || cardCaseNumber.includes(caseNumber);
+        const matchesSpecialty = !specialty || cardSpecialty === specialty;
+        
+        if (matchesNumber && matchesSpecialty) {
+            caseCard.style.display = 'block';
+        } else {
+            caseCard.style.display = 'none';
+        }
+    });
+}
+
+function selectPracticeCase(caseNumber) {
+    startPracticeConsultation(caseNumber);
+}
+
+async function startPracticeConsultation(caseNumber) {
+    // Implementation for practice mode
+    console.log('Starting practice consultation for case:', caseNumber);
+}
+
+// Load student stats
+async function loadStudentStats() {
+    try {
+        const response = await fetch('/student/stats');
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Update overview stats
+            const totalWorkouts = document.getElementById('total-workouts');
+            const uniqueStations = document.getElementById('unique-stations-played');
+            const avgScore = document.getElementById('overall-average-score');
+            
+            if (totalWorkouts) totalWorkouts.textContent = data.total_workouts;
+            if (uniqueStations) uniqueStations.textContent = data.unique_stations;
+            if (avgScore) avgScore.textContent = data.average_score + '%';
+            
+            // Update performance table
+            const tableBody = document.getElementById('student-performance-table-body');
+            if (tableBody) {
+                tableBody.innerHTML = '';
+                
+                if (data.recent_performances && data.recent_performances.length > 0) {
+                    data.recent_performances.forEach(perf => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${perf.completed_at}</td>
+                            <td>${perf.case_number}</td>
+                            <td>${perf.specialty}</td>
+                            <td><span class="score-badge score-${getScoreClass(perf.score)}">${perf.score}%</span></td>
+                            <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
+                            <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
+                            <td>${perf.duration}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucune performance enregistrée</td></tr>';
+                }
+            }
+            
+            // Update practice stats
+            const attemptsCount = document.getElementById('my-attempts-count');
+            const bestScore = document.getElementById('my-best-score');
+            
+            if (attemptsCount) attemptsCount.textContent = data.total_workouts;
+            if (bestScore) bestScore.textContent = data.average_score + '%';
+        }
+    } catch (error) {
+        console.error('Error loading student stats:', error);
+    }
+}
+
+function getScoreClass(score) {
+    if (score >= 90) return 'excellent';
+    if (score >= 80) return 'good';
+    if (score >= 70) return 'average';
+    if (score >= 60) return 'below-average';
+    return 'poor';
+}
+
+// View competition results
+async function viewCompetitionResults(sessionId) {
+    try {
+        const response = await fetch(`/student/competition/${sessionId}/leaderboard`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Competition results:', data);
+            // Display results in a modal or redirect to results page
+        }
+    } catch (error) {
+        console.error('Error loading competition results:', error);
+    }
+}
+
+function downloadCompetitionReport() {
+    console.log('Download competition report - to be implemented');
+}
+    
 // Function to select a case programmatically
 function selectCase(caseNumber, specialty) {
     // Find the case card and select it
@@ -1366,6 +2267,22 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(loadStudentStats, 1000);
         }
     };
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStudentStats();
+    loadAvailableCompetitions();
+    
+    // Set up filter event listeners
+    const caseNumberSearch = document.getElementById('case-number-search');
+    const specialtyFilter = document.getElementById('specialty-filter');
+    
+    if (caseNumberSearch) {
+        caseNumberSearch.addEventListener('input', filterPracticeCases);
+    }
+    if (specialtyFilter) {
+        specialtyFilter.addEventListener('change', filterPracticeCases);
+    }
 });
 
 // Add CSS styles for the new elements

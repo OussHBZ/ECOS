@@ -6,6 +6,8 @@ let selectedStations = [];
 
 // Tab navigation for admin interface
 function showAdminTab(tabName) {
+    console.log('Showing admin tab:', tabName);
+    
     // Hide all tab contents
     document.querySelectorAll('.admin-tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -17,10 +19,18 @@ function showAdminTab(tabName) {
     });
     
     // Show selected tab
-    document.getElementById(tabName).classList.add('active');
+    const selectedTab = document.getElementById(tabName);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    } else {
+        console.error('Tab not found:', tabName);
+        return;
+    }
     
     // Add active class to clicked nav tab
-    event.target.classList.add('active');
+    if (event && event.target) {
+        event.target.classList.add('active');
+    }
     
     // Load content for specific tabs
     if (tabName === 'overview-tab') {
@@ -29,10 +39,669 @@ function showAdminTab(tabName) {
         loadAdminStations();
     } else if (tabName === 'students-tab') {
         loadAdminStudents();
-    } else if (tabName === 'sessions-tab') {
-        loadAdminSessions();
+    } else if (tabName === 'competition-sessions-tab') {
+        loadAdminCompetitionSessions();
     }
 }
+
+// Updated function for competition sessions
+async function loadAdminCompetitionSessions() {
+    try {
+        console.log('Loading admin competition sessions...');
+        
+        const response = await fetch('/admin/competition-sessions');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('Competition sessions data:', data);
+        
+        // Update stats
+        const totalSessionsElement = document.getElementById('total-sessions');
+        const scheduledSessionsElement = document.getElementById('scheduled-sessions');
+        const activeSessionsElement = document.getElementById('active-sessions');
+        
+        if (totalSessionsElement) totalSessionsElement.textContent = data.total;
+        if (scheduledSessionsElement) scheduledSessionsElement.textContent = data.scheduled;
+        if (activeSessionsElement) activeSessionsElement.textContent = data.active;
+        
+        // Update table
+        const tableBody = document.getElementById('competition-sessions-table-body');
+        if (!tableBody) {
+            console.error('Competition sessions table body not found');
+            return;
+        }
+        
+        tableBody.innerHTML = '';
+        
+        if (data.sessions.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Aucune session de compétition trouvée</td></tr>';
+        } else {
+            data.sessions.forEach(session => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${session.name}</td>
+                    <td>${session.start_time}</td>
+                    <td>${session.end_time}</td>
+                    <td><span class="participant-badge">${session.participant_count}</span></td>
+                    <td><span class="station-badge">${session.station_count}</span></td>
+                    <td><span class="setting-badge">${session.stations_per_session}</span></td>
+                    <td><span class="time-badge">${session.time_per_station}min</span></td>
+                    <td><span class="status-badge status-${session.status}">${session.status_display}</span></td>
+                    <td>
+                        <button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>
+                        ${session.status === 'scheduled' && session.can_start ? 
+                            `<button class="start-button" onclick="startCompetition(${session.id})">Démarrer</button>` : ''}
+                        ${session.status === 'scheduled' ? 
+                            `<button class="edit-button" onclick="editCompetitionSession(${session.id})">Modifier</button>` : ''}
+                        <button class="delete-button" onclick="deleteCompetitionSession(${session.id})">Supprimer</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        console.log('Competition sessions loaded successfully');
+        
+    } catch (error) {
+        console.error('Error loading admin competition sessions:', error);
+        const tableBody = document.getElementById('competition-sessions-table-body');
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red;">Erreur lors du chargement: ${error.message}</td></tr>`;
+        }
+    }
+}
+
+// View competition session details
+async function viewCompetitionSessionDetails(sessionId) {
+    try {
+        console.log(`Viewing competition session details for ID: ${sessionId}`);
+        
+        const response = await fetch(`/admin/competition-sessions/${sessionId}`);
+        if (!response.ok) {
+            throw new Error('Failed to load session details');
+        }
+        
+        const sessionData = await response.json();
+        
+        // Create session details HTML
+        let detailsHTML = `
+            <div class="competition-session-details">
+                <h4>${sessionData.name}</h4>
+                <p><strong>Description:</strong> ${sessionData.description || 'Aucune description'}</p>
+                <p><strong>Début:</strong> ${sessionData.start_time}</p>
+                <p><strong>Fin:</strong> ${sessionData.end_time}</p>
+                <p><strong>Statut:</strong> <span class="status-badge status-${sessionData.status}">${sessionData.status_display}</span></p>
+                
+                <div class="competition-settings">
+                    <h5>Paramètres de la Compétition</h5>
+                    <p><strong>Stations par session:</strong> ${sessionData.stations_per_session}</p>
+                    <p><strong>Temps par station:</strong> ${sessionData.time_per_station} minutes</p>
+                    <p><strong>Temps entre stations:</strong> ${sessionData.time_between_stations} minutes</p>
+                    <p><strong>Stations aléatoires:</strong> ${sessionData.randomize_stations ? 'Oui' : 'Non'}</p>
+                </div>
+                
+                <h5>Participants (${sessionData.participants.length})</h5>
+                <div class="participants-list">`;
+        
+        if (sessionData.participants.length > 0) {
+            sessionData.participants.forEach(participant => {
+                detailsHTML += `
+                    <div class="participant-item">
+                        <strong>${participant.name}</strong> (${participant.student_code})
+                        <small>Statut: ${getStatusDisplay(participant.status)} | 
+                               Station: ${participant.current_station}/${sessionData.stations_per_session} | 
+                               Progrès: ${participant.progress}%</small>
+                    </div>`;
+            });
+        } else {
+            detailsHTML += '<p>Aucun participant</p>';
+        }
+        
+        detailsHTML += `</div>
+                <h5>Banque de Stations (${sessionData.stations.length})</h5>
+                <div class="stations-list">`;
+        
+        if (sessionData.stations.length > 0) {
+            sessionData.stations.forEach(station => {
+                detailsHTML += `
+                    <div class="station-item">
+                        <strong>Station ${station.case_number}</strong> - ${station.specialty}
+                        <small>Durée: ${station.consultation_time} min</small>
+                    </div>`;
+            });
+        } else {
+            detailsHTML += '<p>Aucune station assignée</p>';
+        }
+        
+        detailsHTML += '</div>';
+        
+        // Add leaderboard if available
+        if (sessionData.leaderboard && sessionData.leaderboard.length > 0) {
+            detailsHTML += `
+                <h5>Classement</h5>
+                <div class="leaderboard">
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rang</th>
+                                <th>Étudiant</th>
+                                <th>Score Moyen</th>
+                                <th>Stations Complétées</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+            
+            sessionData.leaderboard.slice(0, 10).forEach(entry => {
+                detailsHTML += `
+                    <tr>
+                        <td>${entry.rank}</td>
+                        <td>${entry.student_name} (${entry.student_code})</td>
+                        <td>${entry.average_score}%</td>
+                        <td>${entry.stations_completed}</td>
+                    </tr>`;
+            });
+            
+            detailsHTML += '</tbody></table></div>';
+        }
+        
+        detailsHTML += '</div>';
+        
+        // Show in modal
+        let modal = document.getElementById('competition-session-details-modal');
+        if (!modal) {
+            modal = createCompetitionSessionDetailsModal();
+        }
+        
+        document.getElementById('competition-session-details-content').innerHTML = detailsHTML;
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
+        
+    } catch (error) {
+        console.error('Error viewing competition session details:', error);
+        alert('Erreur lors du chargement des détails de la session de compétition');
+    }
+}
+
+// Start competition
+async function startCompetition(sessionId) {
+    if (!confirm('Êtes-vous sûr de vouloir démarrer cette compétition ? Cette action est irréversible.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/competition-sessions/${sessionId}/start`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+            loadAdminCompetitionSessions(); // Refresh sessions list
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error starting competition:', error);
+        alert('Erreur lors du démarrage de la compétition');
+    }
+}
+
+// Edit competition session
+async function editCompetitionSession(sessionId) {
+    try {
+        console.log(`Editing competition session ID: ${sessionId}`);
+        
+        // Load current session data
+        const response = await fetch(`/admin/competition-sessions/${sessionId}/edit`);
+        if (!response.ok) {
+            throw new Error('Failed to load session data for editing');
+        }
+        
+        const sessionData = await response.json();
+        
+        // Populate the create competition session modal with existing data
+        document.getElementById('competition-session-name').value = sessionData.name;
+        document.getElementById('competition-session-description').value = sessionData.description || '';
+        document.getElementById('competition-session-start').value = sessionData.start_time.slice(0, 16);
+        document.getElementById('competition-session-end').value = sessionData.end_time.slice(0, 16);
+        document.getElementById('stations-per-session').value = sessionData.stations_per_session;
+        document.getElementById('time-per-station').value = sessionData.time_per_station;
+        document.getElementById('time-between-stations').value = sessionData.time_between_stations;
+        document.getElementById('randomize-stations').checked = sessionData.randomize_stations;
+        
+        // Load available students and stations
+        await loadAvailableStudents();
+        await loadAvailableStations();
+        
+        // Pre-select participants
+        selectedStudents = availableStudents.filter(student => 
+            sessionData.participants.includes(student.id)
+        );
+        
+        // Pre-select stations
+        selectedStations = availableStations.filter(station => 
+            sessionData.stations.includes(station.case_number)
+        );
+        
+        updateSelectedStudentsList();
+        updateSelectedStationsList();
+        
+        // Change form behavior for editing
+        const form = document.getElementById('create-competition-session-form');
+        form.dataset.editMode = 'true';
+        form.dataset.sessionId = sessionId;
+        
+        // Change modal title
+        const modalTitle = document.querySelector('#create-competition-session-modal h3');
+        modalTitle.textContent = 'Modifier la Session de Compétition';
+        
+        // Change submit button text
+        const submitButton = document.querySelector('#create-competition-session-form button[type="submit"]');
+        submitButton.textContent = 'Mettre à jour la Session';
+        
+        // Show modal
+        document.getElementById('create-competition-session-modal').classList.remove('hidden');
+        document.getElementById('create-competition-session-modal').classList.add('visible');
+        
+    } catch (error) {
+        console.error('Error editing competition session:', error);
+        alert('Erreur lors du chargement des données de la session');
+    }
+}
+
+// Delete competition session
+async function deleteCompetitionSession(sessionId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette session de compétition ? Cette action est irréversible.')) {
+        return;
+    }
+    
+    try {
+        console.log(`Deleting competition session ID: ${sessionId}`);
+        
+        const response = await fetch(`/admin/competition-sessions/${sessionId}/delete`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+            loadAdminCompetitionSessions(); // Refresh sessions list
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error deleting competition session:', error);
+        alert('Erreur lors de la suppression de la session de compétition');
+    }
+}
+
+// Open create competition session modal
+function openCreateCompetitionSessionModal() {
+    console.log('Opening create competition session modal...');
+    
+    // Reset form to creation mode
+    const form = document.getElementById('create-competition-session-form');
+    if (form) {
+        form.reset();
+        delete form.dataset.editMode;
+        delete form.dataset.sessionId;
+    }
+    
+    // Reset modal title and button text
+    const modalTitle = document.querySelector('#create-competition-session-modal h3');
+    if (modalTitle) {
+        modalTitle.textContent = 'Créer une Nouvelle Session de Compétition';
+    }
+    
+    const submitButton = document.querySelector('#create-competition-session-form button[type="submit"]');
+    if (submitButton) {
+        submitButton.textContent = 'Créer la Session';
+    }
+    
+    // Reset selections
+    selectedStudents = [];
+    selectedStations = [];
+    
+    // Load data
+    loadAvailableStudents();
+    loadAvailableStations();
+    
+    // Show modal
+    const modal = document.getElementById('create-competition-session-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
+        console.log('Modal opened successfully');
+    } else {
+        console.error('Create competition session modal not found!');
+    }
+}
+
+
+// Close create competition session modal
+function closeCreateCompetitionSessionModal() {
+    const modal = document.getElementById('create-competition-session-modal');
+    const form = document.getElementById('create-competition-session-form');
+    
+    // Reset edit mode
+    delete form.dataset.editMode;
+    delete form.dataset.sessionId;
+    
+    // Reset modal title
+    const modalTitle = document.querySelector('#create-competition-session-modal h3');
+    modalTitle.textContent = 'Créer une Nouvelle Session de Compétition';
+    
+    // Reset submit button text
+    const submitButton = document.querySelector('#create-competition-session-form button[type="submit"]');
+    submitButton.textContent = 'Créer la Session';
+    
+    // Hide modal and reset form
+    modal.classList.remove('visible');
+    modal.classList.add('hidden');
+    form.reset();
+    selectedStudents = [];
+    selectedStations = [];
+    updateSelectedStudentsList();
+    updateSelectedStationsList();
+}
+
+// Create competition session details modal if it doesn't exist
+function createCompetitionSessionDetailsModal() {
+    const modalHTML = `
+        <div id="competition-session-details-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-modal">&times;</span>
+                <h3>Détails de la Session de Compétition</h3>
+                <div id="competition-session-details-content"></div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    // Add close functionality
+    const modal = document.getElementById('competition-session-details-modal');
+    const closeBtn = modal.querySelector('.close-modal');
+    closeBtn.addEventListener('click', () => {
+        modal.classList.remove('visible');
+        modal.classList.add('hidden');
+    });
+    
+    return modal;
+}
+
+// Create competition session
+async function createCompetitionSession(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const isEditMode = form.dataset.editMode === 'true';
+    const sessionId = form.dataset.sessionId;
+    
+    console.log(isEditMode ? 'Updating competition session...' : 'Creating competition session...');
+    
+    const formData = new FormData(form);
+    
+    // Validate required fields
+    const sessionName = formData.get('session_name');
+    const startTime = formData.get('start_time');
+    const endTime = formData.get('end_time');
+    const stationsPerSession = formData.get('stations_per_session');
+    const timePerStation = formData.get('time_per_station');
+    
+    if (!sessionName || !startTime || !endTime || !stationsPerSession || !timePerStation) {
+        alert('Veuillez remplir tous les champs obligatoires');
+        return;
+    }
+    
+    if (selectedStudents.length === 0) {
+        alert('Veuillez sélectionner au moins un participant');
+        return;
+    }
+    
+    if (selectedStations.length === 0) {
+        alert('Veuillez sélectionner au moins une station');
+        return;
+    }
+    
+    if (selectedStations.length < parseInt(stationsPerSession)) {
+        alert(`La banque de stations doit contenir au moins ${stationsPerSession} stations`);
+        return;
+    }
+    
+    // Format datetime for backend
+    const startDateTime = new Date(startTime).toISOString();
+    const endDateTime = new Date(endTime).toISOString();
+    
+    const sessionData = {
+        name: sessionName,
+        description: formData.get('session_description') || '',
+        start_time: startDateTime,
+        end_time: endDateTime,
+        stations_per_session: parseInt(stationsPerSession),
+        time_per_station: parseInt(timePerStation),
+        time_between_stations: parseInt(formData.get('time_between_stations') || 2),
+        randomize_stations: formData.get('randomize_stations') === 'on',
+        participants: selectedStudents.map(s => s.id),
+        stations: selectedStations.map(s => s.case_number)
+    };
+    
+    console.log('Competition session data to send:', sessionData);
+    
+    try {
+        const url = isEditMode ? `/admin/competition-sessions/${sessionId}/edit` : '/admin/create-competition-session';
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(sessionData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            const message = isEditMode ? 'Session de compétition mise à jour avec succès!' : `Session de compétition créée avec succès! ID: ${result.session_id}`;
+            alert(message);
+            closeCreateCompetitionSessionModal();
+            loadAdminCompetitionSessions(); // Refresh sessions list
+        } else {
+            console.error('Error response:', result);
+            alert(`Erreur: ${result.error || 'Erreur inconnue'}`);
+        }
+        
+    } catch (error) {
+        console.error('Network or parsing error:', error);
+        alert('Erreur de connexion lors de la création/modification de la session de compétition');
+    }
+}
+
+// Helper function to get status display in French
+function getStatusDisplay(status) {
+    const statusMap = {
+        'registered': 'Inscrit',
+        'logged_in': 'Connecté',
+        'active': 'En cours',
+        'between_stations': 'Entre stations',
+        'completed': 'Terminé'
+    };
+    return statusMap[status] || status;
+}
+
+// Add CSS styles for competition sessions
+const competitionStyles = `
+/* Competition Session Styles */
+.competition-session-details {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.competition-settings {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 15px 0;
+}
+
+.competition-settings h5 {
+    margin-top: 0;
+    color: #ff7e5f;
+}
+
+.participants-list,
+.stations-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 10px 0;
+    background: #f9f9f9;
+}
+
+.participant-item,
+.station-item {
+    padding: 8px;
+    margin-bottom: 8px;
+    background: white;
+    border-radius: 4px;
+    border-left: 3px solid #2196F3;
+}
+
+.participant-item small,
+.station-item small {
+    display: block;
+    color: #666;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.leaderboard {
+    margin: 15px 0;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.leaderboard-table th {
+    background: linear-gradient(135deg, #ff7e5f, #feb47b);
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-weight: bold;
+}
+
+.leaderboard-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.leaderboard-table tr:hover {
+    background: #f8f9fa;
+}
+
+/* Competition Session Form Styles */
+.competition-form-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    border-left: 4px solid #ff7e5f;
+}
+
+.competition-form-section h4 {
+    margin-top: 0;
+    color: #ff7e5f;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.form-group-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.form-group-inline input[type="checkbox"] {
+    transform: scale(1.2);
+}
+
+/* Badge styles for competition */
+.setting-badge {
+    background: #E8F5E8;
+    color: #2E7D32;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.time-badge {
+    background: #FFF3E0;
+    color: #EF6C00;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.start-button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+}
+
+.start-button:hover {
+    background: #45a049;
+}
+
+/* Responsive design for competition */
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .competition-settings {
+        padding: 10px;
+    }
+    
+    .leaderboard-table {
+        font-size: 12px;
+    }
+    
+    .leaderboard-table th,
+    .leaderboard-table td {
+        padding: 8px;
+    }
+}
+`;
+
+// Add the competition styles to the document
+const competitionStyleSheet = document.createElement('style');
+competitionStyleSheet.textContent = competitionStyles;
+document.head.appendChild(competitionStyleSheet);
 
 // Load overview data
 async function loadOverviewData() {
@@ -917,6 +1586,59 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Admin interface initialized');
+    
+    // Load overview data by default
+    loadOverviewData();
+    
+    // Set up event listeners
+    const form = document.getElementById('create-competition-session-form');
+    if (form) {
+        form.addEventListener('submit', createCompetitionSession);
+    }
+    
+    // Close modal functionality
+    document.querySelectorAll('.close-modal').forEach(closeBtn => {
+        closeBtn.addEventListener('click', function() {
+            const modal = this.closest('.modal');
+            if (modal) {
+                modal.classList.remove('visible');
+                modal.classList.add('hidden');
+            }
+        });
+    });
+    
+    // Close modals when clicking outside
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('visible');
+            e.target.classList.add('hidden');
+        }
+    });
+});
+
+// Debug function to check if everything is loaded correctly
+function debugAdminInterface() {
+    console.log('=== ADMIN INTERFACE DEBUG ===');
+    console.log('Competition sessions table:', document.getElementById('competition-sessions-table-body'));
+    console.log('Create session modal:', document.getElementById('create-competition-session-modal'));
+    console.log('Create session form:', document.getElementById('create-competition-session-form'));
+    console.log('Available students list:', document.getElementById('available-students-list'));
+    console.log('Selected students list:', document.getElementById('selected-students-list'));
+    console.log('Available stations list:', document.getElementById('available-stations-list'));
+    console.log('Selected stations list:', document.getElementById('selected-stations-list'));
+    console.log('Tab elements:', {
+        overviewTab: document.getElementById('overview-tab'),
+        stationsTab: document.getElementById('stations-tab'),
+        studentsTab: document.getElementById('students-tab'),
+        competitionSessionsTab: document.getElementById('competition-sessions-tab')
+    });
+}
+
+// Make debug function available globally
+window.debugAdminInterface = debugAdminInterface;
 
 // Add CSS styles for admin interface
 const adminStyles = `

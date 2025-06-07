@@ -15,7 +15,12 @@ from simple_pdf_generator import create_simple_consultation_pdf
 from flask_login import LoginManager, login_required, current_user
 from models import db, Student, AdminAccess, OSCESession, SessionParticipant, SessionStationAssignment
 from auth import auth_bp, student_required, teacher_required, admin_required
-from models import db, Student, TeacherAccess, PatientCase, StudentPerformance, CaseImage
+from models import (
+    db, Student, TeacherAccess, AdminAccess, PatientCase, StudentPerformance, CaseImage,
+    CompetitionSession, CompetitionParticipant, CompetitionStationBank, 
+    StudentCompetitionSession, StudentStationAssignment
+)
+
 
 import time
 import concurrent.futures
@@ -73,6 +78,22 @@ def create_app():
     # Create tables if they don't exist
     with app.app_context():
         db.create_all()
+        
+        # Check if competition tables exist, if not create them
+        inspector = db.inspect(db.engine)
+        existing_tables = inspector.get_table_names()
+        
+        competition_tables = [
+            'competition_sessions', 'competition_participants', 
+            'competition_station_bank', 'student_competition_sessions', 
+            'student_station_assignments'
+        ]
+        
+        missing_tables = [table for table in competition_tables if table not in existing_tables]
+        
+        if missing_tables:
+            logger.info(f"Creating missing competition tables: {missing_tables}")
+            db.create_all()
 
     # Create upload folder if it doesn't exist
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
@@ -875,22 +896,305 @@ def create_app():
             logger.error(f"Error getting session details: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
-    @app.route('/admin/sessions/<int:session_id>/edit', methods=['GET', 'POST'])
+    @app.route('/admin/competition-sessions')
     @admin_required
-    def admin_edit_session(session_id):
-        """Edit an existing session"""
+    def admin_competition_sessions():
+        """Get competition sessions for admin management"""
         try:
-            session = OSCESession.query.get_or_404(session_id)
+            sessions = CompetitionSession.query.order_by(CompetitionSession.created_at.desc()).all()
+            
+            session_data = []
+            total_sessions = len(sessions)
+            scheduled_count = 0
+            active_count = 0
+            
+            for session in sessions:
+                if session.status == 'scheduled':
+                    scheduled_count += 1
+                elif session.status == 'active':
+                    active_count += 1
+                
+                # Fixed: Get logged in count properly
+                logged_in_count = StudentCompetitionSession.query.filter_by(
+                    session_id=session.id, 
+                    status='logged_in'
+                ).count()
+                
+                # Fixed: Get active students count properly
+                active_students = StudentCompetitionSession.query.filter(
+                    StudentCompetitionSession.session_id == session.id,
+                    StudentCompetitionSession.status.in_(['active', 'between_stations'])
+                ).count()
+                
+                # Fixed: Get completed students count properly
+                completed_students = StudentCompetitionSession.query.filter_by(
+                    session_id=session.id, 
+                    status='completed'
+                ).count()
+                
+                session_data.append({
+                    'id': session.id,
+                    'name': session.name,
+                    'start_time': session.start_time.strftime('%d/%m/%Y %H:%M'),
+                    'end_time': session.end_time.strftime('%d/%m/%Y %H:%M'),
+                    'participant_count': session.get_participant_count(),
+                    'station_count': session.get_assigned_stations_count(),
+                    'stations_per_session': session.stations_per_session,
+                    'time_per_station': session.time_per_station,
+                    'time_between_stations': session.time_between_stations,
+                    'logged_in_count': logged_in_count,
+                    'active_students': active_students,
+                    'completed_students': completed_students,
+                    'status': session.status,
+                    'status_display': session.get_status_display(),
+                    'can_start': session.can_start_competition()
+                })
+            
+            return jsonify({
+                'sessions': session_data,
+                'total': total_sessions,
+                'scheduled': scheduled_count,
+                'active': active_count
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting admin competition sessions: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route('/admin/competition-sessions/<int:session_id>')
+    @admin_required
+    def admin_view_competition_session_details(session_id):
+        """View detailed information about a specific competition session"""
+        try:
+            session = CompetitionSession.query.get_or_404(session_id)
+            
+            # Get participants
+            participants = db.session.query(
+                CompetitionParticipant, Student
+            ).join(Student).filter(
+                CompetitionParticipant.session_id == session_id
+            ).all()
+            
+            participant_data = []
+            for participant, student in participants:
+                # Get student session status
+                student_session = StudentCompetitionSession.query.filter_by(
+                    session_id=session_id,
+                    student_id=student.id
+                ).first()
+                
+                participant_data.append({
+                    'id': student.id,
+                    'name': student.name,
+                    'student_code': student.student_code,
+                    'added_at': participant.added_at.strftime('%d/%m/%Y %H:%M'),
+                    'status': student_session.status if student_session else 'registered',
+                    'current_station': student_session.current_station_order if student_session else 0,
+                    'progress': student_session.get_progress_percentage() if student_session else 0,
+                    'score': student_session.get_average_score() if student_session else 0
+                })
+            
+            # Get assigned stations
+            stations = db.session.query(
+                CompetitionStationBank, PatientCase
+            ).join(PatientCase).filter(
+                CompetitionStationBank.session_id == session_id
+            ).all()
+            
+            station_data = []
+            for assignment, case in stations:
+                station_data.append({
+                    'case_number': case.case_number,
+                    'specialty': case.specialty,
+                    'consultation_time': case.consultation_time,
+                    'assigned_at': assignment.added_at.strftime('%d/%m/%Y %H:%M')
+                })
+            
+            # Get leaderboard if session is completed
+            leaderboard = []
+            if session.status in ['active', 'completed']:
+                leaderboard = session.get_leaderboard()
+            
+            session_data = {
+                'id': session.id,
+                'name': session.name,
+                'description': session.description,
+                'start_time': session.start_time.strftime('%d/%m/%Y %H:%M'),
+                'end_time': session.end_time.strftime('%d/%m/%Y %H:%M'),
+                'status': session.status,
+                'status_display': session.get_status_display(),
+                'created_at': session.created_at.strftime('%d/%m/%Y %H:%M'),
+                'created_by': session.created_by,
+                'stations_per_session': session.stations_per_session,
+                'time_per_station': session.time_per_station,
+                'time_between_stations': session.time_between_stations,
+                'randomize_stations': session.randomize_stations,
+                'participants': participant_data,
+                'stations': station_data,
+                'leaderboard': leaderboard,
+                'can_start': session.can_start_competition()
+            }
+            
+            return jsonify(session_data)
+            
+        except Exception as e:
+            logger.error(f"Error getting competition session details: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+
+    @app.route('/admin/create-competition-session', methods=['POST'])
+    @admin_required
+    def admin_create_competition_session():
+        """Create a new competition session"""
+        try:
+            data = request.get_json()
+            logger.info(f"Received competition session creation request: {data}")
+            
+            if not data:
+                return jsonify({"error": "No data received", "success": False}), 400
+            
+            # Validate required fields
+            required_fields = ['name', 'start_time', 'end_time', 'stations_per_session', 'time_per_station']
+            missing_fields = [field for field in required_fields if not data.get(field)]
+            
+            if missing_fields:
+                error_msg = f"Missing required fields: {', '.join(missing_fields)}"
+                return jsonify({"error": error_msg, "success": False}), 400
+            
+            # Validate datetime format
+            try:
+                start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
+            except ValueError as e:
+                return jsonify({"error": f"Invalid datetime format: {str(e)}", "success": False}), 400
+            
+            # Validate time logic
+            if start_time >= end_time:
+                return jsonify({"error": "Start time must be before end time", "success": False}), 400
+            
+            # Validate numeric fields
+            try:
+                stations_per_session = int(data['stations_per_session'])
+                time_per_station = int(data['time_per_station'])
+                time_between_stations = int(data.get('time_between_stations', 2))
+                
+                if stations_per_session < 1 or time_per_station < 1 or time_between_stations < 0:
+                    return jsonify({"error": "Invalid numeric values", "success": False}), 400
+                    
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid numeric values", "success": False}), 400
+            
+            # Validate participants and stations
+            participant_ids = data.get('participants', [])
+            station_numbers = data.get('stations', [])
+            
+            if not participant_ids:
+                return jsonify({"error": "At least one participant is required", "success": False}), 400
+                
+            if not station_numbers:
+                return jsonify({"error": "At least one station is required", "success": False}), 400
+                
+            if len(station_numbers) < stations_per_session:
+                return jsonify({"error": f"Station bank must have at least {stations_per_session} stations", "success": False}), 400
+            
+            # Validate participants exist
+            existing_students = Student.query.filter(Student.id.in_(participant_ids)).all()
+            if len(existing_students) != len(participant_ids):
+                return jsonify({"error": "Some student IDs are invalid", "success": False}), 400
+            
+            # Validate stations exist
+            existing_cases = PatientCase.query.filter(PatientCase.case_number.in_(station_numbers)).all()
+            if len(existing_cases) != len(station_numbers):
+                return jsonify({"error": "Some station numbers are invalid", "success": False}), 400
+            
+            # Create competition session
+            session = CompetitionSession(
+                name=data['name'],
+                description=data.get('description', ''),
+                start_time=start_time,
+                end_time=end_time,
+                created_by='admin',
+                status='scheduled',
+                stations_per_session=stations_per_session,
+                time_per_station=time_per_station,
+                time_between_stations=time_between_stations,
+                randomize_stations=data.get('randomize_stations', True)
+            )
+            
+            db.session.add(session)
+            db.session.flush()
+            
+            # Add participants
+            for student_id in participant_ids:
+                participant = CompetitionParticipant(
+                    session_id=session.id,
+                    student_id=student_id
+                )
+                db.session.add(participant)
+                
+                # Create student session record
+                student_session = StudentCompetitionSession(
+                    session_id=session.id,
+                    student_id=student_id,
+                    status='registered'
+                )
+                db.session.add(student_session)
+            
+            # Add stations to bank
+            for case_number in station_numbers:
+                station = CompetitionStationBank(
+                    session_id=session.id,
+                    case_number=case_number
+                )
+                db.session.add(station)
+            
+            db.session.commit()
+            
+            return jsonify({
+                "success": True, 
+                "session_id": session.id,
+                "participants_added": len(participant_ids),
+                "stations_added": len(station_numbers)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error creating competition session: {str(e)}", exc_info=True)
+            db.session.rollback()
+            return jsonify({"error": f"Internal server error: {str(e)}", "success": False}), 500
+
+    @app.route('/admin/competition-sessions/<int:session_id>/start', methods=['POST'])
+    @admin_required
+    def admin_start_competition(session_id):
+        """Start a competition session"""
+        try:
+            session = CompetitionSession.query.get_or_404(session_id)
+            
+            if session.status != 'scheduled':
+                return jsonify({"error": "Competition can only be started from scheduled status", "success": False}), 400
+            
+            if not session.can_start_competition():
+                return jsonify({"error": "Not all participants are logged in or insufficient stations", "success": False}), 400
+            
+            if session.start_competition():
+                return jsonify({"success": True, "message": "Competition started successfully"})
+            else:
+                return jsonify({"error": "Failed to start competition", "success": False}), 500
+                
+        except Exception as e:
+            logger.error(f"Error starting competition: {str(e)}")
+            return jsonify({"error": str(e), "success": False}), 500
+
+    @app.route('/admin/competition-sessions/<int:session_id>/edit', methods=['GET', 'POST'])
+    @admin_required
+    def admin_edit_competition_session(session_id):
+        """Edit an existing competition session"""
+        try:
+            session = CompetitionSession.query.get_or_404(session_id)
             
             if request.method == 'GET':
                 # Return current session data for editing
-                participants = db.session.query(
-                    SessionParticipant.student_id
-                ).filter(SessionParticipant.session_id == session_id).all()
-                
-                stations = db.session.query(
-                    SessionStationAssignment.case_number
-                ).filter(SessionStationAssignment.session_id == session_id).all()
+                participants = [p.student_id for p in session.participants]
+                stations = [s.case_number for s in session.station_assignments]
                 
                 return jsonify({
                     'id': session.id,
@@ -899,13 +1203,20 @@ def create_app():
                     'start_time': session.start_time.isoformat(),
                     'end_time': session.end_time.isoformat(),
                     'status': session.status,
-                    'participants': [p.student_id for p in participants],
-                    'stations': [s.case_number for s in stations]
+                    'stations_per_session': session.stations_per_session,
+                    'time_per_station': session.time_per_station,
+                    'time_between_stations': session.time_between_stations,
+                    'randomize_stations': session.randomize_stations,
+                    'participants': participants,
+                    'stations': stations
                 })
             
             elif request.method == 'POST':
-                # Update session
                 data = request.get_json()
+                
+                # Don't allow editing active competitions
+                if session.status == 'active':
+                    return jsonify({"error": "Cannot edit active competition", "success": False}), 400
                 
                 # Update basic info
                 session.name = data.get('name', session.name)
@@ -916,72 +1227,407 @@ def create_app():
                 if data.get('end_time'):
                     session.end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
                 
+                # Update competition settings
+                if 'stations_per_session' in data:
+                    session.stations_per_session = int(data['stations_per_session'])
+                if 'time_per_station' in data:
+                    session.time_per_station = int(data['time_per_station'])
+                if 'time_between_stations' in data:
+                    session.time_between_stations = int(data['time_between_stations'])
+                if 'randomize_stations' in data:
+                    session.randomize_stations = bool(data['randomize_stations'])
+                
                 # Update participants
                 if 'participants' in data:
-                    # Remove existing participants
-                    SessionParticipant.query.filter_by(session_id=session_id).delete()
+                    # Remove existing participants and student sessions
+                    CompetitionParticipant.query.filter_by(session_id=session_id).delete()
+                    StudentCompetitionSession.query.filter_by(session_id=session_id).delete()
                     
                     # Add new participants
                     for student_id in data['participants']:
-                        participant = SessionParticipant(
+                        participant = CompetitionParticipant(
                             session_id=session_id,
                             student_id=student_id
                         )
                         db.session.add(participant)
+                        
+                        student_session = StudentCompetitionSession(
+                            session_id=session_id,
+                            student_id=student_id,
+                            status='registered'
+                        )
+                        db.session.add(student_session)
                 
                 # Update stations
                 if 'stations' in data:
-                    # Remove existing station assignments
-                    SessionStationAssignment.query.filter_by(session_id=session_id).delete()
+                    CompetitionStationBank.query.filter_by(session_id=session_id).delete()
                     
-                    # Add new station assignments
-                    for i, case_number in enumerate(data['stations']):
-                        assignment = SessionStationAssignment(
+                    for case_number in data['stations']:
+                        station = CompetitionStationBank(
                             session_id=session_id,
-                            case_number=case_number,
-                            station_order=i + 1
+                            case_number=case_number
                         )
-                        db.session.add(assignment)
+                        db.session.add(station)
                 
                 db.session.commit()
                 
-                return jsonify({"success": True, "message": "Session updated successfully"})
+                return jsonify({"success": True, "message": "Competition session updated successfully"})
             
         except Exception as e:
-            logger.error(f"Error editing session: {str(e)}")
+            logger.error(f"Error editing competition session: {str(e)}")
             db.session.rollback()
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": str(e), "success": False}), 500
 
-    @app.route('/admin/sessions/<int:session_id>/delete', methods=['DELETE'])
+    @app.route('/admin/competition-sessions/<int:session_id>/delete', methods=['DELETE'])
     @admin_required
-    def admin_delete_session(session_id):
-        """Delete a session"""
+    def admin_delete_competition_session(session_id):
+        """Delete a competition session"""
         try:
-            session = OSCESession.query.get_or_404(session_id)
+            session = CompetitionSession.query.get_or_404(session_id)
             
-            # Check if session can be deleted (not active)
             if session.status == 'active':
                 return jsonify({
-                    "error": "Cannot delete an active session", 
+                    "error": "Cannot delete an active competition session", 
                     "success": False
                 }), 400
             
-            # Delete related records (cascade should handle this, but being explicit)
-            SessionParticipant.query.filter_by(session_id=session_id).delete()
-            SessionStationAssignment.query.filter_by(session_id=session_id).delete()
-            
-            # Delete the session
+            session_name = session.name
             db.session.delete(session)
             db.session.commit()
             
             return jsonify({
                 "success": True, 
-                "message": f"Session '{session.name}' deleted successfully"
+                "message": f"Competition session '{session_name}' deleted successfully"
             })
             
         except Exception as e:
-            logger.error(f"Error deleting session: {str(e)}")
+            logger.error(f"Error deleting competition session: {str(e)}")
             db.session.rollback()
+            return jsonify({"error": str(e), "success": False}), 500
+
+    # Student routes for competition participation
+    @app.route('/student/available-competitions')
+    @student_required
+    def student_available_competitions():
+        """Get available competition sessions for the current student"""
+        try:
+            # Find sessions where this student is a participant
+            participant_sessions = db.session.query(
+                CompetitionSession, CompetitionParticipant, StudentCompetitionSession
+            ).join(
+                CompetitionParticipant, CompetitionSession.id == CompetitionParticipant.session_id
+            ).outerjoin(
+                StudentCompetitionSession, 
+                db.and_(
+                    StudentCompetitionSession.session_id == CompetitionSession.id,
+                    StudentCompetitionSession.student_id == current_user.id
+                )
+            ).filter(
+                CompetitionParticipant.student_id == current_user.id,
+                CompetitionSession.status.in_(['scheduled', 'active'])  # Fixed: use .in_() instead of .in_
+            ).all()
+            
+            competitions = []
+            for session, participant, student_session in participant_sessions:
+                competition_data = {
+                    'id': session.id,
+                    'name': session.name,
+                    'description': session.description,
+                    'start_time': session.start_time.strftime('%d/%m/%Y %H:%M'),
+                    'end_time': session.end_time.strftime('%d/%m/%Y %H:%M'),
+                    'status': session.status,
+                    'status_display': session.get_status_display(),
+                    'stations_per_session': session.stations_per_session,
+                    'time_per_station': session.time_per_station,
+                    'time_between_stations': session.time_between_stations,
+                    'participant_count': session.get_participant_count(),
+                    'logged_in_count': session.get_logged_in_count(),
+                    'can_join': session.status == 'scheduled',
+                    'can_continue': session.status == 'active',
+                    'student_status': student_session.status if student_session else 'registered',
+                    'current_station': student_session.current_station_order if student_session else 0,
+                    'progress': student_session.get_progress_percentage() if student_session else 0
+                }
+                competitions.append(competition_data)
+            
+            return jsonify({'competitions': competitions})
+            
+        except Exception as e:
+            logger.error(f"Error getting available competitions: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route('/student/join-competition/<int:session_id>', methods=['POST'])
+    @student_required
+    def student_join_competition(session_id):
+        """Student joins/logs into a competition session"""
+        try:
+            session = CompetitionSession.query.get_or_404(session_id)
+            
+            # Check if student is a participant
+            participant = CompetitionParticipant.query.filter_by(
+                session_id=session_id,
+                student_id=current_user.id
+            ).first()
+            
+            if not participant:
+                return jsonify({"error": "You are not registered for this competition", "success": False}), 403
+            
+            # Get student session
+            student_session = StudentCompetitionSession.query.filter_by(
+                session_id=session_id,
+                student_id=current_user.id
+            ).first()
+            
+            if not student_session:
+                return jsonify({"error": "Student session not found", "success": False}), 404
+            
+            # Log student into session
+            if student_session.status == 'registered':
+                student_session.login_to_session()
+                
+                # Check if competition can start
+                if session.can_start_competition():
+                    # Auto-start competition if all students are logged in
+                    session.start_competition()
+                    
+            return jsonify({
+                "success": True,
+                "message": "Successfully joined competition",
+                "session_status": session.status,
+                "student_status": student_session.status,
+                "waiting_for_others": session.get_logged_in_count() < session.get_participant_count()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error joining competition: {str(e)}")
+            return jsonify({"error": str(e), "success": False}), 500
+
+    @app.route('/student/competition/<int:session_id>/status')
+    @student_required
+    def student_competition_status(session_id):
+        """Get current status of student in competition"""
+        try:
+            student_session = StudentCompetitionSession.query.filter_by(
+                session_id=session_id,
+                student_id=current_user.id
+            ).first()
+            
+            if not student_session:
+                return jsonify({"error": "Not participating in this competition"}), 404
+            
+            session = student_session.session
+            current_station = student_session.get_current_station()
+            
+            status_data = {
+                'session_id': session_id,
+                'session_name': session.name,
+                'session_status': session.status,
+                'student_status': student_session.status,
+                'current_station_order': student_session.current_station_order,
+                'total_stations': session.stations_per_session,
+                'progress_percentage': student_session.get_progress_percentage(),
+                'current_station': None,
+                'time_per_station': session.time_per_station,
+                'time_between_stations': session.time_between_stations,
+                'completed_stations': student_session.get_completed_stations_count(),
+                'average_score': student_session.get_average_score()
+            }
+            
+            if current_station:
+                status_data['current_station'] = {
+                    'case_number': current_station.case_number,
+                    'specialty': current_station.case.specialty,
+                    'station_order': current_station.station_order,
+                    'status': current_station.status
+                }
+            
+            return jsonify(status_data)
+            
+        except Exception as e:
+            logger.error(f"Error getting competition status: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/student/competition/<int:session_id>/start-station', methods=['POST'])
+    @student_required
+    def student_start_competition_station(session_id):
+        """Start the next station in competition"""
+        try:
+            student_session = StudentCompetitionSession.query.filter_by(
+                session_id=session_id,
+                student_id=current_user.id
+            ).first()
+            
+            if not student_session:
+                return jsonify({"error": "Not participating in this competition"}), 404
+            
+            if student_session.status not in ['active', 'between_stations']:
+                return jsonify({"error": "Cannot start station at this time"}), 400
+            
+            current_station = student_session.get_current_station()
+            if not current_station:
+                return jsonify({"error": "No station assigned"}), 404
+            
+            # Start the station
+            current_station.start_station()
+            
+            # If student was between stations, mark as active
+            if student_session.status == 'between_stations':
+                student_session.start_next_station()
+            
+            # Initialize chat for this station
+            case_number = current_station.case_number
+            conversation = initialize_conversation(case_number)
+            
+            # Store in session with competition mode flag
+            session['competition_mode'] = True
+            session['competition_session_id'] = session_id
+            session['competition_station_order'] = current_station.station_order
+            session['conversation'] = [
+                {"role": msg.type, "content": msg.content}
+                for msg in conversation
+            ]
+            session['case_number'] = case_number
+            session['consultation_time'] = student_session.session.time_per_station
+            session['consultation_start_time'] = time.time()
+            
+            # Get case data for directives and images
+            case_data = load_patient_case(case_number)
+            
+            return jsonify({
+                "success": True,
+                "case_number": case_number,
+                "station_order": current_station.station_order,
+                "consultation_time": student_session.session.time_per_station,
+                "directives": case_data.get('directives', ''),
+                "specialty": case_data.get('specialty', ''),
+                "images": case_data.get('images', [])
+            })
+            
+        except Exception as e:
+            logger.error(f"Error starting competition station: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/student/competition/complete-station', methods=['POST'])
+    @student_required
+    def student_complete_competition_station():
+        """Complete current station in competition and get feedback"""
+        try:
+            if not session.get('competition_mode'):
+                return jsonify({"error": "Not in competition mode"}), 400
+            
+            competition_session_id = session.get('competition_session_id')
+            station_order = session.get('competition_station_order')
+            
+            if not competition_session_id or not station_order:
+                return jsonify({"error": "Competition session data not found"}), 400
+            
+            student_session = StudentCompetitionSession.query.filter_by(
+                session_id=competition_session_id,
+                student_id=current_user.id
+            ).first()
+            
+            if not student_session:
+                return jsonify({"error": "Student session not found"}), 404
+            
+            # Get conversation and evaluate
+            conversation_from_session = session.get('conversation', [])
+            case_number = session.get('case_number')
+            
+            consultation_duration = None
+            time_remaining = None
+            if 'consultation_start_time' in session:
+                consultation_duration = int(time.time() - session['consultation_start_time'])
+                total_time = session.get('consultation_time', 10) * 60
+                time_remaining = max(0, total_time - consultation_duration)
+            
+            # Evaluate the conversation
+            evaluation = evaluate_conversation(conversation_from_session, case_number)
+            recommendations = evaluation_agent.get_recommendations()
+            
+            # Prepare performance data
+            performance_data = {
+                'case_number': case_number,
+                'evaluation_results': evaluation,
+                'recommendations': recommendations,
+                'conversation_transcript': conversation_from_session,
+                'consultation_duration': consultation_duration,
+                'percentage_score': evaluation.get('percentage', 0),
+                'points_earned': evaluation.get('points_earned', 0),
+                'points_total': evaluation.get('points_total', 0),
+                'completed_at': datetime.utcnow().isoformat()
+            }
+            
+            # Complete the station
+            student_session.complete_current_station(performance_data)
+            
+            # Check if competition is finished
+            is_finished = student_session.status == 'completed'
+            
+            # Clear session data for this station
+            session.pop('competition_mode', None)
+            session.pop('competition_session_id', None)
+            session.pop('competition_station_order', None)
+            session.pop('conversation', None)
+            session.pop('case_number', None)
+            session.pop('consultation_time', None)
+            session.pop('consultation_start_time', None)
+            
+            response_data = {
+                "success": True,
+                "evaluation": evaluation,
+                "recommendations": recommendations,
+                "is_finished": is_finished,
+                "current_station": station_order,
+                "total_stations": student_session.session.stations_per_session,
+                "next_station_delay": student_session.session.time_between_stations * 60 if not is_finished else 0
+            }
+            
+            # If finished, add final results
+            if is_finished:
+                leaderboard = student_session.session.get_leaderboard()
+                student_rank = next((entry for entry in leaderboard if entry['student_id'] == current_user.id), None)
+                
+                response_data.update({
+                    "final_score": student_session.get_average_score(),
+                    "total_score": student_session.get_total_score(),
+                    "rank": student_rank['rank'] if student_rank else None,
+                    "total_participants": len(leaderboard),
+                    "leaderboard": leaderboard[:10]  # Top 10
+                })
+            
+            return jsonify(response_data)
+            
+        except Exception as e:
+            logger.error(f"Error completing competition station: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route('/student/competition/<int:session_id>/leaderboard')
+    @student_required
+    def student_competition_leaderboard(session_id):
+        """Get competition leaderboard"""
+        try:
+            session_obj = CompetitionSession.query.get_or_404(session_id)
+            
+            # Verify student is participant
+            participant = CompetitionParticipant.query.filter_by(
+                session_id=session_id,
+                student_id=current_user.id
+            ).first()
+            
+            if not participant:
+                return jsonify({"error": "Not authorized to view this leaderboard"}), 403
+            
+            leaderboard = session_obj.get_leaderboard()
+            
+            return jsonify({
+                'session_name': session_obj.name,
+                'session_status': session_obj.status,
+                'leaderboard': leaderboard,
+                'total_participants': len(leaderboard)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting competition leaderboard: {str(e)}")
             return jsonify({"error": str(e)}), 500
         
     @app.route('/process_case_file', methods=['POST'])
@@ -1178,7 +1824,7 @@ def create_app():
     @app.route('/chat', methods=['POST'])
     @student_required
     def chat():
-        """Handle chat messages with optimizations for faster responses"""
+        """Handle chat messages with competition mode support"""
         try:
             if 'conversation' not in session:
                 logger.warning("No active conversation found")
@@ -1191,16 +1837,13 @@ def create_app():
                 logger.warning("Empty message received")
                 return jsonify({"error": "Message cannot be empty"}), 400
 
-            # Check if this is first user message (greeting)
-            is_first_message = all(msg['role'] != 'human' for msg in session['conversation'])
-            
-            # Add user message to session immediately
+            # Add user message to session
             session['conversation'].append({
                 "role": "human",
                 "content": user_message
             })
             
-            # Optimize the conversation history to keep it concise for faster processing
+            # Optimize conversation history
             optimized_conversation = []
             
             # Always keep the system message
@@ -1215,7 +1858,7 @@ def create_app():
                 
             optimized_conversation.extend(recent_messages)
             
-            # Convert optimized conversation to message objects for LLM
+            # Convert to message objects for LLM
             conversation = []
             for msg in optimized_conversation:
                 if msg['role'] == 'system':
@@ -1227,55 +1870,13 @@ def create_app():
             
             try:
                 # Get LLM response
-                logger.debug("Sending request to Groq API")
                 response = client.invoke(conversation)
-                
                 content = response.content
                 
-                # Check if we need to insert images into the response
+                # Handle image responses
                 case_number = session.get('case_number')
                 if case_number:
-                    try:
-                        # Get case data to access available images
-                        case_data = load_patient_case(case_number)
-                        images = case_data.get('images', [])
-                        
-                        # If there are available images and the message appears to be requesting images
-                        # or the LLM has included text indicating an image should be shown
-                        image_indicators = ["image", "radiographie", "radio", "voir", "montr", "voici", "apporté"]
-                        is_image_related = (
-                            any(indicator in user_message.lower() for indicator in image_indicators) or
-                            any(indicator in content.lower() for indicator in image_indicators)
-                        )
-                        
-                        if images and is_image_related:
-                            # Check if the LLM response already contains an image path
-                            contains_image_path = any(img.get('path', '') in content for img in images)
-                            
-                            if not contains_image_path:
-                                # If the LLM hasn't already included an image, but should have
-                                # Find relevant images based on the conversation context
-                                relevant_images = []
-                                
-                                # First try to match based on descriptions mentioned in the conversation
-                                for img in images:
-                                    description = img.get('description', '').lower()
-                                    if description and (description in user_message.lower() or description in content.lower()):
-                                        relevant_images.append(img)
-                                
-                                # If no description matches, include all images as options
-                                if not relevant_images:
-                                    relevant_images = images
-                                
-                                # Modify the content to include image(s)
-                                # If it's a direct image request, format it as a patient sharing the image
-                                if any(indicator in user_message.lower() for indicator in image_indicators):
-                                    img = relevant_images[0]  # Use the first relevant image
-                                    description = img.get('description', 'Image médicale')
-                                    path = img.get('path', '')
-                                    content = f"Oui, voici {description}: {path}"
-                    except Exception as img_error:
-                        logger.error(f"Error handling images in response: {str(img_error)}")
+                    content = process_image_responses(content, case_number, user_message)
 
                 # Add AI response to session
                 session['conversation'].append({
@@ -1283,16 +1884,14 @@ def create_app():
                     "content": content
                 })
                 
-                # Force session update
                 session.modified = True
                 
-                logger.info("Successfully processed chat message")
                 return jsonify({"reply": content})
                 
             except Exception as e:
                 logger.error(f"Error with Groq API: {str(e)}")
                 return jsonify({"error": "Error processing message"}), 500
-                
+                    
         except Exception as e:
             logger.error(f"Error in chat endpoint: {str(e)}")
             return jsonify({"error": "Internal server error"}), 500
@@ -1309,6 +1908,38 @@ def create_app():
         optimized = system_messages + [msg for msg in recent_messages if msg['role'] != 'system']
         
         return optimized
+    
+    def process_image_responses(content, case_number, user_message):
+        """Process AI responses that might need to include images"""
+        try:
+            case_data = load_patient_case(case_number)
+            images = case_data.get('images', [])
+            
+            # Check if the message is requesting images or should include images
+            image_indicators = ["image", "radiographie", "radio", "voir", "montr", "voici", "apporté", "regarder"]
+            is_image_related = (
+                any(indicator in user_message.lower() for indicator in image_indicators) or
+                any(indicator in content.lower() for indicator in image_indicators)
+            )
+            
+            if images and is_image_related:
+                # Check if content already contains an image path
+                contains_image_path = any(img.get('path', '') in content for img in images)
+                
+                if not contains_image_path:
+                    # Add the first relevant image
+                    img = images[0]
+                    description = img.get('description', 'Image médicale')
+                    path = img.get('path', '')
+                    
+                    # Format the response with proper image display
+                    if path:
+                        content = f"{content}\n\n[IMAGE:{path}|{description}]"
+                        
+        except Exception as e:
+            logger.error(f"Error processing images in response: {str(e)}")
+        
+        return content
 
 
     @app.route('/end_chat', methods=['POST'])
