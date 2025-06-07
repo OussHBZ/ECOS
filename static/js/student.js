@@ -29,6 +29,8 @@ let currentCompetitionId = null;
 let currentStationData = null;
 let isTimerRunning = false;
 
+
+
 let currentCase = null;
 let selectedCaseCard = null;
 let timerInterval = null;
@@ -1351,22 +1353,15 @@ function showStudentTab(tabName) {
     }
 }
 
-// FIXED: Competition status polling with proper cleanup
+// Competition status polling with proper cleanup
 function startCompetitionPolling(sessionId) {
-    // Clean up any existing interval
     if (competitionUpdateInterval) {
         clearInterval(competitionUpdateInterval);
     }
-    
+    currentCompetitionId = sessionId;
     console.log('Starting competition polling for session:', sessionId);
-    
-    // Initial update
-    updateCompetitionStatus(sessionId);
-    
-    // Set up interval
-    competitionUpdateInterval = setInterval(() => {
-        updateCompetitionStatus(sessionId);
-    }, 3000); // Poll every 3 seconds
+    updateCompetitionStatus(sessionId); // Initial immediate update
+    competitionUpdateInterval = setInterval(() => updateCompetitionStatus(sessionId), 3000); // Poll every 3 seconds
 }
 
 // FIXED: Update competition interface with better state management
