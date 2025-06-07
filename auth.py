@@ -39,7 +39,7 @@ def login():
                     db.session.commit()
                     login_user(student)
                     session['user_type'] = 'student'
-                    return redirect(url_for('student_interface'))
+                    return redirect(url_for('student.student_interface'))
                 else:
                     flash('Code ou nom incorrect.', 'error')
                     return redirect(url_for('auth.login'))
@@ -54,7 +54,7 @@ def login():
                 login_user(student)
                 session['user_type'] = 'student'
                 flash('Compte créé avec succès!', 'success')
-                return redirect(url_for('student_interface'))
+                return redirect(url_for('student.student_interface'))
                 
         elif login_type == 'teacher':
             access_code = request.form.get('access_code', '').strip()
@@ -71,7 +71,7 @@ def login():
                 teacher_access.last_used = datetime.utcnow()
                 db.session.commit()
                 
-                return redirect(url_for('teacher_interface'))
+                return redirect(url_for('teacher.teacher_interface'))
             else:
                 flash('Code d\'accès incorrect.', 'error')
                 return redirect(url_for('auth.login'))
@@ -91,7 +91,7 @@ def login():
                 admin_access.last_used = datetime.utcnow()
                 db.session.commit()
                 
-                return redirect(url_for('admin_interface'))
+                return redirect(url_for('admin.admin_interface'))
             else:
                 flash('Code d\'accès administrateur incorrect.', 'error')
                 return redirect(url_for('auth.login'))

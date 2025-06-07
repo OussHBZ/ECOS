@@ -6,6 +6,26 @@ import random
 
 db = SQLAlchemy()
 
+class SessionMixin:
+    def get_participant_count(self):
+        """Get number of participants in this session"""
+        return len(self.participants)
+    
+    def get_assigned_stations_count(self):
+        """Get number of stations assigned to this session"""
+        return len(self.station_assignments)
+    
+    def get_status_display(self):
+        """Get display-friendly status"""
+        status_map = {
+            'scheduled': 'Programmé',
+            'active': 'En cours',
+            'completed': 'Terminé',
+            'cancelled': 'Annulé'
+        }
+        return status_map.get(self.status, self.status)
+
+
 class Student(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     student_code = db.Column(db.String(4), unique=True, nullable=False)
@@ -52,7 +72,7 @@ class AdminAccess(db.Model):
     access_code = db.Column(db.String(20), unique=True, nullable=False)
     last_used = db.Column(db.DateTime)
 
-class OSCESession(db.Model):
+class OSCESession(db.Model, SessionMixin):
     """Model for OSCE examination sessions"""
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
