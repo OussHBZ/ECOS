@@ -395,6 +395,37 @@ class PatientCase(db.Model):
                 'custom_sections': [],
                 'images': []
             }
+    def get_completion_count(self):
+        """Get the number of times this case has been completed"""
+        from models import StudentPerformance
+        return StudentPerformance.query.filter_by(case_number=self.case_number).count()
+
+    def get_average_score(self):
+        """Get the average score for this case"""
+        from models import StudentPerformance
+        performances = StudentPerformance.query.filter_by(case_number=self.case_number).all()
+        if not performances:
+            return 0
+        return round(sum(perf.percentage_score for perf in performances) / len(performances))
+
+    # Add to Student class:
+    def get_total_workouts(self):
+        """Get total number of consultations for this student"""
+        from models import StudentPerformance
+        return StudentPerformance.query.filter_by(student_id=self.id).count()
+
+    def get_unique_stations_played(self):
+        """Get number of unique stations this student has played"""
+        from models import StudentPerformance, db
+        return db.session.query(StudentPerformance.case_number).filter_by(student_id=self.id).distinct().count()
+
+    def get_average_score(self):
+        """Get average score for this student"""
+        from models import StudentPerformance
+        performances = StudentPerformance.query.filter_by(student_id=self.id).all()
+        if not performances:
+            return 0
+        return round(sum(perf.percentage_score for perf in performances) / len(performances))
 
 # Student Performance Tracking
 class StudentPerformance(db.Model):
@@ -514,6 +545,66 @@ class StudentPerformance(db.Model):
             performance.conversation_transcript = conversation_transcript # Use setter
         
         return performance
+    
+    def get_performance_grade(self):
+        """Get letter grade based on percentage score"""
+        if self.percentage_score >= 90:
+            return 'A'
+        elif self.percentage_score >= 80:
+            return 'B'
+        elif self.percentage_score >= 70:
+            return 'C'
+        elif self.percentage_score >= 60:
+            return 'D'
+        else:
+            return 'F'
+
+    def get_performance_status(self):
+        """Get performance status in French"""
+        if self.percentage_score >= 85:
+            return 'Excellent'
+        elif self.percentage_score >= 75:
+            return 'Bon'
+        elif self.percentage_score >= 65:
+            return 'Satisfaisant'
+        else:
+            return 'À améliorer'
+
+    # Add to OSCESession class (if it exists):
+    def get_participant_count(self):
+        """Get number of participants in this session"""
+        from models import SessionParticipant
+        return SessionParticipant.query.filter_by(session_id=self.id).count()
+
+    def get_assigned_stations_count(self):
+        """Get number of stations assigned to this session"""
+        from models import SessionStationAssignment
+        return SessionStationAssignment.query.filter_by(session_id=self.id).count()
+
+    def get_status_display(self):
+        """Get human-readable status"""
+        status_map = {
+            'scheduled': 'Programmée',
+            'active': 'Active',
+            'completed': 'Terminée',
+            'cancelled': 'Annulée'
+        }
+        return status_map.get(self.status, self.status)
+
+    def get_logged_in_count(self):
+        """Get number of logged in participants"""
+        # This would need implementation based on your competition logic
+        return 0
+
+    def can_start_competition(self):
+        """Check if competition can start"""
+        # This would need implementation based on your competition logic
+        return False
+
+    def start_competition(self):
+        """Start the competition"""
+        # This would need implementation based on your competition logic
+        pass
 
 class CompetitionSession(db.Model):
     """Model for OSCE competition sessions"""

@@ -26,7 +26,6 @@ from blueprints.admin import admin_bp
 from blueprints.student import student_bp
 from blueprints.teacher import teacher_bp
 
-
 import time
 import concurrent.futures
 
@@ -47,8 +46,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-
 
 def create_app():
     app = Flask(__name__, 
@@ -137,6 +134,10 @@ def create_app():
     # Initialize evaluation agent 
     evaluation_agent = EvaluationAgent(llm_client=client)
 
+    # Store instances in app config for access by other modules
+    app.config['DOCUMENT_AGENT'] = document_agent
+    app.config['EVALUATION_AGENT'] = evaluation_agent
+    app.config['GROQ_CLIENT'] = client
     
     def load_patient_case(case_number):
         """Load patient case data from the database"""
@@ -309,6 +310,12 @@ def create_app():
             logger.error(f"Error evaluating conversation: {str(e)}")
             return {'checklist': [], 'feedback': f"Erreur lors de l'évaluation: {str(e)}"}
 
+    # Store functions in app config
+    app.config['LOAD_PATIENT_CASE'] = load_patient_case
+    app.config['GET_CASE_METADATA'] = get_case_metadata
+    app.config['GET_UNIQUE_SPECIALTIES'] = get_unique_specialties
+    app.config['INITIALIZE_CONVERSATION'] = initialize_conversation
+    app.config['EVALUATE_CONVERSATION'] = evaluate_conversation
 
     # Routes
     @app.route('/')
@@ -316,19 +323,201 @@ def create_app():
         """Render the main landing page with role selection"""
         return render_template('home.html')
 
-    @app.context_processor
-    def inject_globals():
-        return {
-            'load_patient_case': load_patient_case,
-            'get_case_metadata': get_case_metadata,
-            'get_unique_specialties': get_unique_specialties,
-            'initialize_conversation': initialize_conversation,
-            'evaluate_conversation': evaluate_conversation,
-            'document_agent': document_agent,
-            'evaluation_agent': evaluation_agent,
-            'client': client,
-        }
+    # Add these new routes to handle missing functionality
+    @app.route('/initialize_chat', methods=['POST'])
+    def initialize_chat():
+        """Initialize chat session"""
+        try:
+            data = request.get_json()
+            case_number = data.get('case_number')
+            
+            if not case_number:
+                return jsonify({'error': 'Case number is required'}), 400
+            
+            # Load case data
+            case_data = load_patient_case(case_number)
+            
+            # Initialize conversation
+            conversation = initialize_conversation(case_number)
+            
+            # Store conversation in session
+            session['current_conversation'] = [msg.content if hasattr(msg, 'content') else str(msg) for msg in conversation]
+            session['current_case'] = case_number
+            
+            return jsonify({
+                'success': True,
+                'case_data': case_data,
+                'directives': case_data.get('directives', ''),
+                'consultation_time': case_data.get('consultation_time', 10),
+                'images': case_data.get('images', [])
+            })
+            
+        except Exception as e:
+            logger.error(f"Error initializing chat: {str(e)}")
+            return jsonify({'error': str(e)}), 500
 
+    @app.route('/chat', methods=['POST'])
+    def chat():
+        """Handle chat messages"""
+        try:
+            data = request.get_json()
+            message = data.get('message')
+            
+            if not message:
+                return jsonify({'error': 'Message is required'}), 400
+            
+            # Get current conversation from session
+            conversation = session.get('current_conversation', [])
+            case_number = session.get('current_case')
+            
+            if not case_number:
+                return jsonify({'error': 'No active case session'}), 400
+            
+            # Add user message to conversation
+            conversation.append({'role': 'human', 'content': message})
+            
+            # Get AI response using the Groq client
+            try:
+                # Convert conversation to LangChain format
+                langchain_messages = []
+                for msg in conversation:
+                    if isinstance(msg, dict):
+                        if msg['role'] == 'system':
+                            langchain_messages.append(SystemMessage(content=msg['content']))
+                        elif msg['role'] == 'human':
+                            langchain_messages.append(HumanMessage(content=msg['content']))
+                        elif msg['role'] == 'assistant':
+                            langchain_messages.append(AIMessage(content=msg['content']))
+                    else:
+                        langchain_messages.append(SystemMessage(content=str(msg)))
+                
+                # Add the current user message
+                langchain_messages.append(HumanMessage(content=message))
+                
+                # Get response from Groq
+                response = client.invoke(langchain_messages)
+                ai_reply = response.content
+                
+                # Add AI response to conversation
+                conversation.append({'role': 'assistant', 'content': ai_reply})
+                
+                # Update session
+                session['current_conversation'] = conversation
+                
+                return jsonify({
+                    'success': True,
+                    'reply': ai_reply
+                })
+                
+            except Exception as e:
+                logger.error(f"Error getting AI response: {str(e)}")
+                return jsonify({'error': 'Error getting AI response'}), 500
+            
+        except Exception as e:
+            logger.error(f"Error in chat: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/end_chat', methods=['POST'])
+    def end_chat():
+        """End chat session and evaluate"""
+        try:
+            conversation = session.get('current_conversation', [])
+            case_number = session.get('current_case')
+            
+            if not case_number:
+                return jsonify({'error': 'No active case session'}), 400
+            
+            # Evaluate conversation
+            evaluation_results = evaluate_conversation(conversation, case_number)
+            
+            # Generate PDF report
+            try:
+                pdf_filename = create_simple_consultation_pdf(
+                    conversation,
+                    case_number,
+                    evaluation_results,
+                    evaluation_results.get('recommendations', [])
+                )
+                
+                # Store in session for later download
+                session['last_pdf'] = pdf_filename
+                
+            except Exception as e:
+                logger.error(f"Error generating PDF: {str(e)}")
+                pdf_filename = None
+            
+            # Save performance if user is logged in
+            if current_user.is_authenticated:
+                try:
+                    performance = StudentPerformance(
+                        student_id=current_user.id,
+                        case_number=case_number,
+                        conversation_transcript=conversation,
+                        evaluation_results=evaluation_results,
+                        percentage_score=evaluation_results.get('percentage', 0),
+                        points_earned=evaluation_results.get('points_earned', 0),
+                        points_total=evaluation_results.get('points_total', 0),
+                        recommendations=evaluation_results.get('recommendations', [])
+                    )
+                    db.session.add(performance)
+                    db.session.commit()
+                    logger.info(f"Saved performance for student {current_user.id}")
+                except Exception as e:
+                    logger.error(f"Error saving performance: {str(e)}")
+            
+            # Clear session
+            session.pop('current_conversation', None)
+            session.pop('current_case', None)
+            
+            return jsonify({
+                'success': True,
+                'evaluation': evaluation_results,
+                'recommendations': evaluation_results.get('recommendations', []),
+                'pdf_url': f'/download_pdf/{pdf_filename}' if pdf_filename else None
+            })
+            
+        except Exception as e:
+            logger.error(f"Error ending chat: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/download_pdf/<filename>')
+    def download_pdf(filename):
+        """Download generated PDF"""
+        try:
+            temp_dir = tempfile.gettempdir()
+            return send_from_directory(temp_dir, filename, as_attachment=True)
+        except Exception as e:
+            logger.error(f"Error downloading PDF: {str(e)}")
+            return jsonify({'error': 'PDF not found'}), 404
+
+    @app.route('/get_case/<case_number>')
+    def get_case(case_number):
+        """Get case data"""
+        try:
+            case_data = load_patient_case(case_number)
+            return jsonify(case_data)
+        except Exception as e:
+            logger.error(f"Error getting case: {str(e)}")
+            return jsonify({'error': str(e)}), 404
+
+    @app.route('/check_case_number/<case_number>')
+    def check_case_number(case_number):
+        """Check if case number exists"""
+        try:
+            existing_case = PatientCase.query.filter_by(case_number=case_number).first()
+            if existing_case:
+                return jsonify({
+                    'exists': True,
+                    'message': f'Le cas {case_number} existe déjà'
+                })
+            else:
+                return jsonify({
+                    'exists': False,
+                    'message': f'Le cas {case_number} est disponible'
+                })
+        except Exception as e:
+            logger.error(f"Error checking case number: {str(e)}")
+            return jsonify({'error': str(e)}), 500
     
     return app
 

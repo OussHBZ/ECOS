@@ -13,15 +13,22 @@ logger = logging.getLogger(__name__)
 @student_required
 def student_interface():
     """Render the student interface"""
-    # Add student name to context
-    get_case_metadata = current_app.injected_functions['get_case_metadata']
-    get_unique_specialties = current_app.injected_functions['get_unique_specialties']
-    cases = get_case_metadata()
-    specialties = get_unique_specialties()
+    # Get functions from app config
+    get_case_metadata = current_app.config.get('GET_CASE_METADATA')
+    get_unique_specialties = current_app.config.get('GET_UNIQUE_SPECIALTIES')
+    
+    if not get_case_metadata or not get_unique_specialties:
+        logger.error("Required functions not found in app config")
+        cases = []
+        specialties = []
+    else:
+        cases = get_case_metadata()
+        specialties = get_unique_specialties()
+    
     return render_template('student.html', 
-                             cases=cases, 
-                             specialties=specialties,
-                             student_name=current_user.name)
+                         cases=cases, 
+                         specialties=specialties,
+                         student_name=current_user.name)
 
 @student_bp.route('/available-competitions')
 @student_required
@@ -119,4 +126,91 @@ def student_join_competition(session_id):
         logger.error(f"Error joining competition: {str(e)}")
         return jsonify({"error": str(e), "success": False}), 500
 
-# ... (move other student routes here)
+@student_bp.route('/stats')
+@student_required
+def student_stats():
+    """Get student statistics"""
+    try:
+        # Get student performances
+        performances = StudentPerformance.query.filter_by(student_id=current_user.id)\
+            .order_by(StudentPerformance.completed_at.desc()).all()
+        
+        # Calculate stats
+        total_workouts = len(performances)
+        unique_stations = len(set(perf.case_number for perf in performances))
+        
+        if performances:
+            average_score = sum(perf.percentage_score for perf in performances) / len(performances)
+        else:
+            average_score = 0
+        
+        # Format recent performances
+        recent_performances = []
+        for perf in performances[:10]:  # Last 10 performances
+            case = PatientCase.query.filter_by(case_number=perf.case_number).first()
+            recent_performances.append({
+                'case_number': perf.case_number,
+                'specialty': case.specialty if case else 'Unknown',
+                'score': perf.percentage_score,
+                'grade': perf.get_performance_grade(),
+                'status': perf.get_performance_status(),
+                'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
+                'duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A"
+            })
+        
+        return jsonify({
+            'total_workouts': total_workouts,
+            'unique_stations': unique_stations,
+            'average_score': round(average_score),
+            'recent_performances': recent_performances
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting student stats: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@student_bp.route('/stations')
+@student_required
+def student_stations():
+    """Get student stations with performance data"""
+    try:
+        search_query = request.args.get('search', '').strip()
+        
+        # Get all cases
+        query = PatientCase.query
+        if search_query:
+            query = query.filter(
+                db.or_(
+                    PatientCase.case_number.contains(search_query),
+                    PatientCase.specialty.contains(search_query)
+                )
+            )
+        
+        cases = query.order_by(PatientCase.case_number).all()
+        
+        stations = []
+        for case in cases:
+            # Get student's performance for this case
+            student_performances = StudentPerformance.query.filter_by(
+                student_id=current_user.id,
+                case_number=case.case_number
+            ).all()
+            
+            attempts = len(student_performances)
+            best_score = max(perf.percentage_score for perf in student_performances) if student_performances else 0
+            last_attempt = student_performances[-1].completed_at.strftime('%d/%m/%Y') if student_performances else None
+            
+            stations.append({
+                'case_number': case.case_number,
+                'specialty': case.specialty,
+                'consultation_time': case.consultation_time,
+                'attempts': attempts,
+                'best_score': best_score,
+                'last_attempt': last_attempt
+            })
+        
+        return jsonify({'stations': stations})
+        
+    except Exception as e:
+        logger.error(f"Error getting student stations: {str(e)}")
+        return jsonify({"error": str(e)}), 500

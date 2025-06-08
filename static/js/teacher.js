@@ -3,7 +3,6 @@ const uploadForm = document.getElementById('upload-form');
 const uploadStatus = document.getElementById('upload-status');
 const processingMessage = document.getElementById('processing-message');
 const extractionResults = document.getElementById('extraction-results');
-const existingCases = document.getElementById('existing-cases');
 const fileTabBtn = document.getElementById('file-tab-btn');
 const manualTabBtn = document.getElementById('manual-tab-btn');
 const fileUploadSection = document.getElementById('file-upload-section');
@@ -421,7 +420,7 @@ async function openEditModal(caseNumber) {
     editCaseNumberTitle.textContent = caseNumber;
     
     try {
-        // Fetch case data
+        // Fetch case data - UPDATED URL
         const response = await fetch(`/get_case/${caseNumber}`);
         
         if (!response.ok) {
@@ -645,7 +644,7 @@ async function handleEditFormSubmit(event) {
         console.log('Sending edit request with data:', editedData);
         
         // Send update request
-        const response = await fetch(`/edit_case/${currentEditingCaseNumber}`, {
+        const response = await fetch(`/teacher/edit_case/${currentEditingCaseNumber}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -907,8 +906,8 @@ async function handleUploadFormSubmit(event) {
     }
     
     try {
-        // Send file to backend for processing
-        const response = await fetch('/process_case_file', {
+        // Send file to backend for processing - UPDATED URL
+        const response = await fetch('/teacher/process_case_file', {
             method: 'POST',
             body: formData
         });
@@ -916,7 +915,7 @@ async function handleUploadFormSubmit(event) {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         
         if (data.error) {
@@ -935,6 +934,7 @@ async function handleUploadFormSubmit(event) {
         processingMessage.textContent = `Une erreur est survenue: ${error.message}`;
     }
 }
+
 
 // Handle manual entry form submission
 async function handleManualFormSubmit(event) {
@@ -989,8 +989,8 @@ async function handleManualFormSubmit(event) {
     formData.append('is_manual_entry', 'true');
     
     try {
-        // Send manual data to backend for processing
-        const response = await fetch('/process_manual_case', {
+        // Send manual data to backend for processing - CORRECTED URL
+        const response = await fetch('/teacher/process_manual_case', {  
             method: 'POST',
             body: formData
         });
@@ -1482,50 +1482,46 @@ function addPreviewCustomSection(title = '', content = '') {
 
 // Function to save edited case data
 function saveEditedCase(previewData) {
-    // Collect all edited data from the form using the advanced function if available
-    const editedData = collectEditedFormData ? collectEditedFormData() : {
-        // Basic patient info
-        patient_info: {
-            name: document.getElementById('edit-patient-name')?.value || '',
-            age: document.getElementById('edit-patient-age')?.value ? 
-                 parseInt(document.getElementById('edit-patient-age').value) : null,
-            gender: document.getElementById('edit-patient-gender')?.value || ''
-        },
-        symptoms: [],
-        evaluation_checklist: [],
-        diagnosis: document.getElementById('edit-diagnosis')?.value || '',
-        consultation_time: parseInt(document.getElementById('edit-consultation-time')?.value) || 10,
-        images: [],
-        custom_sections: []
-    };
+    console.log('saveEditedCase called with:', previewData);
     
-    // Add case number and specialty if not already present
-    if (!editedData.case_number) {
-        editedData.case_number = previewData.case_number;
-    }
+    // Collect edited data from the extraction preview form
+    let editedData;
     
-    if (!editedData.specialty && previewData.specialty) {
-        editedData.specialty = previewData.specialty;
-    }
-    
-    // If using simple collection, collect and update image descriptions
-    if (!collectEditedFormData) {
-        const images = previewData.extracted_data.images || [];
-        images.forEach((image, index) => {
-            const descriptionInput = document.querySelector(`.image-description[data-index="${index}"]`);
-            if (descriptionInput) {
-                editedData.images.push({
-                    ...image,
-                    description: descriptionInput.value.trim() || image.description || 'Image médicale'
-                });
-            } else {
-                editedData.images.push(image);
-            }
-        });
+    try {
+        // Try to collect data using the advanced function if available
+        if (typeof collectEditedFormData === 'function') {
+            editedData = collectEditedFormData();
+        } else {
+            // Fallback: collect basic data from the preview form
+            editedData = collectBasicEditedData();
+        }
+        
+        console.log('Collected edited data:', editedData);
+        
+        // Ensure required fields are present
+        if (!editedData.case_number && previewData.case_number) {
+            editedData.case_number = previewData.case_number;
+        }
+        
+        if (!editedData.specialty && previewData.specialty) {
+            editedData.specialty = previewData.specialty;
+        }
+        
+        // Validate that we have essential data
+        if (!editedData.case_number || !editedData.specialty) {
+            throw new Error('Missing required case number or specialty');
+        }
+        
+        console.log('Final edited data being sent:', editedData);
+        
+    } catch (error) {
+        console.error('Error collecting edited data:', error);
+        processingMessage.textContent = `Erreur lors de la collecte des données: ${error.message}`;
+        return;
     }
     
     // Send the edited data to the backend
-    fetch('/save_edited_case', {
+    fetch('/teacher/save_edited_case', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1536,14 +1532,24 @@ function saveEditedCase(previewData) {
             specialty: previewData.specialty
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            return response.text().then(text => {
+                console.error('Response error text:', text);
+                throw new Error(`HTTP ${response.status}: ${text}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data);
         if (data.error) {
             processingMessage.textContent = `Erreur: ${data.error}`;
         } else {
             processingMessage.textContent = 'Cas enregistré avec succès!';
             extractionResults.innerHTML = '';
-            uploadForm.reset();
+            if (uploadForm) uploadForm.reset();
             
             // Refresh the page after 2 seconds to show updated case list
             setTimeout(() => {
@@ -1552,9 +1558,130 @@ function saveEditedCase(previewData) {
         }
     })
     .catch(error => {
-        console.error('Error:', error);
+        console.error('Error saving case:', error);
         processingMessage.textContent = `Une erreur est survenue lors de l'enregistrement: ${error.message}`;
     });
+}
+
+function collectBasicEditedData() {
+    console.log('Using basic data collection');
+    
+    // Get basic patient info
+    const patientInfo = {};
+    
+    const nameField = document.getElementById('edit-patient-name');
+    if (nameField && nameField.value.trim()) {
+        patientInfo.name = nameField.value.trim();
+    }
+    
+    const ageField = document.getElementById('edit-patient-age');
+    if (ageField && ageField.value) {
+        patientInfo.age = parseInt(ageField.value) || null;
+    }
+    
+    const genderField = document.getElementById('edit-patient-gender');
+    if (genderField && genderField.value) {
+        patientInfo.gender = genderField.value;
+    }
+    
+    const occupationField = document.getElementById('edit-patient-occupation');
+    if (occupationField && occupationField.value.trim()) {
+        patientInfo.occupation = occupationField.value.trim();
+    }
+    
+    // Collect symptoms from the preview
+    const symptoms = [];
+    const symptomInputs = document.querySelectorAll('.symptom-input');
+    symptomInputs.forEach(input => {
+        if (input.value && input.value.trim()) {
+            symptoms.push(input.value.trim());
+        }
+    });
+    
+    // Collect checklist items from the preview
+    const checklist = [];
+    const checklistItems = document.querySelectorAll('.edit-checklist-item, .checklist-item');
+    
+    checklistItems.forEach(item => {
+        const descInput = item.querySelector('.checklist-description') || 
+                         item.querySelector('input[name="checklist_descriptions[]"]');
+        const pointsInput = item.querySelector('.checklist-points') || 
+                           item.querySelector('input[name="checklist_points[]"]');
+        const categoryInput = item.querySelector('.checklist-category') || 
+                             item.querySelector('select[name="checklist_categories[]"]');
+        
+        if (descInput && descInput.value && descInput.value.trim()) {
+            const description = descInput.value.trim();
+            const points = pointsInput ? (parseInt(pointsInput.value) || 1) : 1;
+            const category = categoryInput ? (categoryInput.value || 'Général') : 'Général';
+            
+            checklist.push({
+                description: description,
+                points: points,
+                category: category,
+                completed: false
+            });
+        }
+    });
+    
+    // Get other fields
+    const diagnosisField = document.getElementById('edit-diagnosis');
+    const diagnosis = diagnosisField ? diagnosisField.value.trim() : '';
+    
+    const directivesField = document.getElementById('edit-directives');
+    const directives = directivesField ? directivesField.value.trim() : '';
+    
+    const consultationTimeField = document.getElementById('edit-consultation-time');
+    const consultationTime = consultationTimeField ? (parseInt(consultationTimeField.value) || 10) : 10;
+    
+    // Collect custom sections
+    const customSections = [];
+    const customSectionTitles = document.querySelectorAll('.custom-section-title');
+    const customSectionContents = document.querySelectorAll('.custom-section-content');
+    
+    for (let i = 0; i < customSectionTitles.length; i++) {
+        const title = customSectionTitles[i] ? customSectionTitles[i].value.trim() : '';
+        const content = customSectionContents[i] ? customSectionContents[i].value.trim() : '';
+        
+        if (title && content) {
+            customSections.push({
+                title: title,
+                content: content
+            });
+        }
+    }
+    
+    // Collect image descriptions
+    const images = [];
+    const imageDescriptions = document.querySelectorAll('.image-description');
+    imageDescriptions.forEach((input, index) => {
+        const description = input.value.trim() || 'Image médicale';
+        const imageContainer = input.closest('.image-preview-item');
+        if (imageContainer) {
+            const img = imageContainer.querySelector('img');
+            if (img && img.src) {
+                images.push({
+                    path: img.src,
+                    description: description,
+                    index: index
+                });
+            }
+        }
+    });
+    
+    const editedData = {
+        patient_info: patientInfo,
+        symptoms: symptoms,
+        evaluation_checklist: checklist,
+        diagnosis: diagnosis,
+        directives: directives,
+        consultation_time: consultationTime,
+        custom_sections: customSections,
+        images: images
+    };
+    
+    console.log('Basic edited data collected:', editedData);
+    return editedData;
 }
 
 // Function to validate extraction data
@@ -2427,7 +2554,7 @@ function buildEditablePreview(extractedData) {
 }
 
 document.addEventListener('click', function(event) {
-    // View case details - IMPROVED VERSION WITH CACHE BUSTING
+    // View case details - UPDATED URL
     if (event.target.classList.contains('view-button')) {
         const caseNumber = event.target.getAttribute('data-case');
         
@@ -2443,7 +2570,7 @@ document.addEventListener('click', function(event) {
         event.target.disabled = true;
         
         try {
-            // Add cache busting parameter to ensure fresh data
+            // Add cache busting parameter to ensure fresh data - UPDATED URL
             const timestamp = new Date().getTime();
             fetch(`/get_case/${caseNumber}?t=${timestamp}`)
                 .then(response => {
@@ -2593,9 +2720,12 @@ document.addEventListener('click', function(event) {
         }
     }
     
-    // ... keep all your other existing event handlers (edit, delete, etc.)
-    
-    // Delete case
+    // Edit button click handler - UPDATED function call
+    if (event.target.classList.contains('edit-button')) {
+        const caseNumber = event.target.getAttribute('data-case');
+        openEditModal(caseNumber);
+    }
+    // Delete cas
     if (event.target.classList.contains('delete-button')) {
         const caseNumber = event.target.getAttribute('data-case');
         
@@ -2607,7 +2737,7 @@ document.addEventListener('click', function(event) {
         
         if (confirm(`Êtes-vous sûr de vouloir supprimer le cas ${caseNumber} ? Cette action est irréversible.`)) {
             try {
-                fetch(`/delete_case/${caseNumber}`, {
+                fetch(`/teacher/delete_case/${caseNumber}`, {  // ✅ CORRECT URL
                     method: 'DELETE'
                 })
                 .then(response => {
@@ -2635,14 +2765,6 @@ document.addEventListener('click', function(event) {
             }
         }
     }
-    
-    // Edit button click handler
-    if (event.target.classList.contains('edit-button')) {
-        const caseNumber = event.target.getAttribute('data-case');
-        openEditModal(caseNumber);
-    }
-    
-    // ... keep all your other existing event handlers
 });
 
 // Also update the handleEditFormSubmit function to show better success feedback
@@ -2669,7 +2791,7 @@ async function handleEditFormSubmit(event) {
         console.log('Sending edit request with data:', editedData);
         
         // Send update request
-        const response = await fetch(`/edit_case/${currentEditingCaseNumber}`, {
+        const response = await fetch(`/teacher/edit_case/${currentEditingCaseNumber}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3013,227 +3135,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
-
-// Add CSS styles for the new teacher elements
-const teacherStyles = `
-/* Teacher Navigation Tabs */
-.teacher-nav-tabs {
-    display: flex;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #e0e0e0;
-    background: white;
-    border-radius: 8px 8px 0 0;
-    overflow: hidden;
-}
-
-.teacher-nav-tabs .nav-tab {
-    flex: 1;
-    padding: 15px 20px;
-    background: #f5f5f5;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: bold;
-    color: #666;
-    transition: all 0.3s;
-    border-bottom: 3px solid transparent;
-}
-
-.teacher-nav-tabs .nav-tab.active {
-    background: white;
-    color: #2196F3;
-    border-bottom-color: #2196F3;
-}
-
-.teacher-nav-tabs .nav-tab:hover {
-    background: #e8f4fd;
-    color: #1976D2;
-}
-
-/* Stations Management */
-.stations-management-container,
-.performance-management-container {
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
-.stations-stats,
-.students-overview {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-/* Tables */
-.stations-table-container,
-.students-table-container,
-.detailed-performance-table-container {
-    background: white;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    margin-top: 20px;
-}
-
-.stations-table,
-.students-table,
-.detailed-performance-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.stations-table th,
-.students-table th,
-.detailed-performance-table th {
-    background: #2196F3;
-    color: white;
-    padding: 15px;
-    text-align: left;
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.stations-table td,
-.students-table td,
-.detailed-performance-table td {
-    padding: 12px 15px;
-    border-bottom: 1px solid #eee;
-    vertical-align: middle;
-}
-
-.stations-table tr:hover,
-.students-table tr:hover,
-.detailed-performance-table tr:hover {
-    background: #f8f9fa;
-}
-
-/* Badges */
-.completion-badge,
-.workout-badge,
-.station-badge {
-    background: #E3F2FD;
-    color: #1565C0;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.score-badge {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.score-excellent { background: #E8F5E8; color: #2E7D32; }
-.score-good { background: #E3F2FD; color: #1565C0; }
-.score-average { background: #FFF3E0; color: #EF6C00; }
-.score-below-average { background: #FFF8E1; color: #F57F17; }
-.score-poor { background: #FFEBEE; color: #C62828; }
-
-/* Buttons */
-.detail-button,
-.view-evaluation-btn {
-    background: #4CAF50;
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    margin-right: 5px;
-}
-
-.detail-button:hover,
-.view-evaluation-btn:hover {
-    background: #45a049;
-}
-
-/* Student Detail Modal */
-.student-detail-stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.detailed-performance-table-container {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .teacher-nav-tabs {
-        flex-direction: column;
-    }
-    
-    .stations-stats,
-    .students-overview,
-    .student-detail-stats {
-        grid-template-columns: 1fr;
-    }
-    
-    .stations-table,
-    .students-table,
-    .detailed-performance-table {
-        font-size: 12px;
-    }
-    
-    .stations-table th,
-    .students-table th,
-    .detailed-performance-table th,
-    .stations-table td,
-    .students-table td,
-    .detailed-performance-table td {
-        padding: 8px;
-    }
-}
-
-/* Section styling */
-.section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 1px solid #eee;
-}
-
-.section-header h2 {
-    margin: 0;
-    color: #333;
-}
-
-.search-container {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.search-btn {
-    background: #2196F3;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.search-btn:hover {
-    background: #1976D2;
-}
-`;
-
-// Add the teacher styles to the document
-const teacherStyleSheet = document.createElement('style');
-teacherStyleSheet.textContent = teacherStyles;
-document.head.appendChild(teacherStyleSheet);
 
 let caseNumberValidationInProgress = false;
 let lastValidatedCaseNumber = null;

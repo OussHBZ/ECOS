@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, send_from_directory
+from flask import Blueprint, render_template, request, jsonify, send_from_directory, current_app
 from flask_login import current_user
 from models import db, Student, AdminAccess, OSCESession, SessionParticipant, SessionStationAssignment, PatientCase, StudentPerformance, CompetitionSession, CompetitionParticipant, CompetitionStationBank, StudentCompetitionSession, StudentStationAssignment
 from auth import admin_required
