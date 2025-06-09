@@ -440,62 +440,76 @@ function createCompetitionSessionDetailsModal() {
 // Create competition session
 async function createCompetitionSession(event) {
     event.preventDefault();
+    event.stopPropagation(); // Prevent event bubbling
     
     const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    
+    // Prevent double submission by disabling the submit button
+    if (submitButton.disabled) {
+        console.log('Form already being submitted, ignoring duplicate submission');
+        return false;
+    }
+    
+    // Disable submit button to prevent double submission
+    submitButton.disabled = true;
+    const originalButtonText = submitButton.textContent;
+    submitButton.textContent = 'Création en cours...';
+    
     const isEditMode = form.dataset.editMode === 'true';
     const sessionId = form.dataset.sessionId;
     
     console.log(isEditMode ? 'Updating competition session...' : 'Creating competition session...');
     
-    const formData = new FormData(form);
-    
-    // Validate required fields
-    const sessionName = formData.get('session_name');
-    const startTime = formData.get('start_time');
-    const endTime = formData.get('end_time');
-    const stationsPerSession = formData.get('stations_per_session');
-    const timePerStation = formData.get('time_per_station');
-    
-    if (!sessionName || !startTime || !endTime || !stationsPerSession || !timePerStation) {
-        alert('Veuillez remplir tous les champs obligatoires');
-        return;
-    }
-    
-    if (selectedStudents.length === 0) {
-        alert('Veuillez sélectionner au moins un participant');
-        return;
-    }
-    
-    if (selectedStations.length === 0) {
-        alert('Veuillez sélectionner au moins une station');
-        return;
-    }
-    
-    if (selectedStations.length < parseInt(stationsPerSession)) {
-        alert(`La banque de stations doit contenir au moins ${stationsPerSession} stations`);
-        return;
-    }
-    
-    // Format datetime for backend
-    const startDateTime = new Date(startTime).toISOString();
-    const endDateTime = new Date(endTime).toISOString();
-    
-    const sessionData = {
-        name: sessionName,
-        description: formData.get('session_description') || '',
-        start_time: startDateTime,
-        end_time: endDateTime,
-        stations_per_session: parseInt(stationsPerSession),
-        time_per_station: parseInt(timePerStation),
-        time_between_stations: parseInt(formData.get('time_between_stations') || 2),
-        randomize_stations: formData.get('randomize_stations') === 'on',
-        participants: selectedStudents.map(s => s.id),
-        stations: selectedStations.map(s => s.case_number)
-    };
-    
-    console.log('Competition session data to send:', sessionData);
-    
     try {
+        const formData = new FormData(form);
+        
+        // Validate required fields
+        const sessionName = formData.get('session_name');
+        const startTime = formData.get('start_time');
+        const endTime = formData.get('end_time');
+        const stationsPerSession = formData.get('stations_per_session');
+        const timePerStation = formData.get('time_per_station');
+        
+        if (!sessionName || !startTime || !endTime || !stationsPerSession || !timePerStation) {
+            alert('Veuillez remplir tous les champs obligatoires');
+            return;
+        }
+        
+        if (selectedStudents.length === 0) {
+            alert('Veuillez sélectionner au moins un participant');
+            return;
+        }
+        
+        if (selectedStations.length === 0) {
+            alert('Veuillez sélectionner au moins une station');
+            return;
+        }
+        
+        if (selectedStations.length < parseInt(stationsPerSession)) {
+            alert(`La banque de stations doit contenir au moins ${stationsPerSession} stations`);
+            return;
+        }
+        
+        // Format datetime for backend
+        const startDateTime = new Date(startTime).toISOString();
+        const endDateTime = new Date(endTime).toISOString();
+        
+        const sessionData = {
+            name: sessionName,
+            description: formData.get('session_description') || '',
+            start_time: startDateTime,
+            end_time: endDateTime,
+            stations_per_session: parseInt(stationsPerSession),
+            time_per_station: parseInt(timePerStation),
+            time_between_stations: parseInt(formData.get('time_between_stations') || 2),
+            randomize_stations: formData.get('randomize_stations') === 'on',
+            participants: selectedStudents.map(s => s.id),
+            stations: selectedStations.map(s => s.case_number)
+        };
+        
+        console.log('Competition session data to send:', sessionData);
+        
         const url = isEditMode ? `/admin/competition-sessions/${sessionId}/edit` : '/admin/create-competition-session';
         const response = await fetch(url, {
             method: 'POST',
@@ -520,7 +534,13 @@ async function createCompetitionSession(event) {
     } catch (error) {
         console.error('Network or parsing error:', error);
         alert('Erreur de connexion lors de la création/modification de la session de compétition');
+    } finally {
+        // Re-enable submit button
+        submitButton.disabled = false;
+        submitButton.textContent = originalButtonText;
     }
+    
+    return false; // Prevent any default form submission
 }
 
 // Helper function to get status display in French
@@ -1449,51 +1469,65 @@ function updateSelectedStationsList() {
 // Create session
 async function createSession(event) {
     event.preventDefault();
+    event.stopPropagation(); // Prevent event bubbling
     
     const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    
+    // Prevent double submission by disabling the submit button
+    if (submitButton.disabled) {
+        console.log('Form already being submitted, ignoring duplicate submission');
+        return false;
+    }
+    
+    // Disable submit button to prevent double submission
+    submitButton.disabled = true;
+    const originalButtonText = submitButton.textContent;
+    submitButton.textContent = 'Création en cours...';
+    
     const isEditMode = form.dataset.editMode === 'true';
     const sessionId = form.dataset.sessionId;
     
     console.log(isEditMode ? 'Updating session...' : 'Creating session...');
     
-    const formData = new FormData(form);
-    
-    // Validate required fields
-    const sessionName = formData.get('session_name');
-    const startTime = formData.get('start_time');
-    const endTime = formData.get('end_time');
-    
-    if (!sessionName || !startTime || !endTime) {
-        alert('Veuillez remplir tous les champs obligatoires');
-        return;
-    }
-    
-    if (selectedStudents.length === 0) {
-        alert('Veuillez sélectionner au moins un étudiant');
-        return;
-    }
-    
-    if (selectedStations.length === 0) {
-        alert('Veuillez sélectionner au moins une station');
-        return;
-    }
-    
-    // Format datetime for backend
-    const startDateTime = new Date(startTime).toISOString();
-    const endDateTime = new Date(endTime).toISOString();
-    
-    const sessionData = {
-        name: sessionName,
-        description: formData.get('session_description') || '',
-        start_time: startDateTime,
-        end_time: endDateTime,
-        participants: selectedStudents.map(s => s.id),
-        stations: selectedStations.map(s => s.case_number)
-    };
-    
-    console.log('Session data to send:', sessionData);
-    
     try {
+        const formData = new FormData(form);
+        
+        // Validate required fields
+        const sessionName = formData.get('session_name');
+        const startTime = formData.get('start_time');
+        const endTime = formData.get('end_time');
+        
+        if (!sessionName || !startTime || !endTime) {
+            alert('Veuillez remplir tous les champs obligatoires');
+            return;
+        }
+        
+        if (selectedStudents.length === 0) {
+            alert('Veuillez sélectionner au moins un étudiant');
+            return;
+        }
+        
+        if (selectedStations.length === 0) {
+            alert('Veuillez sélectionner au moins une station');
+            return;
+        }
+        
+        // Format datetime for backend
+        const startDateTime = new Date(startTime).toISOString();
+        const endDateTime = new Date(endTime).toISOString();
+        
+        const sessionData = {
+            name: sessionName,
+            description: formData.get('session_description') || '',
+            start_time: startDateTime,
+            end_time: endDateTime,
+            participants: selectedStudents.map(s => s.id),
+            stations: selectedStations.map(s => s.case_number)
+        };
+        
+        console.log('Session data to send:', sessionData);
+        
         const url = isEditMode ? `/admin/sessions/${sessionId}/edit` : '/admin/create-session';
         const response = await fetch(url, {
             method: 'POST',
@@ -1518,7 +1552,13 @@ async function createSession(event) {
     } catch (error) {
         console.error('Network or parsing error:', error);
         alert('Erreur de connexion lors de la création/modification de la session');
+    } finally {
+        // Re-enable submit button
+        submitButton.disabled = false;
+        submitButton.textContent = originalButtonText;
     }
+    
+    return false; // Prevent any default form submission
 }
 
 // Helper function to get score class
@@ -1532,10 +1572,12 @@ function getScoreClass(score) {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Admin interface initialized');
+    
     // Load overview data by default
     loadOverviewData();
     
-    // Add event listeners for search inputs
+    // Set up event listeners for search inputs
     const stationsSearch = document.getElementById('admin-stations-search');
     if (stationsSearch) {
         stationsSearch.addEventListener('keypress', (event) => {
@@ -1565,39 +1607,29 @@ document.addEventListener('DOMContentLoaded', function() {
         stationSearch.addEventListener('input', updateAvailableStationsList);
     }
     
-    // Add event listener for create session form
-    const createSessionForm = document.getElementById('create-session-form');
-    if (createSessionForm) {
-        createSessionForm.addEventListener('submit', createSession);
+    // Set up form event listeners - PREVENT DOUBLE BINDING
+    // Competition session form
+    const competitionForm = document.getElementById('create-competition-session-form');
+    if (competitionForm) {
+        // Remove any existing event listeners by cloning the form
+        const newCompetitionForm = competitionForm.cloneNode(true);
+        competitionForm.parentNode.replaceChild(newCompetitionForm, competitionForm);
+        
+        // Add the event listener to the new form
+        newCompetitionForm.addEventListener('submit', createCompetitionSession);
+        console.log('Competition session form event listener attached');
     }
     
-    // Close modal functionality
-    document.querySelectorAll('.close-modal').forEach(closeBtn => {
-        closeBtn.addEventListener('click', function() {
-            this.closest('.modal').classList.remove('visible');
-            this.closest('.modal').classList.add('hidden');
-        });
-    });
-    
-    // Close modals when clicking outside
-    window.addEventListener('click', (e) => {
-        if (e.target.classList.contains('modal')) {
-            e.target.classList.remove('visible');
-            e.target.classList.add('hidden');
-        }
-    });
-});
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Admin interface initialized');
-    
-    // Load overview data by default
-    loadOverviewData();
-    
-    // Set up event listeners
-    const form = document.getElementById('create-competition-session-form');
-    if (form) {
-        form.addEventListener('submit', createCompetitionSession);
+    // Regular session form
+    const createSessionForm = document.getElementById('create-session-form');
+    if (createSessionForm) {
+        // Remove any existing event listeners by cloning the form
+        const newSessionForm = createSessionForm.cloneNode(true);
+        createSessionForm.parentNode.replaceChild(newSessionForm, createSessionForm);
+        
+        // Add the event listener to the new form
+        newSessionForm.addEventListener('submit', createSession);
+        console.log('Regular session form event listener attached');
     }
     
     // Close modal functionality
