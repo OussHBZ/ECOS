@@ -661,9 +661,13 @@ class CompetitionSession(db.Model):
     
     def can_start_competition(self):
         """Check if competition can start (all participants logged in)"""
-        return (self.get_logged_in_count() >= self.get_participant_count() and 
-                self.get_participant_count() > 0 and 
-                self.get_assigned_stations_count() >= self.stations_per_session)
+        logged_in_count = self.get_logged_in_count()
+        total_participants = self.get_participant_count()
+        station_count = self.get_assigned_stations_count()
+        
+        return (logged_in_count >= total_participants and 
+                total_participants > 0 and 
+                station_count >= self.stations_per_session)
     
     def start_competition(self):
         """Start the competition by assigning stations to all participants"""
@@ -675,9 +679,10 @@ class CompetitionSession(db.Model):
         # Get all available stations from the station bank
         available_stations = [assignment.case_number for assignment in self.station_assignments]
         
-        # Get all logged-in students (for now, we'll use registered students)
-        logged_in_students = StudentCompetitionSession.query.filter_by(
-            session_id=self.id
+        # Get all logged-in students
+        logged_in_students = StudentCompetitionSession.query.filter(
+            StudentCompetitionSession.session_id == self.id,
+            StudentCompetitionSession.status.in_(['registered', 'logged_in'])
         ).all()
         
         for student_session in logged_in_students:
