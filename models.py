@@ -582,10 +582,10 @@ class StudentPerformance(db.Model):
         return SessionStationAssignment.query.filter_by(session_id=self.id).count()
 
     def get_status_display(self):
-        """Get human-readable status"""
+        """Get display-friendly status"""
         status_map = {
             'scheduled': 'Programmée',
-            'active': 'Active',
+            'active': 'En cours',
             'completed': 'Terminée',
             'cancelled': 'Annulée'
         }
@@ -667,16 +667,17 @@ class CompetitionSession(db.Model):
     
     def start_competition(self):
         """Start the competition by assigning stations to all participants"""
+        import random
+        
         if not self.can_start_competition():
             return False
             
         # Get all available stations from the station bank
         available_stations = [assignment.case_number for assignment in self.station_assignments]
         
-        # Get all logged-in students
+        # Get all logged-in students (for now, we'll use registered students)
         logged_in_students = StudentCompetitionSession.query.filter_by(
-            session_id=self.id, 
-            status='logged_in'
+            session_id=self.id
         ).all()
         
         for student_session in logged_in_students:

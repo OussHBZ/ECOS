@@ -51,8 +51,14 @@ class DocumentExtractionAgent:
         return None
         
     def process_file(self, file_path, file_type, case_number=None, specialty=None):
-        """Main entry point to process a file with the agent"""
+        """
+        Main entry point to process a file with the agent
+        
+        IMPORTANT: This method ONLY extracts data and returns it.
+        It does NOT save to the database automatically.
+        """
         logger.info(f"Agent processing file: {file_path} of type {file_type}")
+        logger.info("Note: This process will ONLY extract data, not save to database")
         
         # Initialize state for this run
         self.state = {
@@ -71,7 +77,8 @@ class DocumentExtractionAgent:
         # Run the agent's main loop
         self._run_extraction_loop()
         
-        # Return the final extracted data
+        # Return the final extracted data WITHOUT saving to database
+        logger.info(f"Extraction completed for case {case_number}. Data ready for preview/editing.")
         return self.state["extracted_data"]
     
     def _run_extraction_loop(self):
@@ -89,7 +96,7 @@ class DocumentExtractionAgent:
             # Step 3: Validate the extracted data
             self._validate_extraction()
             
-            logger.info("Document extraction process completed successfully")
+            logger.info("Document extraction process completed successfully (no database save)")
             
         except Exception as e:
             logger.error(f"Error during extraction process: {str(e)}")
@@ -627,8 +634,15 @@ class DocumentExtractionAgent:
         return json_str
     
     def save_case_data(self, case_number, specialty, extracted_data):
-        """Save extracted case data to the database with proper handling of images."""
+        """
+        Save extracted case data to the database with proper handling of images.
+        
+        NOTE: This method is available for manual saving when needed, 
+        but is NOT called automatically by process_file().
+        """
         from models import PatientCase, CaseImage, db
+        
+        logger.info(f"Manually saving case {case_number} to database")
         
         try:
             # Check if case already exists

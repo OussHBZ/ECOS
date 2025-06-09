@@ -1,3 +1,4 @@
+
 // Global variables for admin interface
 let availableStudents = [];
 let selectedStudents = [];

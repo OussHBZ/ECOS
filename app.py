@@ -81,23 +81,40 @@ def create_app():
     
     # Create tables if they don't exist
     with app.app_context():
-        db.create_all()
-        
-        # Check if competition tables exist, if not create them
-        inspector = db.inspect(db.engine)
-        existing_tables = inspector.get_table_names()
-        
-        competition_tables = [
-            'competition_sessions', 'competition_participants', 
-            'competition_station_bank', 'student_competition_sessions', 
-            'student_station_assignments'
-        ]
-        
-        missing_tables = [table for table in competition_tables if table not in existing_tables]
-        
-        if missing_tables:
-            logger.info(f"Creating missing competition tables: {missing_tables}")
+        try:
+            # Create all tables
             db.create_all()
+            
+            # Check if competition tables exist, if not create them specifically
+            inspector = db.inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            
+            competition_tables = [
+                'competition_sessions', 'competition_participants', 
+                'competition_station_bank', 'student_competition_sessions', 
+                'student_station_assignments'
+            ]
+            
+            missing_tables = [table for table in competition_tables if table not in existing_tables]
+            
+            if missing_tables:
+                logger.info(f"Creating missing competition tables: {missing_tables}")
+                # Force create all tables again to ensure competition tables are created
+                db.create_all()
+                
+                # Verify tables were created
+                updated_tables = db.inspect(db.engine).get_table_names()
+                still_missing = [table for table in competition_tables if table not in updated_tables]
+                
+                if still_missing:
+                    logger.error(f"Failed to create tables: {still_missing}")
+                else:
+                    logger.info("All competition tables created successfully")
+            else:
+                logger.info("All competition tables already exist")
+                
+        except Exception as e:
+            logger.error(f"Error creating database tables: {str(e)}")
 
     # Create upload folder if it doesn't exist
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
@@ -138,7 +155,8 @@ def create_app():
     app.config['DOCUMENT_AGENT'] = document_agent
     app.config['EVALUATION_AGENT'] = evaluation_agent
     app.config['GROQ_CLIENT'] = client
-    
+        
+
     def load_patient_case(case_number):
         """Load patient case data from the database"""
         try:

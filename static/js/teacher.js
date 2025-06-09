@@ -1520,6 +1520,9 @@ function saveEditedCase(previewData) {
         return;
     }
     
+    // Show saving status
+    processingMessage.textContent = 'Sauvegarde en cours...';
+    
     // Send the edited data to the backend
     fetch('/teacher/save_edited_case', {
         method: 'POST',
@@ -1547,11 +1550,32 @@ function saveEditedCase(previewData) {
         if (data.error) {
             processingMessage.textContent = `Erreur: ${data.error}`;
         } else {
-            processingMessage.textContent = 'Cas enregistré avec succès!';
-            extractionResults.innerHTML = '';
-            if (uploadForm) uploadForm.reset();
+            // Show success message based on action
+            const action = data.action === 'updated' ? 'mis à jour' : 'enregistré';
+            processingMessage.textContent = `Cas ${action} avec succès!`;
             
-            // Refresh the page after 2 seconds to show updated case list
+            // Clear the extraction results
+            extractionResults.innerHTML = '';
+            
+            // Reset the upload form if it exists
+            if (uploadForm) {
+                uploadForm.reset();
+                // Clear file input previews
+                const fileImagesPreview = document.getElementById('file-images-preview');
+                if (fileImagesPreview) {
+                    fileImagesPreview.innerHTML = '';
+                }
+                
+                // Clear case number validation
+                const caseNumberInput = document.getElementById('case-number');
+                if (caseNumberInput) {
+                    clearCaseNumberValidation(caseNumberInput);
+                    lastValidatedCaseNumber = null;
+                    isCurrentCaseNumberValid = false;
+                }
+            }
+            
+            // Show success message for a bit longer, then refresh
             setTimeout(() => {
                 window.location.reload();
             }, 2000);
@@ -1562,6 +1586,7 @@ function saveEditedCase(previewData) {
         processingMessage.textContent = `Une erreur est survenue lors de l'enregistrement: ${error.message}`;
     });
 }
+
 
 function collectBasicEditedData() {
     console.log('Using basic data collection');
@@ -1748,6 +1773,10 @@ function updateExtractionIssuesUI(issues, container) {
 
 // Function to collect form data as structured object
 function collectEditedFormData() {
+    // Get the case number and specialty from the preview data or form
+    const caseNumberInput = document.getElementById('case-number') || document.getElementById('edit-case-number');
+    const specialtyInput = document.getElementById('specialty') || document.getElementById('edit-specialty');
+    
     // Basic patient info
     const patientInfo = {
         name: document.getElementById('edit-patient-name')?.value || '',
@@ -1862,6 +1891,8 @@ function collectEditedFormData() {
     
     // Collect remaining data
     const editedData = {
+        case_number: caseNumberInput?.value || '',
+        specialty: specialtyInput?.value || '',
         patient_info: patientInfo,
         symptoms: symptoms,
         evaluation_checklist: checklist,
@@ -1918,7 +1949,6 @@ function collectEditedFormData() {
     
     return editedData;
 }
-
 // Function to validate edited form data in real-time
 function validateEditedForm() {
     const editedData = collectEditedFormData();

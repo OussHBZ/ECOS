@@ -10,6 +10,7 @@ import tempfile
 from simple_pdf_generator import create_simple_consultation_pdf
 from datetime import datetime
 
+# CREATE THE BLUEPRINT - This must be at the top level
 teacher_bp = Blueprint('teacher', __name__)
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,12 @@ def process_case_file():
         if not case_number or not specialty:
             logger.warning("Missing required fields")
             return jsonify({"error": "Missing required fields"}), 400
+        
+        # Check if case already exists
+        existing_case = PatientCase.query.filter_by(case_number=case_number).first()
+        if existing_case:
+            logger.warning(f"Case {case_number} already exists")
+            return jsonify({"error": f"Case {case_number} already exists"}), 400
                 
         # Save the file temporarily
         filename = secure_filename(case_file.filename)
@@ -77,7 +84,7 @@ def process_case_file():
                     image_file.save(image_filepath)
                     image_paths.append(image_filepath)
         
-        # Process the main file
+        # Process the main file - BUT DON'T SAVE TO DATABASE YET
         extracted_data = document_agent.process_file(temp_filepath, file_ext, case_number, specialty)
         
         # Process any uploaded images using the multi-image processor
@@ -100,12 +107,8 @@ def process_case_file():
                         unique[key] = img
                 extracted_data['images'] = list(unique.values())
         
-        # Save the extracted data using the agent
-        document_agent.save_case_data(
-            case_number, 
-            specialty, 
-            extracted_data
-        )
+        # DON'T SAVE THE DATA HERE - JUST RETURN IT FOR PREVIEW
+        # document_agent.save_case_data(case_number, specialty, extracted_data)  # REMOVE THIS LINE
         
         # Clean up temporary files
         os.remove(temp_filepath)
@@ -272,13 +275,13 @@ def process_manual_case():
         )
         
         db.session.add(new_case)
-        db.session.flush()  # Get the case ID
+        db.session.commit()  # Commit first to get the case persisted
         
-        # Add images to database
+        # Add images to database using case_number (not case_id)
         from models import CaseImage
         for img in images:
             case_image = CaseImage(
-                case_id=new_case.id,
+                case_number=case_number,  # Use case_number, not case_id
                 path=img['path'],
                 description=img['description'],
                 filename=img['filename']
@@ -312,10 +315,9 @@ def save_edited_case():
         # Log the incoming request
         logger.info("save_edited_case route called")
         logger.info(f"Request content type: {request.content_type}")
-        logger.info(f"Request data: {request.get_data()}")
         
         data = request.get_json()
-        logger.info(f"Parsed JSON data: {data}")
+        logger.info(f"Parsed JSON data keys: {list(data.keys()) if data else 'None'}")
         
         if not data:
             logger.error("No JSON data received")
@@ -343,53 +345,92 @@ def save_edited_case():
         # Check if case already exists
         existing_case = PatientCase.query.filter_by(case_number=case_number).first()
         if existing_case:
-            logger.warning(f"Case {case_number} already exists")
-            return jsonify({"error": f"Case {case_number} already exists"}), 400
+            logger.warning(f"Case {case_number} already exists - updating instead of creating")
+            # UPDATE THE EXISTING CASE INSTEAD OF CREATING A NEW ONE
+            existing_case.specialty = specialty  # Update specialty as well
+            existing_case.patient_info = edited_data.get('patient_info', existing_case.patient_info)
+            existing_case.symptoms = edited_data.get('symptoms', existing_case.symptoms)
+            existing_case.evaluation_checklist = edited_data.get('evaluation_checklist', existing_case.evaluation_checklist)
+            existing_case.diagnosis = edited_data.get('diagnosis', existing_case.diagnosis)
+            existing_case.differential_diagnosis = edited_data.get('differential_diagnosis', existing_case.differential_diagnosis)
+            existing_case.directives = edited_data.get('directives', existing_case.directives)
+            existing_case.consultation_time = edited_data.get('consultation_time', existing_case.consultation_time)
+            existing_case.additional_notes = edited_data.get('additional_notes', existing_case.additional_notes)
+            existing_case.custom_sections = edited_data.get('custom_sections', existing_case.custom_sections)
+            existing_case.updated_at = datetime.utcnow()
+            
+            # Handle images - remove old ones and add new ones
+            from models import CaseImage
+            
+            # Remove existing images for this case
+            old_images = CaseImage.query.filter_by(case_number=case_number).all()
+            for img in old_images:
+                # Delete physical file if it exists
+                if img.path.startswith('/static/'):
+                    file_path = os.path.join(current_app.static_folder, img.path[8:])
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                db.session.delete(img)
+            
+            # Add new images using case_number (not case_id)
+            images_data = edited_data.get('images', [])
+            for img_data in images_data:
+                case_image = CaseImage(
+                    case_number=case_number,  # Use case_number, not case_id
+                    path=img_data.get('path', ''),
+                    description=img_data.get('description', ''),
+                    filename=img_data.get('filename', '')
+                )
+                db.session.add(case_image)
+            
+            db.session.commit()
+            logger.info(f"Successfully updated existing case: {case_number}")
+            return jsonify({"status": "success", "case_number": case_number, "action": "updated"})
         
-        # Create new case from edited data
-        new_case = PatientCase(
-            case_number=case_number,
-            specialty=specialty,
-            patient_info=edited_data.get('patient_info', {}),
-            symptoms=edited_data.get('symptoms', []),
-            evaluation_checklist=edited_data.get('evaluation_checklist', []),
-            diagnosis=edited_data.get('diagnosis', ''),
-            differential_diagnosis=edited_data.get('differential_diagnosis', ''),
-            directives=edited_data.get('directives', ''),
-            consultation_time=edited_data.get('consultation_time', 10),
-            additional_notes=edited_data.get('additional_notes', ''),
-            custom_sections=edited_data.get('custom_sections', [])
-        )
-        
-        db.session.add(new_case)
-        db.session.flush()
-        
-        logger.info(f"New case created with ID: {new_case.id}")
-        
-        # Handle images
-        from models import CaseImage
-        images_data = edited_data.get('images', [])
-        logger.info(f"Processing {len(images_data)} images")
-        
-        for img_data in images_data:
-            case_image = CaseImage(
-                case_id=new_case.id,
-                path=img_data.get('path', ''),
-                description=img_data.get('description', ''),
-                filename=img_data.get('filename', '')
+        else:
+            # CREATE NEW CASE
+            new_case = PatientCase(
+                case_number=case_number,
+                specialty=specialty,
+                patient_info=edited_data.get('patient_info', {}),
+                symptoms=edited_data.get('symptoms', []),
+                evaluation_checklist=edited_data.get('evaluation_checklist', []),
+                diagnosis=edited_data.get('diagnosis', ''),
+                differential_diagnosis=edited_data.get('differential_diagnosis', ''),
+                directives=edited_data.get('directives', ''),
+                consultation_time=edited_data.get('consultation_time', 10),
+                additional_notes=edited_data.get('additional_notes', ''),
+                custom_sections=edited_data.get('custom_sections', [])
             )
-            db.session.add(case_image)
-        
-        db.session.commit()
-        
-        logger.info(f"Successfully saved edited case: {case_number}")
-        return jsonify({"status": "success", "case_number": case_number})
+            
+            db.session.add(new_case)
+            db.session.commit()  # Commit first to get the case persisted
+            
+            logger.info(f"New case created with case_number: {new_case.case_number}")
+            
+            # Handle images using case_number (not case_id)
+            from models import CaseImage
+            images_data = edited_data.get('images', [])
+            logger.info(f"Processing {len(images_data)} images")
+            
+            for img_data in images_data:
+                case_image = CaseImage(
+                    case_number=case_number,  # Use case_number, not case_id
+                    path=img_data.get('path', ''),
+                    description=img_data.get('description', ''),
+                    filename=img_data.get('filename', '')
+                )
+                db.session.add(case_image)
+            
+            db.session.commit()
+            logger.info(f"Successfully created new case: {case_number}")
+            return jsonify({"status": "success", "case_number": case_number, "action": "created"})
         
     except Exception as e:
         logger.error(f"Error saving edited case: {str(e)}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-    
+
 @teacher_bp.route('/edit_case/<case_number>', methods=['POST'])
 @teacher_required
 def edit_case(case_number):
@@ -438,9 +479,9 @@ def delete_case(case_number):
         if not existing_case:
             return jsonify({"error": f"Case {case_number} not found"}), 404
         
-        # Delete associated images
+        # Delete associated images using case_number (not case_id)
         from models import CaseImage
-        case_images = CaseImage.query.filter_by(case_id=existing_case.id).all()
+        case_images = CaseImage.query.filter_by(case_number=case_number).all()
         for img in case_images:
             # Delete physical file
             if img.path.startswith('/static/'):

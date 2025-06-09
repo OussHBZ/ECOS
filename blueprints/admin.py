@@ -1,11 +1,16 @@
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, current_app
 from flask_login import current_user
-from models import db, Student, AdminAccess, OSCESession, SessionParticipant, SessionStationAssignment, PatientCase, StudentPerformance, CompetitionSession, CompetitionParticipant, CompetitionStationBank, StudentCompetitionSession, StudentStationAssignment
 from auth import admin_required
 import logging
 from datetime import datetime
 import tempfile
 from simple_pdf_generator import create_simple_consultation_pdf
+from models import (
+    db, Student, AdminAccess, OSCESession, SessionParticipant, 
+    SessionStationAssignment, PatientCase, StudentPerformance, 
+    CompetitionSession, CompetitionParticipant, CompetitionStationBank, 
+    StudentCompetitionSession, StudentStationAssignment
+)
 
 admin_bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
@@ -472,3 +477,435 @@ def admin_download_student_report(performance_id):
     except Exception as e:
         logger.error(f"Error generating admin student report PDF for performance ID {performance_id}: {str(e)}", exc_info=True)
         return jsonify({"error": "Erreur lors de la génération du rapport PDF"}), 500
+
+@admin_bp.route('/competition-sessions')
+@admin_required
+def admin_competition_sessions():
+    """Get competition sessions for admin management"""
+    try:
+        sessions = CompetitionSession.query.order_by(CompetitionSession.created_at.desc()).all()
+        
+        session_data = []
+        total_sessions = len(sessions)
+        scheduled_count = 0
+        active_count = 0
+        
+        for session in sessions:
+            if session.status == 'scheduled':
+                scheduled_count += 1
+            elif session.status == 'active':
+                active_count += 1
+            
+            session_data.append({
+                'id': session.id,
+                'name': session.name,
+                'start_time': session.start_time.strftime('%d/%m/%Y %H:%M'),
+                'end_time': session.end_time.strftime('%d/%m/%Y %H:%M'),
+                'participant_count': session.get_participant_count(),
+                'station_count': session.get_assigned_stations_count(),
+                'stations_per_session': session.stations_per_session,
+                'time_per_station': session.time_per_station,
+                'status': session.status,
+                'status_display': session.get_status_display(),
+                'can_start': session.can_start_competition()
+            })
+        
+        return jsonify({
+            'sessions': session_data,
+            'total': total_sessions,
+            'scheduled': scheduled_count,
+            'active': active_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting admin competition sessions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/competition-sessions/<int:session_id>')
+@admin_required
+def admin_competition_session_details(session_id):
+    """Get detailed information for a specific competition session"""
+    try:
+        session = CompetitionSession.query.get_or_404(session_id)
+        
+        # Get participants with their current status
+        participants_data = []
+        for participant in session.participants:
+            student_session = StudentCompetitionSession.query.filter_by(
+                session_id=session_id,
+                student_id=participant.student_id
+            ).first()
+            
+            if student_session:
+                current_station = f"{student_session.current_station_order}"
+                progress = student_session.get_progress_percentage()
+                status = student_session.status
+            else:
+                current_station = "0"
+                progress = 0
+                status = "registered"
+            
+            participants_data.append({
+                'id': participant.student.id,
+                'name': participant.student.name,
+                'student_code': participant.student.student_code,
+                'status': status,
+                'current_station': current_station,
+                'progress': progress
+            })
+        
+        # Get stations in the bank
+        stations_data = []
+        for station_assignment in session.station_assignments:
+            case = PatientCase.query.filter_by(case_number=station_assignment.case_number).first()
+            if case:
+                stations_data.append({
+                    'case_number': case.case_number,
+                    'specialty': case.specialty,
+                    'consultation_time': case.consultation_time
+                })
+        
+        # Get leaderboard if session is completed or active
+        leaderboard = []
+        if session.status in ['active', 'completed']:
+            leaderboard = session.get_leaderboard()
+        
+        return jsonify({
+            'id': session.id,
+            'name': session.name,
+            'description': session.description,
+            'start_time': session.start_time.strftime('%d/%m/%Y %H:%M'),
+            'end_time': session.end_time.strftime('%d/%m/%Y %H:%M'),
+            'status': session.status,
+            'status_display': session.get_status_display(),
+            'stations_per_session': session.stations_per_session,
+            'time_per_station': session.time_per_station,
+            'time_between_stations': session.time_between_stations,
+            'randomize_stations': session.randomize_stations,
+            'participants': participants_data,
+            'stations': stations_data,
+            'leaderboard': leaderboard
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting competition session details: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/create-competition-session', methods=['POST'])
+@admin_required
+def admin_create_competition_session():
+    """Create a new competition session"""
+    try:
+        data = request.get_json()
+        logger.info(f"Received competition session creation request: {data}")
+        
+        # Validate that we have JSON data
+        if not data:
+            logger.error("No JSON data received")
+            return jsonify({"error": "No data received", "success": False}), 400
+        
+        # Validate required fields
+        required_fields = ['name', 'start_time', 'end_time', 'stations_per_session', 'time_per_station']
+        missing_fields = []
+        
+        for field in required_fields:
+            if not data.get(field):
+                missing_fields.append(field)
+        
+        if missing_fields:
+            error_msg = f"Missing required fields: {', '.join(missing_fields)}"
+            logger.error(error_msg)
+            return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Validate datetime format
+        try:
+            start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+            end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
+            logger.info(f"Parsed times - Start: {start_time}, End: {end_time}")
+        except ValueError as e:
+            error_msg = f"Invalid datetime format: {str(e)}"
+            logger.error(error_msg)
+            return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Validate time logic
+        if start_time >= end_time:
+            error_msg = "Start time must be before end time"
+            logger.error(error_msg)
+            return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Validate participants and stations
+        participant_ids = data.get('participants', [])
+        station_numbers = data.get('stations', [])
+        
+        logger.info(f"Participants: {participant_ids}, Stations: {station_numbers}")
+        
+        # Validate that participant IDs exist
+        if participant_ids:
+            existing_students = Student.query.filter(Student.id.in_(participant_ids)).all()
+            existing_student_ids = [s.id for s in existing_students]
+            invalid_student_ids = [pid for pid in participant_ids if pid not in existing_student_ids]
+            
+            if invalid_student_ids:
+                error_msg = f"Invalid student IDs: {invalid_student_ids}"
+                logger.error(error_msg)
+                return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Validate that station numbers exist
+        if station_numbers:
+            existing_cases = PatientCase.query.filter(PatientCase.case_number.in_(station_numbers)).all()
+            existing_case_numbers = [c.case_number for c in existing_cases]
+            invalid_case_numbers = [sn for sn in station_numbers if sn not in existing_case_numbers]
+            
+            if invalid_case_numbers:
+                error_msg = f"Invalid station numbers: {invalid_case_numbers}"
+                logger.error(error_msg)
+                return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Validate that we have enough stations
+        if len(station_numbers) < data['stations_per_session']:
+            error_msg = f"Station bank must contain at least {data['stations_per_session']} stations"
+            logger.error(error_msg)
+            return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Create competition session
+        session = CompetitionSession(
+            name=data['name'],
+            description=data.get('description', ''),
+            start_time=start_time,
+            end_time=end_time,
+            stations_per_session=data['stations_per_session'],
+            time_per_station=data['time_per_station'],
+            time_between_stations=data.get('time_between_stations', 2),
+            randomize_stations=data.get('randomize_stations', True),
+            created_by='admin',
+            status='scheduled'
+        )
+        
+        db.session.add(session)
+        db.session.flush()  # Get the session ID
+        
+        logger.info(f"Created competition session with ID: {session.id}")
+        
+        # Add participants
+        participants_added = 0
+        for student_id in participant_ids:
+            try:
+                participant = CompetitionParticipant(
+                    session_id=session.id,
+                    student_id=student_id
+                )
+                db.session.add(participant)
+                
+                # Also create a StudentCompetitionSession record
+                student_session = StudentCompetitionSession(
+                    session_id=session.id,
+                    student_id=student_id,
+                    status='registered'
+                )
+                db.session.add(student_session)
+                
+                participants_added += 1
+            except Exception as e:
+                logger.error(f"Error adding participant {student_id}: {str(e)}")
+        
+        # Add stations to bank
+        stations_added = 0
+        for case_number in station_numbers:
+            try:
+                station_assignment = CompetitionStationBank(
+                    session_id=session.id,
+                    case_number=case_number
+                )
+                db.session.add(station_assignment)
+                stations_added += 1
+            except Exception as e:
+                logger.error(f"Error adding station {case_number}: {str(e)}")
+        
+        db.session.commit()
+        
+        logger.info(f"Competition session created successfully - ID: {session.id}, Participants: {participants_added}, Stations: {stations_added}")
+        
+        return jsonify({
+            "success": True, 
+            "session_id": session.id,
+            "participants_added": participants_added,
+            "stations_added": stations_added
+        })
+        
+    except Exception as e:
+        logger.error(f"Unexpected error creating competition session: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({"error": f"Internal server error: {str(e)}", "success": False}), 500
+
+@admin_bp.route('/competition-sessions/<int:session_id>/start', methods=['POST'])
+@admin_required
+def admin_start_competition(session_id):
+    """Start a competition session"""
+    try:
+        session = CompetitionSession.query.get_or_404(session_id)
+        
+        if session.status != 'scheduled':
+            return jsonify({
+                "success": False,
+                "error": "Only scheduled sessions can be started"
+            }), 400
+        
+        if not session.can_start_competition():
+            return jsonify({
+                "success": False,
+                "error": "Cannot start competition: not all participants are logged in or insufficient stations"
+            }), 400
+        
+        # Start the competition
+        success = session.start_competition()
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "Competition started successfully"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Failed to start competition"
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error starting competition: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@admin_bp.route('/competition-sessions/<int:session_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_competition_session(session_id):
+    """Edit a competition session"""
+    try:
+        session = CompetitionSession.query.get_or_404(session_id)
+        
+        if request.method == 'GET':
+            # Return session data for editing
+            participants = [p.student_id for p in session.participants]
+            stations = [s.case_number for s in session.station_assignments]
+            
+            return jsonify({
+                'id': session.id,
+                'name': session.name,
+                'description': session.description,
+                'start_time': session.start_time.isoformat(),
+                'end_time': session.end_time.isoformat(),
+                'stations_per_session': session.stations_per_session,
+                'time_per_station': session.time_per_station,
+                'time_between_stations': session.time_between_stations,
+                'randomize_stations': session.randomize_stations,
+                'participants': participants,
+                'stations': stations
+            })
+        
+        elif request.method == 'POST':
+            # Update session
+            data = request.get_json()
+            
+            # Only allow editing if session is still scheduled
+            if session.status != 'scheduled':
+                return jsonify({
+                    "success": False,
+                    "error": "Only scheduled sessions can be edited"
+                }), 400
+            
+            # Update basic fields
+            session.name = data.get('name', session.name)
+            session.description = data.get('description', session.description)
+            
+            # Update datetime fields
+            if data.get('start_time'):
+                session.start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+            if data.get('end_time'):
+                session.end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
+            
+            # Update competition settings
+            session.stations_per_session = data.get('stations_per_session', session.stations_per_session)
+            session.time_per_station = data.get('time_per_station', session.time_per_station)
+            session.time_between_stations = data.get('time_between_stations', session.time_between_stations)
+            session.randomize_stations = data.get('randomize_stations', session.randomize_stations)
+            
+            # Update participants
+            if 'participants' in data:
+                # Remove existing participants
+                CompetitionParticipant.query.filter_by(session_id=session_id).delete()
+                StudentCompetitionSession.query.filter_by(session_id=session_id).delete()
+                
+                # Add new participants
+                for student_id in data['participants']:
+                    participant = CompetitionParticipant(
+                        session_id=session_id,
+                        student_id=student_id
+                    )
+                    db.session.add(participant)
+                    
+                    student_session = StudentCompetitionSession(
+                        session_id=session_id,
+                        student_id=student_id,
+                        status='registered'
+                    )
+                    db.session.add(student_session)
+            
+            # Update stations
+            if 'stations' in data:
+                # Remove existing stations
+                CompetitionStationBank.query.filter_by(session_id=session_id).delete()
+                
+                # Add new stations
+                for case_number in data['stations']:
+                    station_assignment = CompetitionStationBank(
+                        session_id=session_id,
+                        case_number=case_number
+                    )
+                    db.session.add(station_assignment)
+            
+            db.session.commit()
+            
+            return jsonify({
+                "success": True,
+                "message": "Competition session updated successfully"
+            })
+        
+    except Exception as e:
+        logger.error(f"Error editing competition session: {str(e)}")
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@admin_bp.route('/competition-sessions/<int:session_id>/delete', methods=['DELETE'])
+@admin_required
+def admin_delete_competition_session(session_id):
+    """Delete a competition session"""
+    try:
+        session = CompetitionSession.query.get_or_404(session_id)
+        
+        # Only allow deletion of scheduled sessions
+        if session.status not in ['scheduled', 'completed', 'cancelled']:
+            return jsonify({
+                "success": False,
+                "error": "Cannot delete active sessions"
+            }), 400
+        
+        # Delete the session (cascade will handle related records)
+        db.session.delete(session)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Competition session deleted successfully"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting competition session: {str(e)}")
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
