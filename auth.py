@@ -1,8 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from models import db, Student, TeacherAccess, AdminAccess
 from datetime import datetime
 import re, os
+from functools import wraps
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -105,38 +106,44 @@ def logout():
     return redirect(url_for('index'))
 
 def student_required(f):
-    """Decorator to require student login"""
-    from functools import wraps
-    
+    """Decorator to require student login - returns JSON for AJAX requests"""
     @wraps(f)
-    @login_required
     def decorated_function(*args, **kwargs):
-        if session.get('user_type') != 'student':
-            flash('Accès réservé aux étudiants.', 'error')
-            return redirect(url_for('auth.login'))
+        # Check if user is logged in as student
+        if not current_user.is_authenticated or session.get('user_type') != 'student':
+            # Check if this is an AJAX request
+            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
+            else:
+                flash('Accès réservé aux étudiants.', 'error')
+                return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
 def teacher_required(f):
-    """Decorator to require teacher authentication"""
-    from functools import wraps
-    
+    """Decorator to require teacher authentication - returns JSON for AJAX requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
-            flash('Accès réservé aux enseignants.', 'error')
-            return redirect(url_for('auth.login'))
+            # Check if this is an AJAX request
+            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
+            else:
+                flash('Accès réservé aux enseignants.', 'error')
+                return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
 def admin_required(f):
-    """Decorator to require administrator authentication"""
-    from functools import wraps
-    
+    """Decorator to require administrator authentication - returns JSON for AJAX requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if session.get('user_type') != 'admin' or not session.get('admin_authenticated'):
-            flash('Accès réservé aux administrateurs.', 'error')
-            return redirect(url_for('auth.login'))
+            # Check if this is an AJAX request
+            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
+            else:
+                flash('Accès réservé aux administrateurs.', 'error')
+                return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function

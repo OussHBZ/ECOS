@@ -4,6 +4,7 @@ from auth import admin_required
 import logging
 from datetime import datetime
 import tempfile
+import json
 from simple_pdf_generator import create_simple_consultation_pdf
 from models import (
     db, Student, AdminAccess, OSCESession, SessionParticipant, 
@@ -191,7 +192,7 @@ def admin_students():
     except Exception as e:
         logger.error(f"Error getting admin students: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @admin_bp.route('/students/<int:student_id>/details')
 @admin_required
 def admin_student_details(student_id):
@@ -266,7 +267,7 @@ def admin_sessions():
     except Exception as e:
         logger.error(f"Error getting admin sessions: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @admin_bp.route('/available-students')
 @admin_required
 def admin_available_students():
@@ -477,7 +478,7 @@ def admin_download_student_report(performance_id):
     except Exception as e:
         logger.error(f"Error generating admin student report PDF for performance ID {performance_id}: {str(e)}", exc_info=True)
         return jsonify({"error": "Erreur lors de la génération du rapport PDF"}), 500
-
+    
 @admin_bp.route('/competition-sessions')
 @admin_required
 def admin_competition_sessions():
@@ -496,6 +497,20 @@ def admin_competition_sessions():
             elif session.status == 'active':
                 active_count += 1
             
+            # Check if competition can start
+            logged_in_count = StudentCompetitionSession.query.filter_by(
+                session_id=session.id,
+                status='logged_in'
+            ).count()
+            
+            total_participants = session.get_participant_count()
+            station_count = session.get_assigned_stations_count()
+            
+            can_start = (logged_in_count >= total_participants and 
+                        total_participants > 0 and 
+                        station_count >= session.stations_per_session and
+                        session.status == 'scheduled')
+            
             session_data.append({
                 'id': session.id,
                 'name': session.name,
@@ -507,7 +522,7 @@ def admin_competition_sessions():
                 'time_per_station': session.time_per_station,
                 'status': session.status,
                 'status_display': session.get_status_display(),
-                'can_start': session.can_start_competition()
+                'can_start': can_start
             })
         
         return jsonify({
@@ -520,7 +535,7 @@ def admin_competition_sessions():
     except Exception as e:
         logger.error(f"Error getting admin competition sessions: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @admin_bp.route('/competition-sessions/<int:session_id>')
 @admin_required
 def admin_competition_session_details(session_id):

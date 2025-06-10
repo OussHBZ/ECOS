@@ -5,6 +5,7 @@ from auth import student_required
 import logging
 from datetime import datetime
 import time
+import random
 
 student_bp = Blueprint('student', __name__)
 logger = logging.getLogger(__name__)
@@ -53,6 +54,12 @@ def student_available_competitions():
         
         competitions = []
         for session_obj, participant, student_session in participant_sessions:
+            # Get logged in count
+            logged_in_count = StudentCompetitionSession.query.filter_by(
+                session_id=session_obj.id,
+                status='logged_in'
+            ).count()
+            
             competition_data = {
                 'id': session_obj.id,
                 'name': session_obj.name,
@@ -65,7 +72,7 @@ def student_available_competitions():
                 'time_per_station': session_obj.time_per_station,
                 'time_between_stations': session_obj.time_between_stations,
                 'participant_count': session_obj.get_participant_count(),
-                'logged_in_count': session_obj.get_logged_in_count(),
+                'logged_in_count': logged_in_count,
                 'can_join': session_obj.status == 'scheduled',
                 'can_continue': session_obj.status == 'active',
                 'student_status': student_session.status if student_session else 'registered',
@@ -113,19 +120,30 @@ def student_join_competition(session_id):
         
         # Log student into session
         if student_session.status == 'registered':
-            student_session.login_to_session()
+            student_session.status = 'logged_in'
+            student_session.logged_in_at = datetime.utcnow()
+            db.session.commit()
             
             # Check if competition can start
-            if session_obj.can_start_competition():
+            logged_in_count = StudentCompetitionSession.query.filter_by(
+                session_id=session_id,
+                status='logged_in'
+            ).count()
+            
+            total_participants = session_obj.get_participant_count()
+            
+            if logged_in_count >= total_participants and session_obj.status == 'scheduled':
                 # Auto-start competition if all students are logged in
-                session_obj.start_competition()
+                start_success = session_obj.start_competition()
+                if start_success:
+                    logger.info(f"Competition {session_id} auto-started")
                 
         return jsonify({
             "success": True,
             "message": "Successfully joined competition",
             "session_status": session_obj.status,
             "student_status": student_session.status,
-            "waiting_for_others": session_obj.get_logged_in_count() < session_obj.get_participant_count()
+            "waiting_for_others": student_session.status == 'logged_in'
         })
         
     except Exception as e:
@@ -216,7 +234,9 @@ def start_competition_station(session_id):
             return jsonify({"error": "No station assignment found"}), 404
         
         # Start the station
-        station_assignment.start_station()
+        station_assignment.status = 'active'
+        station_assignment.started_at = datetime.utcnow()
+        db.session.commit()
         
         # Get case data
         case = PatientCase.query.filter_by(case_number=station_assignment.case_number).first()
@@ -280,47 +300,59 @@ def complete_competition_station():
             evaluation_results = {'percentage': 0, 'checklist': [], 'feedback': 'Evaluation not available'}
         
         # Complete the station
-        performance_data = {
-            'conversation_transcript': conversation,
-            'evaluation_results': evaluation_results,
-            'percentage_score': evaluation_results.get('percentage', 0),
-            'points_earned': evaluation_results.get('points_earned', 0),
-            'points_total': evaluation_results.get('points_total', 0),
-            'completed_at': datetime.utcnow().isoformat()
+        current_assignment = StudentStationAssignment.query.filter_by(
+            student_session_id=student_session.id,
+            station_order=student_session.current_station_order
+        ).first()
+        
+        if current_assignment:
+            current_assignment.status = 'completed'
+            current_assignment.completed_at = datetime.utcnow()
+            current_assignment.performance_data = jsonify({
+                'conversation_transcript': conversation,
+                'evaluation_results': evaluation_results,
+                'percentage_score': evaluation_results.get('percentage', 0),
+                'points_earned': evaluation_results.get('points_earned', 0),
+                'points_total': evaluation_results.get('points_total', 0),
+                'completed_at': datetime.utcnow().isoformat()
+            }).data.decode()
+        
+        # Move to next station or complete session
+        competition_session = CompetitionSession.query.get(student_session.session_id)
+        if student_session.current_station_order < competition_session.stations_per_session:
+            student_session.current_station_order += 1
+            student_session.status = 'between_stations'
+            is_finished = False
+        else:
+            student_session.status = 'completed'
+            student_session.completed_at = datetime.utcnow()
+            is_finished = True
+        
+        db.session.commit()
+        
+        # Clear session data
+        session.pop('current_conversation', None)
+        session.pop('current_case', None)
+        
+        response_data = {
+            'success': True,
+            'current_station': student_session.current_station_order - 1,  # Previous station
+            'evaluation': evaluation_results,
+            'recommendations': evaluation_results.get('recommendations', []),
+            'is_finished': is_finished,
+            'next_station_delay': competition_session.time_between_stations * 60 if not is_finished else 0
         }
         
-        success = student_session.complete_current_station(performance_data)
+        if is_finished:
+            # Add final competition results
+            response_data.update({
+                'final_score': student_session.get_average_score(),
+                'total_stations': competition_session.stations_per_session,
+                'rank': 1,  # Calculate actual rank
+                'total_participants': competition_session.get_participant_count()
+            })
         
-        if success:
-            # Clear session data
-            session.pop('current_conversation', None)
-            session.pop('current_case', None)
-            
-            # Determine if competition is finished
-            competition_session = CompetitionSession.query.get(student_session.session_id)
-            is_finished = student_session.status == 'completed'
-            
-            response_data = {
-                'success': True,
-                'current_station': student_session.current_station_order - 1,  # Previous station
-                'evaluation': evaluation_results,
-                'recommendations': evaluation_results.get('recommendations', []),
-                'is_finished': is_finished,
-                'next_station_delay': competition_session.time_between_stations * 60 if not is_finished else 0
-            }
-            
-            if is_finished:
-                # Add final competition results
-                response_data.update({
-                    'final_score': student_session.get_average_score(),
-                    'total_stations': competition_session.stations_per_session,
-                    'rank': 1,  # Calculate actual rank
-                    'total_participants': competition_session.get_participant_count()
-                })
-            
-            return jsonify(response_data)
-        else:
-            return jsonify({"error": "Failed to complete station"}), 500
+        return jsonify(response_data)
         
     except Exception as e:
         logger.error(f"Error completing competition station: {str(e)}")
