@@ -3,6 +3,9 @@ from flask_login import UserMixin
 from datetime import datetime
 import json
 import random
+import logging
+
+logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 
@@ -753,6 +756,86 @@ class CompetitionSession(db.Model):
             'cancelled': 'Annulée'
         }
         return status_map.get(self.status, self.status)
+    
+    def start_competition(self):
+        """Start the competition by assigning stations to all participants"""
+        try:
+            if not self.can_start_competition():
+                return False
+                
+            # Get all available stations from the station bank
+            available_stations = [assignment.case_number for assignment in self.station_assignments]
+            
+            # Get all logged-in students
+            logged_in_students = StudentCompetitionSession.query.filter(
+                StudentCompetitionSession.session_id == self.id,
+                StudentCompetitionSession.status.in_(['registered', 'logged_in'])
+            ).all()
+            
+            for student_session in logged_in_students:
+                # Randomly select stations for this student
+                if self.randomize_stations:
+                    import random
+                    selected_stations = random.sample(available_stations, 
+                                                    min(self.stations_per_session, len(available_stations)))
+                else:
+                    selected_stations = available_stations[:self.stations_per_session]
+                
+                # Create station assignments for this student
+                for order, case_number in enumerate(selected_stations, 1):
+                    assignment = StudentStationAssignment(
+                        student_session_id=student_session.id,
+                        case_number=case_number,
+                        station_order=order,
+                        status='pending'
+                    )
+                    db.session.add(assignment)
+                
+                # Update student status to active
+                student_session.status = 'active'
+                student_session.current_station_order = 1
+                student_session.started_at = datetime.utcnow()
+            
+            # Update session status
+            self.status = 'active'
+            db.session.commit()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error starting competition: {str(e)}")
+            db.session.rollback()
+            return False
+
+    def get_leaderboard(self):
+        """Get competition leaderboard with rankings"""
+        completed_sessions = StudentCompetitionSession.query.filter_by(
+            session_id=self.id,
+            status='completed'
+        ).all()
+        
+        leaderboard = []
+        for student_session in completed_sessions:
+            total_score = student_session.get_total_score()
+            avg_score = student_session.get_average_score()
+            
+            leaderboard.append({
+                'student_id': student_session.student_id,
+                'student_name': student_session.student.name,
+                'student_code': student_session.student.student_code,
+                'total_score': total_score,
+                'average_score': avg_score,
+                'stations_completed': student_session.get_completed_stations_count(),
+                'completion_time': student_session.completed_at
+            })
+        
+        # Sort by average score (descending), then by completion time (ascending)
+        leaderboard.sort(key=lambda x: (-x['average_score'], x['completion_time'] or datetime.utcnow()))
+        
+        # Add rankings
+        for i, entry in enumerate(leaderboard, 1):
+            entry['rank'] = i
+            
+        return leaderboard
 
 class CompetitionParticipant(db.Model):
     """Model for tracking which students are in which competition sessions"""
@@ -842,13 +925,22 @@ class StudentCompetitionSession(db.Model):
     def get_total_score(self):
         """Get total score across all completed stations"""
         total = 0
+        completed_count = 0
+        
         for assignment in self.station_assignments:
             if assignment.status == 'completed' and assignment.performance_data:
                 try:
-                    data = json.loads(assignment.performance_data)
-                    total += data.get('percentage_score', 0)
-                except:
+                    if isinstance(assignment.performance_data, str):
+                        data = json.loads(assignment.performance_data)
+                    else:
+                        data = assignment.performance_data
+                        
+                    score = data.get('percentage_score', 0)
+                    total += score
+                    completed_count += 1
+                except (json.JSONDecodeError, TypeError):
                     pass
+        
         return total
     
     def get_average_score(self):
@@ -864,6 +956,9 @@ class StudentCompetitionSession(db.Model):
     
     def get_progress_percentage(self):
         """Get completion progress as percentage"""
+        if not hasattr(self, 'session') or not self.session:
+            return 0
+        
         total_stations = self.session.stations_per_session
         completed = self.get_completed_stations_count()
         return round((completed / total_stations) * 100, 1) if total_stations > 0 else 0

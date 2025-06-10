@@ -684,3 +684,57 @@ def teacher_download_student_report(performance_id):
     except Exception as e:
         logger.error(f"Error generating teacher student report PDF for performance ID {performance_id}: {str(e)}", exc_info=True)
         return jsonify({"error": "Erreur lors de la génération du rapport PDF"}), 500
+    
+@teacher_bp.route('/create_case_manual', methods=['POST'])
+@teacher_required
+def create_case_manual():
+    """Create a case manually from JSON data (for API/testing purposes)"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Validate required fields
+        case_number = data.get('case_number')
+        specialty = data.get('specialty')
+        
+        if not case_number or not specialty:
+            return jsonify({"error": "Case number and specialty are required"}), 400
+        
+        # Check if case already exists
+        existing_case = PatientCase.query.filter_by(case_number=case_number).first()
+        if existing_case:
+            return jsonify({"error": f"Case {case_number} already exists"}), 400
+        
+        # Create new case from JSON data
+        new_case = PatientCase(
+            case_number=case_number,
+            specialty=specialty,
+            patient_info_json=json.dumps(data.get('patient_info', {}), ensure_ascii=False),
+            symptoms_json=json.dumps(data.get('symptoms', []), ensure_ascii=False),
+            evaluation_checklist_json=json.dumps(data.get('evaluation_checklist', []), ensure_ascii=False),
+            diagnosis=data.get('diagnosis', ''),
+            differential_diagnosis_json=json.dumps(data.get('differential_diagnosis', []), ensure_ascii=False) if data.get('differential_diagnosis') else None,
+            directives=data.get('directives', ''),
+            consultation_time=data.get('consultation_time', 10),
+            additional_notes=data.get('additional_notes', ''),
+            custom_sections_json=json.dumps(data.get('custom_sections', []), ensure_ascii=False)
+        )
+        
+        db.session.add(new_case)
+        db.session.commit()
+        
+        logger.info(f"Successfully created case via API: {case_number}")
+        
+        return jsonify({
+            "status": "success",
+            "case_number": case_number,
+            "specialty": specialty,
+            "message": f"Case {case_number} created successfully"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating case via API: {str(e)}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500

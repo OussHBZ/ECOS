@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Comprehensive OSCE Competition Testing Script
-This script tests the entire competition workflow automatically
+Fixed OSCE Competition Testing Script
+This script properly handles authentication and session management
 """
 
 import requests
@@ -76,8 +76,8 @@ TEST_CASES = [
 
 class OSCECompetitionTester:
     def __init__(self):
-        self.session = requests.Session()
-        self.admin_logged_in = False
+        self.admin_session = requests.Session()
+        self.teacher_session = requests.Session()
         self.student_sessions = {}
         self.competition_id = None
         
@@ -89,7 +89,7 @@ class OSCECompetitionTester:
     def check_flask_running(self):
         """Check if Flask app is running"""
         try:
-            response = self.session.get(f"{BASE_URL}/", timeout=5)
+            response = requests.get(f"{BASE_URL}/", timeout=5)
             if response.status_code in [200, 302, 401, 403]:
                 self.log("✅ Flask app is running")
                 return True
@@ -101,10 +101,10 @@ class OSCECompetitionTester:
             return False
             
     def admin_login(self):
-        """Login as admin"""
+        """Login as admin with proper session management"""
         try:
-            # Get login page first
-            login_response = self.session.get(f"{BASE_URL}/login")
+            # Get login page first to establish session
+            login_response = self.admin_session.get(f"{BASE_URL}/login")
             if login_response.status_code != 200:
                 self.log("❌ Failed to access login page", "ERROR")
                 return False
@@ -115,10 +115,9 @@ class OSCECompetitionTester:
                 'access_code': ADMIN_CODE
             }
             
-            response = self.session.post(f"{BASE_URL}/login", data=login_data)
+            response = self.admin_session.post(f"{BASE_URL}/login", data=login_data, allow_redirects=False)
             
-            if response.status_code == 302 or 'admin' in response.text.lower():
-                self.admin_logged_in = True
+            if response.status_code == 302:
                 self.log("✅ Admin login successful")
                 return True
             else:
@@ -130,40 +129,50 @@ class OSCECompetitionTester:
             return False
     
     def teacher_login(self):
-        """Login as teacher to create test cases"""
+        """Login as teacher with proper session management"""
         try:
-            # Create new session for teacher
-            teacher_session = requests.Session()
+            # Get login page first to establish session
+            login_response = self.teacher_session.get(f"{BASE_URL}/login")
+            if login_response.status_code != 200:
+                self.log("❌ Failed to access teacher login page", "ERROR")
+                return False
             
+            # Login as teacher
             login_data = {
                 'login_type': 'teacher', 
                 'access_code': TEACHER_CODE
             }
             
-            response = teacher_session.post(f"{BASE_URL}/login", data=login_data)
+            response = self.teacher_session.post(f"{BASE_URL}/login", data=login_data, allow_redirects=False)
             
-            if response.status_code == 302 or 'teacher' in response.text.lower():
+            if response.status_code == 302:
                 self.log("✅ Teacher login successful")
-                return teacher_session
+                return True
             else:
                 self.log(f"❌ Teacher login failed. Status: {response.status_code}", "ERROR")
-                return None
+                self.log(f"Response text: {response.text[:200]}")
+                return False
                 
         except Exception as e:
             self.log(f"❌ Teacher login error: {e}", "ERROR")
-            return None
+            return False
     
     def create_test_cases(self):
-        """Create test cases using teacher interface"""
+        """Create test cases using teacher interface with proper authentication"""
         self.log("🔧 Creating test cases...")
         
-        teacher_session = self.teacher_login()
-        if not teacher_session:
+        if not self.teacher_login():
             return False
         
         try:
             for case_data in TEST_CASES:
-                # Create case using manual entry
+                # Check if case already exists first
+                check_response = self.teacher_session.get(f"{BASE_URL}/get_case/{case_data['case_number']}")
+                if check_response.status_code == 200:
+                    self.log(f"✅ Test case {case_data['case_number']} already exists")
+                    continue
+                
+                # Create case using the manual case creation endpoint
                 case_payload = {
                     'case_number': case_data['case_number'],
                     'specialty': case_data['specialty'],
@@ -174,14 +183,27 @@ class OSCECompetitionTester:
                     'consultation_time': case_data['consultation_time']
                 }
                 
-                response = teacher_session.post(f"{BASE_URL}/teacher/create_case_manual", 
-                                              json=case_payload)
+                # Use the teacher session for the request
+                response = self.teacher_session.post(
+                    f"{BASE_URL}/teacher/create_case_manual", 
+                    json=case_payload,
+                    headers={'Content-Type': 'application/json'}
+                )
                 
                 if response.status_code == 200:
-                    self.log(f"✅ Created test case {case_data['case_number']}")
+                    result = response.json()
+                    if result.get('status') == 'success':
+                        self.log(f"✅ Created test case {case_data['case_number']}")
+                    else:
+                        self.log(f"⚠️ Failed to create case {case_data['case_number']}: {result.get('error', 'Unknown error')}")
                 else:
-                    self.log(f"⚠️ Failed to create case {case_data['case_number']}: {response.status_code}")
-                    
+                    self.log(f"⚠️ Failed to create case {case_data['case_number']}: HTTP {response.status_code}")
+                    try:
+                        error_data = response.json()
+                        self.log(f"Error details: {error_data.get('error', 'No error details')}")
+                    except:
+                        self.log(f"Response text: {response.text[:200]}")
+                        
             self.log("✅ Test cases creation completed")
             return True
             
@@ -198,15 +220,21 @@ class OSCECompetitionTester:
                 # Create new session for each student
                 student_session = requests.Session()
                 
+                # Get login page first
+                login_response = student_session.get(f"{BASE_URL}/login")
+                if login_response.status_code != 200:
+                    self.log(f"❌ Failed to access login page for {student_data['name']}", "ERROR")
+                    continue
+                
                 login_data = {
                     'login_type': 'student',
                     'student_code': student_data['code'],
                     'student_name': student_data['name']
                 }
                 
-                response = student_session.post(f"{BASE_URL}/login", data=login_data)
+                response = student_session.post(f"{BASE_URL}/login", data=login_data, allow_redirects=False)
                 
-                if response.status_code == 302 or 'student' in response.text.lower():
+                if response.status_code == 302:
                     self.log(f"✅ Created/logged in student {student_data['name']} ({student_data['code']})")
                     
                     # Store session for later use
@@ -227,7 +255,7 @@ class OSCECompetitionTester:
     def get_student_ids(self):
         """Get student IDs from admin interface"""
         try:
-            response = self.session.get(f"{BASE_URL}/admin/available-students")
+            response = self.admin_session.get(f"{BASE_URL}/admin/available-students")
             
             if response.status_code == 200:
                 data = response.json()
@@ -251,7 +279,7 @@ class OSCECompetitionTester:
     def get_station_numbers(self):
         """Get station numbers from admin interface"""
         try:
-            response = self.session.get(f"{BASE_URL}/admin/available-stations")
+            response = self.admin_session.get(f"{BASE_URL}/admin/available-stations")
             
             if response.status_code == 200:
                 data = response.json()
@@ -306,7 +334,7 @@ class OSCECompetitionTester:
                 'stations': station_numbers
             }
             
-            response = self.session.post(f"{BASE_URL}/admin/create-competition-session",
+            response = self.admin_session.post(f"{BASE_URL}/admin/create-competition-session",
                                        json=competition_data)
             
             if response.status_code == 200:
@@ -327,6 +355,7 @@ class OSCECompetitionTester:
             self.log(f"❌ Error creating competition session: {e}", "ERROR")
             return False
     
+    # [Rest of the methods remain the same...]
     def students_join_competition(self):
         """Have all students join the competition"""
         self.log("👥 Students joining competition...")
@@ -365,7 +394,7 @@ class OSCECompetitionTester:
         while wait_time < max_wait:
             try:
                 # Check competition status
-                response = self.session.get(f"{BASE_URL}/admin/competition-sessions/{self.competition_id}")
+                response = self.admin_session.get(f"{BASE_URL}/admin/competition-sessions/{self.competition_id}")
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -490,7 +519,7 @@ class OSCECompetitionTester:
         self.log("🏆 Getting final competition results...")
         
         try:
-            response = self.session.get(f"{BASE_URL}/admin/competition-sessions/{self.competition_id}")
+            response = self.admin_session.get(f"{BASE_URL}/admin/competition-sessions/{self.competition_id}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -529,14 +558,11 @@ class OSCECompetitionTester:
         try:
             # Delete competition session
             if self.competition_id:
-                response = self.session.delete(f"{BASE_URL}/admin/competition-sessions/{self.competition_id}/delete")
+                response = self.admin_session.delete(f"{BASE_URL}/admin/competition-sessions/{self.competition_id}/delete")
                 if response.status_code == 200:
                     self.log("✅ Deleted competition session")
                 else:
                     self.log("⚠️ Failed to delete competition session")
-            
-            # Note: In a real scenario, you might want to keep test students and cases
-            # for future testing, or implement specific cleanup endpoints
             
             self.log("✅ Cleanup completed")
             

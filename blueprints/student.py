@@ -446,3 +446,73 @@ def student_stations():
     except Exception as e:
         logger.error(f"Error getting student stations: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@student_bp.route('/competition/<int:session_id>/next-station', methods=['POST'])
+@student_required
+def start_next_station_route(session_id):
+    """Start the next station in competition"""
+    try:
+        student_session = StudentCompetitionSession.query.filter_by(
+            session_id=session_id,
+            student_id=current_user.id
+        ).first()
+        
+        if not student_session:
+            return jsonify({"error": "Student session not found"}), 404
+        
+        if student_session.status == 'between_stations':
+            student_session.status = 'active'
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Next station started'
+            })
+        else:
+            return jsonify({
+                'error': 'Cannot start next station in current state'
+            }), 400
+        
+    except Exception as e:
+        logger.error(f"Error starting next station: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@student_bp.route('/competition/<int:session_id>/results')
+@student_required
+def get_competition_results(session_id):
+    """Get final competition results for the student"""
+    try:
+        student_session = StudentCompetitionSession.query.filter_by(
+            session_id=session_id,
+            student_id=current_user.id
+        ).first()
+        
+        if not student_session:
+            return jsonify({"error": "Student session not found"}), 404
+        
+        if student_session.status != 'completed':
+            return jsonify({"error": "Competition not completed yet"}), 400
+        
+        # Get final results
+        competition_session = CompetitionSession.query.get(session_id)
+        leaderboard = competition_session.get_leaderboard()
+        
+        # Find student's position
+        student_rank = 1
+        for entry in leaderboard:
+            if entry['student_id'] == current_user.id:
+                student_rank = entry['rank']
+                break
+        
+        return jsonify({
+            'final_score': student_session.get_average_score(),
+            'total_stations': competition_session.stations_per_session,
+            'completed_stations': student_session.get_completed_stations_count(),
+            'rank': student_rank,
+            'total_participants': competition_session.get_participant_count(),
+            'leaderboard': leaderboard[:10]  # Top 10
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting competition results: {str(e)}")
+        return jsonify({"error": str(e)}), 500

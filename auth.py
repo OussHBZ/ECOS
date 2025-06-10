@@ -124,9 +124,10 @@ def teacher_required(f):
     """Decorator to require teacher authentication - returns JSON for AJAX requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if user is logged in as teacher
         if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
-            # Check if this is an AJAX request
-            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+            # Check if this is an AJAX request or API request
+            if request.is_json or request.headers.get('Content-Type') == 'application/json' or request.path.startswith('/teacher/'):
                 return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
             else:
                 flash('Accès réservé aux enseignants.', 'error')
