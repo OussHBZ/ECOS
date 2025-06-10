@@ -39,6 +39,32 @@ let remainingTime = 600; // 10 minutes in seconds
 let currentDirectives = null; // Store directives for the current case
 let directivesViewed = false; // Track if student has viewed directives
 
+// Utility function for authenticated AJAX requests
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+            ...options.headers
+        },
+        credentials: 'same-origin' // Important for session cookies
+    };
+    
+    const response = await fetch(url, { ...options, ...defaultOptions });
+    
+    // Handle authentication errors
+    if (response.status === 401) {
+        const data = await response.json();
+        if (data.redirect) {
+            alert('Session expirée. Veuillez vous reconnecter.');
+            window.location.href = data.redirect;
+            return null;
+        }
+    }
+    
+    return response;
+}
+
 // Filter cases based on selection and search
 function filterCases() {
     if (!specialtyFilter || !caseNumberSearch) return;
@@ -640,7 +666,9 @@ function handleCompetitionChatKeypress(event) {
 // Load available competitions
 async function loadAvailableCompetitions() {
     try {
-        const response = await fetch('/student/available-competitions');
+        const response = await authenticatedFetch('/student/available-competitions');
+        if (!response) return; // Authentication failed
+        
         if (!response.ok) throw new Error('Failed to load competitions');
         
         const data = await response.json();
@@ -1006,7 +1034,9 @@ function filterPracticeCases() {
 // Load student stats
 async function loadStudentStats() {
     try {
-        const response = await fetch('/student/stats');
+        const response = await authenticatedFetch('/student/stats');
+        if (!response) return; // Authentication failed
+        
         if (response.ok) {
             const data = await response.json();
             
@@ -1058,6 +1088,7 @@ function getScoreClass(score) {
 
 // Event Listeners - Only add if elements exist
 document.addEventListener('DOMContentLoaded', function() {
+
     // Filter functionality
     if (specialtyFilter) {
         specialtyFilter.addEventListener('change', filterCases);

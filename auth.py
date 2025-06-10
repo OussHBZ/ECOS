@@ -112,7 +112,7 @@ def student_required(f):
         # Check if user is logged in as student
         if not current_user.is_authenticated or session.get('user_type') != 'student':
             # Check if this is an AJAX request
-            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/student/'):
                 return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
             else:
                 flash('Accès réservé aux étudiants.', 'error')
@@ -120,17 +120,16 @@ def student_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def teacher_required(f):
-    """Decorator to require teacher authentication - returns JSON for AJAX requests"""
+def admin_required(f):
+    """Decorator to require administrator authentication - returns JSON for AJAX requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check if user is logged in as teacher
-        if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
-            # Check if this is an AJAX request or API request
-            if request.is_json or request.headers.get('Content-Type') == 'application/json' or request.path.startswith('/teacher/'):
+        if session.get('user_type') != 'admin' or not session.get('admin_authenticated'):
+            # Check if this is an AJAX request
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/admin/'):
                 return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
             else:
-                flash('Accès réservé aux enseignants.', 'error')
+                flash('Accès réservé aux administrateurs.', 'error')
                 return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function

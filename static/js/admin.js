@@ -5,6 +5,32 @@ let selectedStudents = [];
 let availableStations = [];
 let selectedStations = [];
 
+// Utility function for authenticated AJAX requests
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+            ...options.headers
+        },
+        credentials: 'same-origin' // Important for session cookies
+    };
+    
+    const response = await fetch(url, { ...options, ...defaultOptions });
+    
+    // Handle authentication errors
+    if (response.status === 401) {
+        const data = await response.json();
+        if (data.redirect) {
+            alert('Session expirée. Veuillez vous reconnecter.');
+            window.location.href = data.redirect;
+            return null;
+        }
+    }
+    
+    return response;
+}
+
 // Tab navigation for admin interface
 function showAdminTab(tabName) {
     console.log('Showing admin tab:', tabName);
@@ -50,7 +76,9 @@ async function loadAdminCompetitionSessions() {
     try {
         console.log('Loading admin competition sessions...');
         
-        const response = await fetch('/admin/competition-sessions');
+        const response = await authenticatedFetch('/admin/competition-sessions');
+        if (!response) return; // Authentication failed
+        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -727,7 +755,9 @@ document.head.appendChild(competitionStyleSheet);
 // Load overview data
 async function loadOverviewData() {
     try {
-        const response = await fetch('/admin/overview');
+        const response = await authenticatedFetch('/admin/overview');
+        if (!response) return; // Authentication failed
+        
         if (!response.ok) {
             throw new Error('Failed to load overview data');
         }
@@ -773,7 +803,9 @@ async function loadAdminStations(searchQuery = '') {
             url += `?search=${encodeURIComponent(searchQuery)}`;
         }
         
-        const response = await fetch(url);
+        const response = await authenticatedFetch(url);
+        if (!response) return; // Authentication failed
+        
         if (!response.ok) {
             throw new Error('Failed to load stations');
         }
@@ -981,7 +1013,9 @@ async function loadAdminStudents(searchQuery = '') {
             url += `?search=${encodeURIComponent(searchQuery)}`;
         }
         
-        const response = await fetch(url);
+        const response = await authenticatedFetch(url);
+        if (!response) return; // Authentication failed
+        
         if (!response.ok) {
             throw new Error('Failed to load students');
         }

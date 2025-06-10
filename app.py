@@ -20,6 +20,7 @@ from models import (
     CompetitionSession, CompetitionParticipant, CompetitionStationBank, 
     StudentCompetitionSession, StudentStationAssignment
 )
+from datetime import datetime, timedelta
 
 # Import blueprints
 from blueprints.admin import admin_bp
@@ -52,6 +53,15 @@ def create_app():
                 static_folder='static',
                 template_folder='templates')
     app.secret_key = os.urandom(24)  # For session management
+
+    # Enhanced session configuration
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32)
+    app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['SESSION_PERMANENT'] = False
+    app.config['SESSION_USE_SIGNER'] = True
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
@@ -65,12 +75,16 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
-    
+    login_manager.session_protection = 'basic'  # Add this line
+
     @login_manager.user_loader
     def load_user(user_id):
-        if user_id.startswith('student_'):
-            student_id = int(user_id.replace('student_', ''))
-            return Student.query.get(student_id)
+        if user_id and user_id.startswith('student_'):
+            try:
+                student_id = int(user_id.replace('student_', ''))
+                return Student.query.get(student_id)
+            except (ValueError, AttributeError):
+                return None
         return None
     
     # Register blueprints
@@ -536,6 +550,27 @@ def create_app():
         except Exception as e:
             logger.error(f"Error checking case number: {str(e)}")
             return jsonify({'error': str(e)}), 500
+    @app.route('/check_session')
+    def check_session():
+        """Check if user is authenticated and return session info"""
+        if current_user.is_authenticated:
+            return jsonify({
+                'authenticated': True,
+                'user_type': session.get('user_type'),
+                'user_id': current_user.get_id() if hasattr(current_user, 'get_id') else None
+            })
+        elif session.get('user_type') in ['teacher', 'admin']:
+            return jsonify({
+                'authenticated': True,
+                'user_type': session.get('user_type'),
+                'user_id': None
+            })
+        else:
+            return jsonify({
+                'authenticated': False,
+                'user_type': None,
+                'user_id': None
+            })
     
     return app
 
