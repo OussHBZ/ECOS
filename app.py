@@ -52,31 +52,46 @@ def create_app():
     app = Flask(__name__, 
                 static_folder='static',
                 template_folder='templates')
-    app.secret_key = os.urandom(24)  # For session management
-
-    # Enhanced session configuration
+    
+    # Enhanced session configuration for better AJAX support
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32)
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = False
     app.config['SESSION_USE_SIGNER'] = True
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_NAME'] = 'ecos_session'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
+    
+    # Add CORS headers for AJAX requests (if needed)
+    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
     
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
-    # Initialize database
+    # Initialize extensions
     db.init_app(app)
-    
-    # Initialize login manager
     login_manager = LoginManager()
     login_manager.init_app(app)
+    
+    # Configure login manager
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
-    login_manager.session_protection = 'basic'  # Add this line
-
+    login_manager.session_protection = 'basic'
+    
+    # Add JSON error handler for AJAX requests
+    @app.errorhandler(401)
+    def unauthorized(error):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or \
+           request.headers.get('Content-Type') == 'application/json':
+            return jsonify({
+                'error': 'Authentication required',
+                'redirect': url_for('auth.login'),
+                'auth_required': True
+            }), 401
+        return redirect(url_for('auth.login'))
+    
     @login_manager.user_loader
     def load_user(user_id):
         if user_id and user_id.startswith('student_'):
@@ -550,26 +565,34 @@ def create_app():
         except Exception as e:
             logger.error(f"Error checking case number: {str(e)}")
             return jsonify({'error': str(e)}), 500
+
     @app.route('/check_session')
     def check_session():
         """Check if user is authenticated and return session info"""
+        from flask import jsonify, session
+        from flask_login import current_user
+        
         if current_user.is_authenticated:
             return jsonify({
                 'authenticated': True,
                 'user_type': session.get('user_type'),
-                'user_id': current_user.get_id() if hasattr(current_user, 'get_id') else None
+                'user_id': current_user.get_id() if hasattr(current_user, 'get_id') else None,
+                'username': current_user.name if hasattr(current_user, 'name') else None
             })
         elif session.get('user_type') in ['teacher', 'admin']:
+            # Handle non-student users who might not use Flask-Login
             return jsonify({
                 'authenticated': True,
                 'user_type': session.get('user_type'),
-                'user_id': None
+                'user_id': None,
+                'username': session.get('username') or session.get('user_type')
             })
         else:
             return jsonify({
                 'authenticated': False,
                 'user_type': None,
-                'user_id': None
+                'user_id': None,
+                'username': None
             })
     
     return app

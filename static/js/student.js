@@ -39,6 +39,238 @@ let remainingTime = 600; // 10 minutes in seconds
 let currentDirectives = null; // Store directives for the current case
 let directivesViewed = false; // Track if student has viewed directives
 
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('Student interface initializing...');
+    
+    // First, check session status
+    const isAuthenticated = await initializeSessionCheck('student');
+    if (!isAuthenticated) {
+        return; // Stop initialization if not authenticated
+    }
+    
+    // Start session monitoring
+    startSessionMonitoring();
+    
+    console.log('Student interface authenticated and initialized');
+    
+    // Filter functionality
+    if (specialtyFilter) {
+        specialtyFilter.addEventListener('change', filterCases);
+    }
+    if (caseNumberSearch) {
+        caseNumberSearch.addEventListener('input', filterCases);
+    }
+
+    // Case selection
+    document.addEventListener('click', (event) => {
+        if (event.target.classList.contains('select-case-btn')) {
+            const caseCard = event.target.closest('.case-card');
+            const caseNumber = caseCard.getAttribute('data-case');
+            
+            // Deselect previous card if exists
+            if (selectedCaseCard) {
+                selectedCaseCard.classList.remove('selected');
+            }
+            
+            // Select current card
+            caseCard.classList.add('selected');
+            selectedCaseCard = caseCard;
+            currentCase = caseNumber;
+            
+            // Enable start button
+            if (startChatButton) {
+                startChatButton.disabled = false;
+            }
+        }
+    });
+
+    // Chat functionality - Update to use authenticatedFetch
+    if (startChatButton) {
+        startChatButton.addEventListener('click', async () => {
+            if (!currentCase) return;
+            
+            try {
+                const response = await authenticatedFetch('/initialize_chat', {
+                    method: 'POST',
+                    body: JSON.stringify({ case_number: currentCase })
+                });
+
+                if (!response) return; // Authentication failed
+                
+                if (!response.ok) {
+                    throw new Error('Failed to initialize chat');
+                }
+
+                const data = await response.json();
+                
+                currentDirectives = data.directives || '';
+                directivesViewed = false;
+                
+                if (selectedCaseCard) {
+                    const specialty = selectedCaseCard.getAttribute('data-specialty');
+                    if (currentCaseTitle) {
+                        currentCaseTitle.textContent = `Cas ${currentCase} (${specialty})`;
+                    }
+                }
+                
+                if (chatMessages) chatMessages.innerHTML = '';
+                
+                if (caseSelection) caseSelection.classList.add('hidden');
+                if (chatContainer) chatContainer.classList.remove('hidden');
+                
+                const configuredTime = data.consultation_time || 10;
+                startTimer(configuredTime);
+                
+                addMessageToChat('system', 'Consultation initiée. Vous pouvez commencer à poser vos questions.');
+                
+                if (currentDirectives && viewDirectivesBtn) {
+                    viewDirectivesBtn.classList.add('flash-attention');
+                    setTimeout(() => {
+                        viewDirectivesBtn.classList.remove('flash-attention');
+                    }, 3000);
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Une erreur est survenue lors de l\'initialisation du chat');
+            }
+        });
+    }
+
+    if (endChatButton) {
+        endChatButton.addEventListener('click', endConsultation);
+    }
+
+    if (backToCasesBtn) {
+        backToCasesBtn.addEventListener('click', () => {
+            if (evaluationContainer) evaluationContainer.classList.add('hidden');
+            if (caseSelection) caseSelection.classList.remove('hidden');
+            if (chatMessages) chatMessages.innerHTML = '';
+            currentCase = null;
+            currentDirectives = null;
+            directivesViewed = false;
+            selectedCaseCard = null;
+        });
+    }
+
+    if (downloadEvaluationBtn) {
+        downloadEvaluationBtn.addEventListener('click', () => {
+            const pdfUrl = downloadEvaluationBtn.getAttribute('data-pdf-url');
+            if (pdfUrl) {
+                window.location.href = pdfUrl;
+            } else {
+                alert('Le PDF n\'est pas disponible');
+            }
+        });
+    }
+
+    if (userInput) {
+        userInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (sendBtn) sendBtn.click();
+            }
+        });
+    }
+
+    if (sendBtn) {
+        sendBtn.addEventListener('click', async () => {
+            if (!userInput) return;
+            
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            try {
+                userInput.disabled = true;
+                sendBtn.disabled = true;
+                sendBtn.textContent = 'Envoi...';
+                
+                addMessageToChat('user', message);
+                userInput.value = '';
+                
+                const loadingMsg = document.createElement('div');
+                loadingMsg.classList.add('message', 'assistant', 'loading');
+                loadingMsg.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+                if (chatMessages) {
+                    chatMessages.appendChild(loadingMsg);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+
+                const response = await authenticatedFetch('/chat', {
+                    method: 'POST',
+                    body: JSON.stringify({ message })
+                });
+
+                const loadingElement = document.querySelector('.loading');
+                if (loadingElement) {
+                    loadingElement.remove();
+                }
+
+                if (!response) return; // Authentication failed
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    addMessageToChat('system', `Erreur: ${data.error}`);
+                } else {
+                    addMessageToChat('assistant', data.reply);
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                addMessageToChat('system', 'Une erreur est survenue lors de l\'envoi du message');
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Envoyer';
+                userInput.focus();
+            }
+        });
+    }
+
+    // Directives functionality
+    if (viewDirectivesBtn) {
+        viewDirectivesBtn.addEventListener('click', showDirectives);
+    }
+
+    if (directivesClose) {
+        directivesClose.addEventListener('click', () => {
+            if (directivesModal) {
+                directivesModal.classList.remove('visible');
+            }
+        });
+    }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', (e) => {
+        if (e.target === directivesModal) {
+            directivesModal.classList.remove('visible');
+        }
+    });
+
+    // Load initial data - Update these functions to use authenticatedFetch
+    await loadStudentStats();
+    await loadAvailableCompetitions();
+    
+    // Set up filter event listeners for practice tab
+    const practiceTab = document.getElementById('practice-tab');
+    if (practiceTab) {
+        const caseNumberSearchPractice = practiceTab.querySelector('#case-number-search');
+        const specialtyFilterPractice = practiceTab.querySelector('#specialty-filter');
+        
+        if (caseNumberSearchPractice) {
+            caseNumberSearchPractice.addEventListener('input', filterPracticeCases);
+        }
+        if (specialtyFilterPractice) {
+            specialtyFilterPractice.addEventListener('change', filterPracticeCases);
+        }
+    }
+});
+
 // Utility function for authenticated AJAX requests
 async function authenticatedFetch(url, options = {}) {
     const defaultOptions = {
@@ -50,7 +282,7 @@ async function authenticatedFetch(url, options = {}) {
         credentials: 'same-origin' // Important for session cookies
     };
     
-    const response = await fetch(url, { ...options, ...defaultOptions });
+    const response = await authenticatedFetch(url, { ...options, ...defaultOptions });
     
     // Handle authentication errors
     if (response.status === 401) {
@@ -120,7 +352,7 @@ async function endConsultation() {
     clearInterval(timerInterval);
     
     try {
-        const response = await fetch('/end_chat', {
+        const response = await authenticatedFetch('/end_chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -299,7 +531,7 @@ async function initializeCompetitionStationChat(caseNumber) {
     try {
         console.log('Initializing station chat for case:', caseNumber);
         
-        const response = await fetch(`/student/competition/${currentCompetitionId}/start-station`, {
+        const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/start-station`, {
             method: 'POST'
         });
         
@@ -353,7 +585,7 @@ async function sendCompetitionMessage() {
     input.value = '';
     
     try {
-        const response = await fetch('/chat', {
+        const response = await authenticatedFetch('/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -478,7 +710,7 @@ async function endCurrentStation() {
     isTimerRunning = false; // Reset the flag
     
     try {
-        const response = await fetch('/student/competition/complete-station', {
+        const response = await authenticatedFetch('/student/competition/complete-station', {
             method: 'POST'
         });
         
@@ -743,7 +975,7 @@ function displayAvailableCompetitions(competitions) {
 // Join competition
 async function joinCompetition(sessionId) {
     try {
-        const response = await fetch(`/student/join-competition/${sessionId}`, {
+        const response = await authenticatedFetch(`/student/join-competition/${sessionId}`, {
             method: 'POST'
         });
         
@@ -842,7 +1074,7 @@ function returnToCompetitions() {
 // Update competition status
 async function updateCompetitionStatus(sessionId) {
     try {
-        const response = await fetch(`/student/competition/${sessionId}/status`);
+        const response = await authenticatedFetch(`/student/competition/${sessionId}/status`);
         if (!response.ok) {
             console.error('Failed to get competition status:', response.status);
             return;
@@ -1086,228 +1318,6 @@ function getScoreClass(score) {
     return 'poor';
 }
 
-// Event Listeners - Only add if elements exist
-document.addEventListener('DOMContentLoaded', function() {
-
-    // Filter functionality
-    if (specialtyFilter) {
-        specialtyFilter.addEventListener('change', filterCases);
-    }
-    if (caseNumberSearch) {
-        caseNumberSearch.addEventListener('input', filterCases);
-    }
-
-    // Case selection
-    document.addEventListener('click', (event) => {
-        if (event.target.classList.contains('select-case-btn')) {
-            const caseCard = event.target.closest('.case-card');
-            const caseNumber = caseCard.getAttribute('data-case');
-            
-            // Deselect previous card if exists
-            if (selectedCaseCard) {
-                selectedCaseCard.classList.remove('selected');
-            }
-            
-            // Select current card
-            caseCard.classList.add('selected');
-            selectedCaseCard = caseCard;
-            currentCase = caseNumber;
-            
-            // Enable start button
-            if (startChatButton) {
-                startChatButton.disabled = false;
-            }
-        }
-    });
-
-    // Chat functionality
-    if (startChatButton) {
-        startChatButton.addEventListener('click', async () => {
-            if (!currentCase) return;
-            
-            try {
-                const response = await fetch('/initialize_chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ case_number: currentCase })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to initialize chat');
-                }
-
-                const data = await response.json();
-                
-                currentDirectives = data.directives || '';
-                directivesViewed = false;
-                
-                if (selectedCaseCard) {
-                    const specialty = selectedCaseCard.getAttribute('data-specialty');
-                    if (currentCaseTitle) {
-                        currentCaseTitle.textContent = `Cas ${currentCase} (${specialty})`;
-                    }
-                }
-                
-                if (chatMessages) chatMessages.innerHTML = '';
-                
-                if (caseSelection) caseSelection.classList.add('hidden');
-                if (chatContainer) chatContainer.classList.remove('hidden');
-                
-                const configuredTime = data.consultation_time || 10;
-                startTimer(configuredTime);
-                
-                addMessageToChat('system', 'Consultation initiée. Vous pouvez commencer à poser vos questions.');
-                
-                if (currentDirectives && viewDirectivesBtn) {
-                    viewDirectivesBtn.classList.add('flash-attention');
-                    setTimeout(() => {
-                        viewDirectivesBtn.classList.remove('flash-attention');
-                    }, 3000);
-                }
-                
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Une erreur est survenue lors de l\'initialisation du chat');
-            }
-        });
-    }
-
-    if (endChatButton) {
-        endChatButton.addEventListener('click', endConsultation);
-    }
-
-    if (backToCasesBtn) {
-        backToCasesBtn.addEventListener('click', () => {
-            if (evaluationContainer) evaluationContainer.classList.add('hidden');
-            if (caseSelection) caseSelection.classList.remove('hidden');
-            if (chatMessages) chatMessages.innerHTML = '';
-            currentCase = null;
-            currentDirectives = null;
-            directivesViewed = false;
-            selectedCaseCard = null;
-        });
-    }
-
-    if (downloadEvaluationBtn) {
-        downloadEvaluationBtn.addEventListener('click', () => {
-            const pdfUrl = downloadEvaluationBtn.getAttribute('data-pdf-url');
-            if (pdfUrl) {
-                window.location.href = pdfUrl;
-            } else {
-                alert('Le PDF n\'est pas disponible');
-            }
-        });
-    }
-
-    if (userInput) {
-        userInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                if (sendBtn) sendBtn.click();
-            }
-        });
-    }
-
-    if (sendBtn) {
-        sendBtn.addEventListener('click', async () => {
-            if (!userInput) return;
-            
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            try {
-                userInput.disabled = true;
-                sendBtn.disabled = true;
-                sendBtn.textContent = 'Envoi...';
-                
-                addMessageToChat('user', message);
-                userInput.value = '';
-                
-                const loadingMsg = document.createElement('div');
-                loadingMsg.classList.add('message', 'assistant', 'loading');
-                loadingMsg.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
-                if (chatMessages) {
-                    chatMessages.appendChild(loadingMsg);
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ message })
-                });
-
-                const loadingElement = document.querySelector('.loading');
-                if (loadingElement) {
-                    loadingElement.remove();
-                }
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                if (data.error) {
-                    addMessageToChat('system', `Erreur: ${data.error}`);
-                } else {
-                    addMessageToChat('assistant', data.reply);
-                }
-
-            } catch (error) {
-                console.error('Error:', error);
-                addMessageToChat('system', 'Une erreur est survenue lors de l\'envoi du message');
-            } finally {
-                userInput.disabled = false;
-                sendBtn.disabled = false;
-                sendBtn.textContent = 'Envoyer';
-                userInput.focus();
-            }
-        });
-    }
-
-    // Directives functionality
-    if (viewDirectivesBtn) {
-        viewDirectivesBtn.addEventListener('click', showDirectives);
-    }
-
-    if (directivesClose) {
-        directivesClose.addEventListener('click', () => {
-            if (directivesModal) {
-                directivesModal.classList.remove('visible');
-            }
-        });
-    }
-
-    // Close modal when clicking outside
-    window.addEventListener('click', (e) => {
-        if (e.target === directivesModal) {
-            directivesModal.classList.remove('visible');
-        }
-    });
-
-    // Load initial data
-    loadStudentStats();
-    loadAvailableCompetitions();
-    
-    // Set up filter event listeners for practice tab
-    const practiceTab = document.getElementById('practice-tab');
-    if (practiceTab) {
-        const caseNumberSearchPractice = practiceTab.querySelector('#case-number-search');
-        const specialtyFilterPractice = practiceTab.querySelector('#specialty-filter');
-        
-        if (caseNumberSearchPractice) {
-            caseNumberSearchPractice.addEventListener('input', filterPracticeCases);
-        }
-        if (specialtyFilterPractice) {
-            specialtyFilterPractice.addEventListener('change', filterPracticeCases);
-        }
-    }
-});
 
 // Enhanced message functions for practice mode
 function addMessageToChat(role, text) {

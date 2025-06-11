@@ -28,7 +28,20 @@ let extractedData = null;
 let uploadedImages = [];
 
 // Main initialization when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('Teacher interface initializing...');
+    
+    // First, check session status
+    const isAuthenticated = await initializeSessionCheck('teacher');
+    if (!isAuthenticated) {
+        return; // Stop initialization if not authenticated
+    }
+    
+    // Start session monitoring
+    startSessionMonitoring();
+    
+    console.log('Teacher interface authenticated and initialized');
+    
     // Initialize UI components
     setupTabSwitching();
     setupFormHandlers();
@@ -421,7 +434,7 @@ async function openEditModal(caseNumber) {
     
     try {
         // Fetch case data - UPDATED URL
-        const response = await fetch(`/get_case/${caseNumber}`);
+        const response = await authenticatedFetch(`/get_case/${caseNumber}`);
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -644,7 +657,7 @@ async function handleEditFormSubmit(event) {
         console.log('Sending edit request with data:', editedData);
         
         // Send update request
-        const response = await fetch(`/teacher/edit_case/${currentEditingCaseNumber}`, {
+        const response = await authenticatedFetch(`/teacher/edit_case/${currentEditingCaseNumber}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -907,7 +920,7 @@ async function handleUploadFormSubmit(event) {
     
     try {
         // Send file to backend for processing - UPDATED URL
-        const response = await fetch('/teacher/process_case_file', {
+        const response = await authenticatedFetch('/teacher/process_case_file', {
             method: 'POST',
             body: formData
         });
@@ -990,7 +1003,7 @@ async function handleManualFormSubmit(event) {
     
     try {
         // Send manual data to backend for processing - CORRECTED URL
-        const response = await fetch('/teacher/process_manual_case', {  
+        const response = await authenticatedFetch('/teacher/process_manual_case', {  
             method: 'POST',
             body: formData
         });
@@ -1524,7 +1537,7 @@ function saveEditedCase(previewData) {
     processingMessage.textContent = 'Sauvegarde en cours...';
     
     // Send the edited data to the backend
-    fetch('/teacher/save_edited_case', {
+    authenticatedFetch('/teacher/save_edited_case', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -2602,7 +2615,7 @@ document.addEventListener('click', function(event) {
         try {
             // Add cache busting parameter to ensure fresh data - UPDATED URL
             const timestamp = new Date().getTime();
-            fetch(`/get_case/${caseNumber}?t=${timestamp}`)
+            authenticatedFetch(`/get_case/${caseNumber}?t=${timestamp}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -2767,7 +2780,7 @@ document.addEventListener('click', function(event) {
         
         if (confirm(`Êtes-vous sûr de vouloir supprimer le cas ${caseNumber} ? Cette action est irréversible.`)) {
             try {
-                fetch(`/teacher/delete_case/${caseNumber}`, {  // ✅ CORRECT URL
+                authenticatedFetch(`/teacher/delete_case/${caseNumber}`, {  // ✅ CORRECT URL
                     method: 'DELETE'
                 })
                 .then(response => {
@@ -2821,7 +2834,7 @@ async function handleEditFormSubmit(event) {
         console.log('Sending edit request with data:', editedData);
         
         // Send update request
-        const response = await fetch(`/teacher/edit_case/${currentEditingCaseNumber}`, {
+        const response = await authenticatedFetch(`/teacher/edit_case/${currentEditingCaseNumber}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2914,7 +2927,7 @@ async function loadTeacherStations(searchQuery = '') {
             url += `?search=${encodeURIComponent(searchQuery)}`;
         }
         
-        const response = await fetch(url);
+        const response = await authenticatedFetch(url);
         if (!response.ok) {
             throw new Error('Failed to load stations');
         }
@@ -2975,7 +2988,7 @@ async function loadStudentPerformance(searchQuery = '') {
             url += `?search=${encodeURIComponent(searchQuery)}`;
         }
         
-        const response = await fetch(url);
+        const response = await authenticatedFetch(url);
         if (!response.ok) {
             throw new Error('Failed to load student performance');
         }
@@ -3040,7 +3053,7 @@ async function loadStudentPerformance(searchQuery = '') {
 // Open student detail modal
 async function openStudentDetailModal(studentId, studentName) {
     try {
-        const response = await fetch(`/teacher/students/${studentId}/detailed_performance`);
+        const response = await authenticatedFetch(`/teacher/students/${studentId}/detailed_performance`);
         if (!response.ok) {
             throw new Error('Failed to load student details');
         }
@@ -3126,45 +3139,7 @@ function getScoreClass(score) {
     return 'poor';
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    // Add event listeners for search inputs
-    const teacherStationsSearch = document.getElementById('teacher-stations-search');
-    if (teacherStationsSearch) {
-        teacherStationsSearch.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                searchTeacherStations();
-            }
-        });
-    }
-    
-    const studentSearch = document.getElementById('student-search');
-    if (studentSearch) {
-        studentSearch.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                searchStudents();
-            }
-        });
-    }
-    
-    // Close student detail modal
-    const studentDetailClose = document.querySelector('.student-detail-close');
-    if (studentDetailClose) {
-        studentDetailClose.addEventListener('click', () => {
-            document.getElementById('student-detail-modal').classList.remove('visible');
-            document.getElementById('student-detail-modal').classList.add('hidden');
-        });
-    }
-    
-    // Close modal when clicking outside
-    window.addEventListener('click', (e) => {
-        const studentDetailModal = document.getElementById('student-detail-modal');
-        if (e.target === studentDetailModal) {
-            studentDetailModal.classList.remove('visible');
-            studentDetailModal.classList.add('hidden');
-        }
-    });
-});
+
 
 let caseNumberValidationInProgress = false;
 let lastValidatedCaseNumber = null;
@@ -3193,7 +3168,7 @@ async function checkCaseNumberAvailability(caseNumber, inputElement, isEdit = fa
     showCaseNumberChecking(inputElement);
     
     try {
-        const response = await fetch(`/check_case_number/${encodeURIComponent(caseNumber)}`);
+        const response = await authenticatedFetch(`/check_case_number/${encodeURIComponent(caseNumber)}`);
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);

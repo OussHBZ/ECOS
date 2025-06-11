@@ -5,6 +5,99 @@ let selectedStudents = [];
 let availableStations = [];
 let selectedStations = [];
 
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('Admin interface initializing...');
+    
+    // First, check session status
+    const isAuthenticated = await initializeSessionCheck('admin');
+    if (!isAuthenticated) {
+        return; // Stop initialization if not authenticated
+    }
+    
+    // Start session monitoring
+    startSessionMonitoring();
+    
+    console.log('Admin interface authenticated and initialized');
+    
+    // Load overview data by default
+    await loadOverviewData();
+    
+    // Set up event listeners for search inputs
+    const stationsSearch = document.getElementById('admin-stations-search');
+    if (stationsSearch) {
+        stationsSearch.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchAdminStations();
+            }
+        });
+    }
+    
+    const studentsSearch = document.getElementById('admin-students-search');
+    if (studentsSearch) {
+        studentsSearch.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchAdminStudents();
+            }
+        });
+    }
+    
+    // Add event listeners for student and station search in modal
+    const studentSearch = document.getElementById('student-search');
+    if (studentSearch) {
+        studentSearch.addEventListener('input', updateAvailableStudentsList);
+    }
+    
+    const stationSearch = document.getElementById('station-search');
+    if (stationSearch) {
+        stationSearch.addEventListener('input', updateAvailableStationsList);
+    }
+    
+    // Set up form event listeners - PREVENT DOUBLE BINDING
+    // Competition session form
+    const competitionForm = document.getElementById('create-competition-session-form');
+    if (competitionForm) {
+        // Remove any existing event listeners by cloning the form
+        const newCompetitionForm = competitionForm.cloneNode(true);
+        competitionForm.parentNode.replaceChild(newCompetitionForm, competitionForm);
+        
+        // Add the event listener to the new form
+        newCompetitionForm.addEventListener('submit', createCompetitionSession);
+        console.log('Competition session form event listener attached');
+    }
+    
+    // Regular session form
+    const createSessionForm = document.getElementById('create-session-form');
+    if (createSessionForm) {
+        // Remove any existing event listeners by cloning the form
+        const newSessionForm = createSessionForm.cloneNode(true);
+        createSessionForm.parentNode.replaceChild(newSessionForm, createSessionForm);
+        
+        // Add the event listener to the new form
+        newSessionForm.addEventListener('submit', createSession);
+        console.log('Regular session form event listener attached');
+    }
+    
+    // Close modal functionality
+    document.querySelectorAll('.close-modal').forEach(closeBtn => {
+        closeBtn.addEventListener('click', function() {
+            const modal = this.closest('.modal');
+            if (modal) {
+                modal.classList.remove('visible');
+                modal.classList.add('hidden');
+            }
+        });
+    });
+    
+    // Close modals when clicking outside
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('visible');
+            e.target.classList.add('hidden');
+        }
+    });
+});
+
 // Utility function for authenticated AJAX requests
 async function authenticatedFetch(url, options = {}) {
     const defaultOptions = {
@@ -16,7 +109,7 @@ async function authenticatedFetch(url, options = {}) {
         credentials: 'same-origin' // Important for session cookies
     };
     
-    const response = await fetch(url, { ...options, ...defaultOptions });
+    const response = await authenticatedFetch(url, { ...options, ...defaultOptions });
     
     // Handle authentication errors
     if (response.status === 401) {
@@ -147,7 +240,7 @@ async function viewCompetitionSessionDetails(sessionId) {
     try {
         console.log(`Viewing competition session details for ID: ${sessionId}`);
         
-        const response = await fetch(`/admin/competition-sessions/${sessionId}`);
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}`);
         if (!response.ok) {
             throw new Error('Failed to load session details');
         }
@@ -260,7 +353,7 @@ async function startCompetition(sessionId) {
     }
     
     try {
-        const response = await fetch(`/admin/competition-sessions/${sessionId}/start`, {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/start`, {
             method: 'POST'
         });
         
@@ -285,7 +378,7 @@ async function editCompetitionSession(sessionId) {
         console.log(`Editing competition session ID: ${sessionId}`);
         
         // Load current session data
-        const response = await fetch(`/admin/competition-sessions/${sessionId}/edit`);
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/edit`);
         if (!response.ok) {
             throw new Error('Failed to load session data for editing');
         }
@@ -351,7 +444,7 @@ async function deleteCompetitionSession(sessionId) {
     try {
         console.log(`Deleting competition session ID: ${sessionId}`);
         
-        const response = await fetch(`/admin/competition-sessions/${sessionId}/delete`, {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/delete`, {
             method: 'DELETE'
         });
         
@@ -539,7 +632,7 @@ async function createCompetitionSession(event) {
         console.log('Competition session data to send:', sessionData);
         
         const url = isEditMode ? `/admin/competition-sessions/${sessionId}/edit` : '/admin/create-competition-session';
-        const response = await fetch(url, {
+        const response = await authenticatedFetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -852,7 +945,7 @@ async function viewSessionDetails(sessionId) {
     try {
         console.log(`Viewing session details for ID: ${sessionId}`);
         
-        const response = await fetch(`/admin/sessions/${sessionId}`);
+        const response = await authenticatedFetch(`/admin/sessions/${sessionId}`);
         if (!response.ok) {
             throw new Error('Failed to load session details');
         }
@@ -924,7 +1017,7 @@ async function editSession(sessionId) {
         console.log(`Editing session ID: ${sessionId}`);
         
         // Load current session data
-        const response = await fetch(`/admin/sessions/${sessionId}/edit`);
+        const response = await authenticatedFetch(`/admin/sessions/${sessionId}/edit`);
         if (!response.ok) {
             throw new Error('Failed to load session data for editing');
         }
@@ -986,7 +1079,7 @@ async function deleteSession(sessionId) {
     try {
         console.log(`Deleting session ID: ${sessionId}`);
         
-        const response = await fetch(`/admin/sessions/${sessionId}/delete`, {
+        const response = await authenticatedFetch(`/admin/sessions/${sessionId}/delete`, {
             method: 'DELETE'
         });
         
@@ -1061,7 +1154,7 @@ async function loadAdminStudents(searchQuery = '') {
 // Load admin sessions
 async function loadAdminSessions() {
     try {
-        const response = await fetch('/admin/sessions');
+        const response = await authenticatedFetch('/admin/sessions');
         if (!response.ok) {
             throw new Error('Failed to load sessions');
         }
@@ -1120,7 +1213,7 @@ function searchAdminStudents() {
 // View station details
 async function viewStationDetails(caseNumber) {
     try {
-        const response = await fetch(`/get_case/${caseNumber}`);
+        const response = await authenticatedFetch(`/get_case/${caseNumber}`);
         if (!response.ok) {
             throw new Error('Failed to load station details');
         }
@@ -1178,7 +1271,7 @@ async function viewStationDetails(caseNumber) {
 // View student details
 async function viewStudentDetails(studentId, studentName, studentCode) {
     try {
-        const response = await fetch(`/admin/students/${studentId}/details`);
+        const response = await authenticatedFetch(`/admin/students/${studentId}/details`);
         if (!response.ok) {
             throw new Error('Failed to load student details');
         }
@@ -1310,7 +1403,7 @@ function createSessionDetailsModal() {
 async function loadAvailableStudents() {
     try {
         console.log('Loading available students...');
-        const response = await fetch('/admin/available-students');
+        const response = await authenticatedFetch('/admin/available-students');
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1332,7 +1425,7 @@ async function loadAvailableStudents() {
 async function loadAvailableStations() {
     try {
         console.log('Loading available stations...');
-        const response = await fetch('/admin/available-stations');
+        const response = await authenticatedFetch('/admin/available-stations');
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1563,7 +1656,7 @@ async function createSession(event) {
         console.log('Session data to send:', sessionData);
         
         const url = isEditMode ? `/admin/sessions/${sessionId}/edit` : '/admin/create-session';
-        const response = await fetch(url, {
+        const response = await authenticatedFetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1604,87 +1697,6 @@ function getScoreClass(score) {
     return 'poor';
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Admin interface initialized');
-    
-    // Load overview data by default
-    loadOverviewData();
-    
-    // Set up event listeners for search inputs
-    const stationsSearch = document.getElementById('admin-stations-search');
-    if (stationsSearch) {
-        stationsSearch.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                searchAdminStations();
-            }
-        });
-    }
-    
-    const studentsSearch = document.getElementById('admin-students-search');
-    if (studentsSearch) {
-        studentsSearch.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                searchAdminStudents();
-            }
-        });
-    }
-    
-    // Add event listeners for student and station search in modal
-    const studentSearch = document.getElementById('student-search');
-    if (studentSearch) {
-        studentSearch.addEventListener('input', updateAvailableStudentsList);
-    }
-    
-    const stationSearch = document.getElementById('station-search');
-    if (stationSearch) {
-        stationSearch.addEventListener('input', updateAvailableStationsList);
-    }
-    
-    // Set up form event listeners - PREVENT DOUBLE BINDING
-    // Competition session form
-    const competitionForm = document.getElementById('create-competition-session-form');
-    if (competitionForm) {
-        // Remove any existing event listeners by cloning the form
-        const newCompetitionForm = competitionForm.cloneNode(true);
-        competitionForm.parentNode.replaceChild(newCompetitionForm, competitionForm);
-        
-        // Add the event listener to the new form
-        newCompetitionForm.addEventListener('submit', createCompetitionSession);
-        console.log('Competition session form event listener attached');
-    }
-    
-    // Regular session form
-    const createSessionForm = document.getElementById('create-session-form');
-    if (createSessionForm) {
-        // Remove any existing event listeners by cloning the form
-        const newSessionForm = createSessionForm.cloneNode(true);
-        createSessionForm.parentNode.replaceChild(newSessionForm, createSessionForm);
-        
-        // Add the event listener to the new form
-        newSessionForm.addEventListener('submit', createSession);
-        console.log('Regular session form event listener attached');
-    }
-    
-    // Close modal functionality
-    document.querySelectorAll('.close-modal').forEach(closeBtn => {
-        closeBtn.addEventListener('click', function() {
-            const modal = this.closest('.modal');
-            if (modal) {
-                modal.classList.remove('visible');
-                modal.classList.add('hidden');
-            }
-        });
-    });
-    
-    // Close modals when clicking outside
-    window.addEventListener('click', (e) => {
-        if (e.target.classList.contains('modal')) {
-            e.target.classList.remove('visible');
-            e.target.classList.add('hidden');
-        }
-    });
-});
 
 // Debug function to check if everything is loaded correctly
 function debugAdminInterface() {

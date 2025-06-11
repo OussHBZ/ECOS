@@ -4,12 +4,24 @@ from models import db, Student, TeacherAccess, AdminAccess
 from datetime import datetime
 import re, os
 from functools import wraps
+import logging
+
+logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
 
 # Access codes - you can change these or load from environment
 TEACHER_ACCESS_CODE = os.getenv('TEACHER_CODE', 'TEACHER123')
 ADMIN_ACCESS_CODE = os.getenv('ADMIN_CODE', 'ADMIN123')
+
+def is_ajax_request():
+    """Check if the request is an AJAX request"""
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        request.headers.get('Content-Type') == 'application/json' or
+        request.accept_mimetypes.best == 'application/json' or
+        request.path.startswith(('/admin/', '/teacher/', '/student/'))
+    )
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -111,25 +123,34 @@ def student_required(f):
     def decorated_function(*args, **kwargs):
         # Check if user is logged in as student
         if not current_user.is_authenticated or session.get('user_type') != 'student':
-            # Check if this is an AJAX request
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/student/'):
-                return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
+            if is_ajax_request():
+                logger.warning(f"Unauthorized student AJAX request to {request.path}")
+                return jsonify({
+                    'error': 'Authentication required',
+                    'redirect': url_for('auth.login'),
+                    'auth_required': True
+                }), 401
             else:
                 flash('Accès réservé aux étudiants.', 'error')
                 return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
-def admin_required(f):
-    """Decorator to require administrator authentication - returns JSON for AJAX requests"""
+def teacher_required(f):
+    """Decorator to require teacher authentication - returns JSON for AJAX requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if session.get('user_type') != 'admin' or not session.get('admin_authenticated'):
-            # Check if this is an AJAX request
-            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/admin/'):
-                return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
+        # Check if user is logged in as teacher
+        if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
+            if is_ajax_request():
+                logger.warning(f"Unauthorized teacher AJAX request to {request.path}")
+                return jsonify({
+                    'error': 'Authentication required',
+                    'redirect': url_for('auth.login'),
+                    'auth_required': True
+                }), 401
             else:
-                flash('Accès réservé aux administrateurs.', 'error')
+                flash('Accès réservé aux enseignants.', 'error')
                 return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -139,11 +160,16 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if session.get('user_type') != 'admin' or not session.get('admin_authenticated'):
-            # Check if this is an AJAX request
-            if request.is_json or request.headers.get('Content-Type') == 'application/json':
-                return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login')}), 401
+            if is_ajax_request():
+                logger.warning(f"Unauthorized admin AJAX request to {request.path}")
+                return jsonify({
+                    'error': 'Authentication required',
+                    'redirect': url_for('auth.login'),
+                    'auth_required': True
+                }), 401
             else:
                 flash('Accès réservé aux administrateurs.', 'error')
                 return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
+
