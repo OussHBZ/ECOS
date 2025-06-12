@@ -282,19 +282,40 @@ async function authenticatedFetch(url, options = {}) {
         credentials: 'same-origin' // Important for session cookies
     };
     
-    const response = await authenticatedFetch(url, { ...options, ...defaultOptions });
-    
-    // Handle authentication errors
-    if (response.status === 401) {
-        const data = await response.json();
-        if (data.redirect) {
-            alert('Session expirée. Veuillez vous reconnecter.');
-            window.location.href = data.redirect;
-            return null;
-        }
+    // FIXED: Merge options properly without recursion
+    const finalOptions = { ...options, ...defaultOptions };
+    if (options.headers) {
+        finalOptions.headers = { ...defaultOptions.headers, ...options.headers };
     }
     
-    return response;
+    try {
+        // FIXED: Use native fetch instead of calling authenticatedFetch recursively
+        const response = await fetch(url, finalOptions);
+        
+        // Handle authentication errors
+        if (response.status === 401) {
+            try {
+                const data = await response.json();
+                if (data.auth_required || data.redirect) {
+                    console.error('Session expired or unauthorized access');
+                    alert('Session expirée. Veuillez vous reconnecter.');
+                    window.location.href = data.redirect || '/login';
+                    return null;
+                }
+            } catch (e) {
+                // If response is not JSON, still handle as auth error
+                console.error('Authentication error:', e);
+                alert('Erreur d\'authentification. Veuillez vous reconnecter.');
+                window.location.href = '/login';
+                return null;
+            }
+        }
+        
+        return response;
+    } catch (error) {
+        console.error('Network error:', error);
+        throw error;
+    }
 }
 
 // Filter cases based on selection and search
@@ -2027,4 +2048,15 @@ function createScoreGauge(percentage) {
         >${percentage}%</text>
     </svg>
     `;
+}
+// Download competition report function
+function downloadCompetitionReport(sessionId) {
+    try {
+        // Generate a simple report URL or create a PDF download
+        const reportUrl = `/student/competition/${sessionId}/report`;
+        window.location.href = reportUrl;
+    } catch (error) {
+        console.error('Error downloading competition report:', error);
+        alert('Erreur lors du téléchargement du rapport de compétition');
+    }
 }

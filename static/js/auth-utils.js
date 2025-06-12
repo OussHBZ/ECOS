@@ -11,13 +11,14 @@ async function authenticatedFetch(url, options = {}) {
         credentials: 'same-origin' // Important for session cookies
     };
     
-    // Merge options
+    // Merge options properly
     const finalOptions = { ...options, ...defaultOptions };
     if (options.headers) {
         finalOptions.headers = { ...defaultOptions.headers, ...options.headers };
     }
     
     try {
+        // Use native fetch - NO recursive calls
         const response = await fetch(url, finalOptions);
         
         // Handle authentication errors

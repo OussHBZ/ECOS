@@ -5,7 +5,7 @@ from auth import student_required
 import logging
 from datetime import datetime
 import time
-import random
+import random, json
 
 student_bp = Blueprint('student', __name__)
 logger = logging.getLogger(__name__)
@@ -308,14 +308,16 @@ def complete_competition_station():
         if current_assignment:
             current_assignment.status = 'completed'
             current_assignment.completed_at = datetime.utcnow()
-            current_assignment.performance_data = jsonify({
+            # Fix: Store performance data as JSON string, not response object
+            performance_data = {
                 'conversation_transcript': conversation,
                 'evaluation_results': evaluation_results,
                 'percentage_score': evaluation_results.get('percentage', 0),
                 'points_earned': evaluation_results.get('points_earned', 0),
                 'points_total': evaluation_results.get('points_total', 0),
                 'completed_at': datetime.utcnow().isoformat()
-            }).data.decode()
+            }
+            current_assignment.performance_data = json.dumps(performance_data, ensure_ascii=False)
         
         # Move to next station or complete session
         competition_session = CompetitionSession.query.get(student_session.session_id)
@@ -356,6 +358,31 @@ def complete_competition_station():
         
     except Exception as e:
         logger.error(f"Error completing competition station: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@student_bp.route('/competition/<int:session_id>/report')
+@student_required
+def download_competition_report(session_id):
+    """Download competition report for student"""
+    try:
+        # Get student's competition session
+        student_session = StudentCompetitionSession.query.filter_by(
+            session_id=session_id,
+            student_id=current_user.id
+        ).first()
+        
+        if not student_session:
+            return jsonify({"error": "Competition session not found"}), 404
+        
+        # For now, return a simple message or implement PDF generation
+        return jsonify({
+            "message": "Competition report functionality coming soon",
+            "session_id": session_id,
+            "student_id": current_user.id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating competition report: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @student_bp.route('/stats')
