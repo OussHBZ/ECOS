@@ -95,10 +95,19 @@
                 </div>
 
                 <div class="chat-content">
-                    <div id="chat-messages" class="chat-messages"></div>
+                    <div id="chat-messages" class="chat-messages">
+                        <!-- Messages will be added here dynamically -->
+                    </div>
+                    
+                    <!-- This is the critical part - ensure it's properly structured -->
                     <div class="chat-input-container">
-                        <input type="text" id="user-input" placeholder="Tapez votre message ou question...">
-                        <button id="send-btn">Envoyer</button>
+                        <input type="text" 
+                            id="user-input" 
+                            class="chat-input"
+                            placeholder="Tapez votre message ou question..." 
+                            autocomplete="off"
+                            maxlength="500">
+                        <button id="send-btn" class="send-button" type="button">Envoyer</button>
                     </div>
                 </div>
             </div>
@@ -356,274 +365,15 @@
     <!-- Additional Styles -->
     <style>
         /* Main Layout */
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        .main-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 30px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-content h1 {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 300;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .logout-btn {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            transition: background 0.3s;
-        }
-
-        .logout-btn:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        /* Navigation Tabs */
-        .student-nav-tabs {
-            display: flex;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #e0e0e0;
-            background: white;
-            border-radius: 8px 8px 0 0;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .nav-tab {
-            flex: 1;
-            padding: 15px 20px;
-            background: #f5f5f5;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            color: #666;
-            transition: all 0.3s;
-            border-bottom: 3px solid transparent;
-        }
-
-        .nav-tab.active {
-            background: white;
-            color: #2196F3;
-            border-bottom-color: #2196F3;
-        }
-
-        .nav-tab:hover {
-            background: #e8f4fd;
-            color: #1976D2;
-        }
-
-        /* Tab Content */
-        .student-tab-content {
-            display: none;
-            background: white;
-            border-radius: 0 0 15px 15px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .student-tab-content.active {
-            display: block;
-        }
-
-        /* Section Headers */
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-
-        .section-header h2, .section-header h3 {
-            margin: 0;
-            color: #333;
-            font-weight: 600;
-        }
-
-        /* Filters */
-        .filter-section {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 4px solid #2196F3;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .filter-group label {
-            font-weight: bold;
-            color: #555;
-        }
-
-        .filter-group select, .search-input {
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-
-        .filter-group select:focus, .search-input:focus {
-            outline: none;
-            border-color: #2196F3;
-            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
-        }
-
-        /* Cases Grid */
-        .cases-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .case-card {
-            background: white;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        }
-
-        .case-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-            border-color: #2196F3;
-        }
-
-        .case-card.selected {
-            border-color: #4CAF50;
-            background: #f8fff8;
-            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.2);
-        }
-
-        .case-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .case-header h3 {
-            margin: 0;
-            color: #333;
-            font-size: 18px;
-        }
-
-        .specialty-badge {
-            background: #e3f2fd;
-            color: #1976D2;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .case-info p {
-            margin: 8px 0;
-            color: #666;
-        }
-
-        .case-actions {
-            margin-top: 15px;
-        }
-
-        .select-case-btn {
-            width: 100%;
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-
-        .select-case-btn:hover {
-            background: #1976D2;
-        }
-
-        /* Start Section */
-        .start-section {
-            text-align: center;
-            padding: 30px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border: 2px dashed #ddd;
-        }
-
-        .start-button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
-        }
-
-        .start-button:hover:not(:disabled) {
-            background: #45a049;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
-        }
-
-        .start-button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        /* Chat Interface */
         .chat-container {
             background: white;
             border-radius: 15px;
             box-shadow: 0 8px 25px rgba(0,0,0,0.1);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 80vh; /* Fixed height */
+            min-height: 600px;
         }
 
         .chat-header {
@@ -633,85 +383,54 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-
-        .case-info h2 {
-            margin: 0 0 10px 0;
-            font-size: 22px;
-        }
-
-        .view-button {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
-        }
-
-        .view-button:hover {
-            background: rgba(255,255,255,0.3);
-        }
-
-        .timer-container {
-            text-align: center;
-        }
-
-        .timer-label {
-            display: block;
-            font-size: 14px;
-            margin-bottom: 5px;
-            opacity: 0.9;
-        }
-
-        .timer {
-            font-size: 28px;
-            font-weight: bold;
-            font-family: 'Courier New', monospace;
-        }
-
-        .end-button {
-            background: #f44336;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-
-        .end-button:hover {
-            background: #d32f2f;
+            flex-shrink: 0; /* Prevent shrinking */
         }
 
         .chat-content {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
             padding: 20px;
+            min-height: 0; /* Important for flex */
         }
 
         .chat-messages {
-            height: 400px;
+            flex: 1;
             overflow-y: auto;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
             background: #fafafa;
+            min-height: 300px; /* Minimum height */
         }
 
+        /* Fix the input container - this is the critical fix */
         .chat-input-container {
-            display: flex;
+            display: flex !important; /* Force display */
             gap: 15px;
+            padding: 15px 0;
+            border-top: 1px solid #e0e0e0;
+            background: white;
+            flex-shrink: 0; /* Prevent shrinking */
+            position: relative;
+            z-index: 10;
         }
 
         .chat-input-container input {
             flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
             font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+            min-width: 0; /* Allow input to shrink */
+        }
+
+        .chat-input-container input:focus {
+            border-color: #2196F3;
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
         }
 
         .chat-input-container button {
@@ -719,969 +438,136 @@
             color: white;
             border: none;
             padding: 12px 24px;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 16px;
+            transition: background 0.3s;
+            min-width: 100px;
+            flex-shrink: 0; /* Prevent button from shrinking */
         }
 
-        /* Message Styles */
+        .chat-input-container button:hover {
+            background: #1976D2;
+        }
+
+        .chat-input-container button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        /* Ensure the input is never hidden */
+        #user-input {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        #send-btn {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        /* Message improvements */
         .message {
             margin-bottom: 15px;
-            padding: 12px;
-            border-radius: 8px;
-            line-height: 1.5;
+            padding: 15px;
+            border-radius: 12px;
+            line-height: 1.6;
+            max-width: 85%;
+            word-wrap: break-word;
         }
 
         .message.user {
             background: #e3f2fd;
             border-left: 4px solid #2196F3;
+            margin-left: auto;
+            margin-right: 0;
         }
 
         .message.assistant {
             background: #f3e5f5;
             border-left: 4px solid #9c27b0;
+            margin-left: 0;
+            margin-right: auto;
         }
 
         .message.system {
             background: #fff3e0;
             border-left: 4px solid #ff9800;
             font-style: italic;
-        }
-
-        .message-image {
-            margin: 10px 0;
-            text-align: center;
-        }
-
-        .medical-image {
-            max-width: 200px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-
-        .medical-image:hover {
-            transform: scale(1.05);
-        }
-
-        /* Evaluation Container */
-        .evaluation-container {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        }
-
-        .evaluation-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-
-        .evaluation-actions {
-            display: flex;
-            gap: 15px;
-        }
-
-        .download-button, .back-button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-
-        .download-button {
-            background: #4CAF50;
-            color: white;
-        }
-
-        .download-button:hover {
-            background: #45a049;
-        }
-
-        .back-button {
-            background: #2196F3;
-            color: white;
-        }
-
-        .back-button:hover {
-            background: #1976D2;
-        }
-
-        /* Stats Overview */
-        .stats-overview {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 30px 20px;
-            border-radius: 10px;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            border-left: 4px solid #2196F3;
-            transition: transform 0.3s;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .stat-number {
-            font-size: 2.5em;
-            font-weight: bold;
-            color: #2196F3;
-            margin-bottom: 10px;
-        }
-
-        .stat-label {
-            font-size: 1.1em;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        /* Performance Table */
-        .performance-table-container {
-            background: white;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            margin-bottom: 40px;
-        }
-
-        .performance-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .performance-table th {
-            background: #2196F3;
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: bold;
-        }
-
-        .performance-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .performance-table tr:hover {
-            background: #f8f9fa;
-        }
-
-        /* Stations Grid */
-        .stations-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .station-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-            border-left: 4px solid #2196F3;
-        }
-
-        .station-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }
-
-        .station-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .station-header h4 {
-            margin: 0;
-            color: #333;
-        }
-
-        .station-info p {
-            margin: 8px 0;
-            color: #666;
-        }
-
-        .station-info .last-attempt {
-            font-style: italic;
-            color: #999;
-            font-size: 0.9em;
-        }
-
-        .station-actions {
-            margin-top: 15px;
-            text-align: center;
-        }
-
-        .select-station-btn {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-
-        .select-station-btn:hover {
-            background: #45a049;
-        }
-
-        /* Grade and Status Badges */
-        .grade-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        .grade-A { background: #4CAF50; color: white; }
-        .grade-B { background: #8BC34A; color: white; }
-        .grade-C { background: #FFC107; color: black; }
-        .grade-D { background: #FF9800; color: white; }
-        .grade-F { background: #F44336; color: white; }
-        .grade-none { background: #9E9E9E; color: white; }
-
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .status-excellent { background: #E8F5E8; color: #2E7D32; }
-        .status-bon { background: #E3F2FD; color: #1565C0; }
-        .status-satisfaisant { background: #FFF3E0; color: #EF6C00; }
-        .status-à-améliorer { background: #FFEBEE; color: #C62828; }
-
-        .score-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .score-excellent { background: #4CAF50; color: white; }
-        .score-good { background: #8BC34A; color: white; }
-        .score-average { background: #FFC107; color: black; }
-        .score-below-average { background: #FF9800; color: white; }
-        .score-poor { background: #F44336; color: white; }
-
-        /* Search Container */
-        .search-container {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .search-btn {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .search-btn:hover {
-            background: #1976D2;
-        }
-
-        /* Competition Styles */
-        .competition-container {
-            max-width: 1200px;
             margin: 0 auto;
-            padding: 20px;
-        }
-
-        .competition-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .progress-container {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .progress-bar {
-            width: 200px;
-            height: 10px;
-            background: #e0e0e0;
-            border-radius: 5px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #4CAF50, #8BC34A);
-            transition: width 0.3s ease;
-            width: 0%;
-        }
-
-        .progress-text {
-            font-weight: bold;
-            color: #666;
-        }
-
-        .competition-screen {
-            background: white;
-            border-radius: 10px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
-        .waiting-container {
             text-align: center;
-            padding: 60px 20px;
         }
 
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #2196F3;
+        /* Loading indicator */
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background: #2196F3;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
+            animation: typing 1.4s infinite ease-in-out;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0s; }
 
-        .station-info h3 {
-            margin: 0 0 10px 0;
-            color: #333;
-            font-size: 24px;
-        }
-
-        .station-timer-container {
-            margin-top: 15px;
-            padding: 10px 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #2196F3;
-        }
-
-        .timer-label {
-            font-weight: bold;
-            margin-right: 10px;
-        }
-
-        .station-timer {
-            font-size: 24px;
-            font-weight: bold;
-            color: #2196F3;
-        }
-
-        .directives-container {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border-left: 4px solid #FF9800;
-        }
-
-        .directives-container h4 {
-            margin: 0 0 15px 0;
-            color: #FF9800;
-        }
-
-        .competition-chat-container {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            height: 400px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chat-input-container {
-            display: flex;
-            padding: 15px;
-            gap: 10px;
-            border-top: 1px solid #eee;
-        }
-
-        .chat-input-container input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        .send-button {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .send-button:hover {
-            background: #1976D2;
-        }
-
-        .between-stations-container {
-            text-align: center;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        .station-results {
-            margin: 30px 0;
-            padding: 30px;
-            background: #f8f9fa;
-            border-radius: 10px;
-        }
-
-        .score-display {
-            margin: 20px 0;
-        }
-
-        .score-large {
-            font-size: 48px;
-            font-weight: bold;
-            color: #4CAF50;
-        }
-
-        .feedback-details {
-            text-align: left;
-            margin: 30px 0;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #eee;
-        }
-
-        .feedback-list {
-            list-style: none;
-            padding: 0;
-        }
-
-        .feedback-list li {
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 4px;
-            border-left: 4px solid #ddd;
-        }
-
-        .feedback-list li.completed {
-            background: #e8f5e8;
-            border-left-color: #4CAF50;
-        }
-
-        .feedback-list li.not-completed {
-            background: #ffebee;
-            border-left-color: #f44336;
-        }
-
-        .next-station-info {
-            margin-top: 40px;
-        }
-
-        .countdown-display {
-            margin: 20px 0;
-        }
-
-        .countdown-timer {
-            font-size: 36px;
-            font-weight: bold;
-            color: #FF9800;
-        }
-
-        .countdown-label {
-            font-size: 18px;
-            color: #666;
-            margin-left: 10px;
-        }
-
-        .final-results-container {
-            max-width: 800px;
-            margin: 0 auto;
-            text-align: center;
-        }
-
-        .final-score-summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 40px 0;
-        }
-
-        .score-card, .rank-card, .stats-card {
-            background: #f8f9fa;
-            padding: 30px 20px;
-            border-radius: 10px;
-            border-top: 4px solid #2196F3;
-        }
-
-        .final-score .score-large {
-            display: block;
-            font-size: 36px;
-            color: #4CAF50;
-            margin-bottom: 10px;
-        }
-
-        .score-label {
-            color: #666;
-            font-weight: bold;
-        }
-
-        .rank-display {
-            font-size: 32px;
-            font-weight: bold;
-            color: #FF9800;
-        }
-
-        .rank-separator {
-            margin: 0 10px;
-            color: #666;
-        }
-
-        .leaderboard-section {
-            margin: 40px 0;
-            text-align: left;
-        }
-
-        .leaderboard-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .leaderboard-table th {
-            background: #2196F3;
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: bold;
-        }
-
-        .leaderboard-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .leaderboard-table tr:hover {
-            background: #f8f9fa;
-        }
-
-        .final-actions {
-            margin-top: 40px;
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-        }
-
-        .submit-button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-
-        .submit-button:hover {
-            background: #45a049;
-        }
-
-        .submit-button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-        }
-
-        .secondary-button {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-
-        .secondary-button:hover {
-            background: #1976D2;
-        }
-
-        /* Competition Card Styles */
-        .competition-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-left: 4px solid #2196F3;
-        }
-
-        .competition-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .competition-status-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        .status-scheduled {
-            background: #E3F2FD;
-            color: #1565C0;
-        }
-
-        .status-active {
-            background: #E8F5E8;
-            color: #2E7D32;
-        }
-
-        .status-completed {
-            background: #F3E5F5;
-            color: #7B1FA2;
-        }
-
-        .error-message {
-            color: #f44336;
-            text-align: center;
-            padding: 20px;
-            background: #ffebee;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-
-        .no-competitions {
-            text-align: center;
-            padding: 40px 20px;
-            color: #666;
-        }
-
-        .competitions-grid {
-            display: grid;
-            gap: 20px;
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 9999;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
-        }
-
-        .modal.visible {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            max-width: 90%;
-            max-height: 90%;
-            overflow-y: auto;
-            position: relative;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            animation: modalSlideIn 0.3s ease-out;
-        }
-
-        @keyframes modalSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-50px) scale(0.9);
+        @keyframes typing {
+            0%, 80%, 100% {
+                transform: scale(0.8);
+                opacity: 0.5;
             }
-            to {
+            40% {
+                transform: scale(1);
                 opacity: 1;
-                transform: translateY(0) scale(1);
             }
         }
 
-        .close-modal {
-            position: absolute;
-            top: 15px;
-            right: 20px;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            color: #999;
-            transition: color 0.3s;
-        }
-
-        .close-modal:hover {
-            color: #333;
-        }
-
-        .directives-content {
-            line-height: 1.6;
-            color: #333;
-        }
-
-        .directives-content strong {
-            color: #2196F3;
-        }
-
-        .images-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
-        .image-item {
-            text-align: center;
-        }
-
-        .image-item h4 {
-            margin: 0 0 10px 0;
-            color: #333;
-        }
-
-        .image-item img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-
-        .image-item img:hover {
-            transform: scale(1.02);
-        }
-
-        /* Utility Classes */
-        .hidden {
-            display: none !important;
-        }
-
-        /* Responsive Design */
+        /* Responsive fixes */
         @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-
-            .header-content {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-
-            .student-nav-tabs {
-                flex-direction: column;
-            }
-
-            .filter-section {
-                grid-template-columns: 1fr;
-            }
-
-            .cases-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .stats-overview {
-                grid-template-columns: 1fr;
+            .chat-container {
+                height: 90vh;
+                margin: 10px;
+                border-radius: 10px;
             }
 
             .chat-header {
+                padding: 15px 20px;
                 flex-direction: column;
                 gap: 15px;
                 text-align: center;
             }
 
-            .evaluation-header {
-                flex-direction: column;
-                gap: 15px;
+            .chat-content {
+                padding: 15px;
             }
 
-            .evaluation-actions {
-                flex-direction: column;
-            }
-
-            .competition-header {
-                flex-direction: column;
-                gap: 20px;
-                text-align: center;
-            }
-
-            .station-header {
-                flex-direction: column;
-                gap: 20px;
-            }
-
-            .station-actions {
-                justify-content: center;
-            }
-
-            .final-score-summary {
-                grid-template-columns: 1fr;
-            }
-
-            .final-actions {
-                flex-direction: column;
-                align-items: center;
-            }
-
-            .progress-container {
-                flex-direction: column;
-                gap: 10px;
-            }
-
-            .section-header {
-                flex-direction: column;
-                gap: 15px;
-            }
-
-            .search-container {
-                width: 100%;
-            }
-
-            .search-container input {
-                flex: 1;
-            }
-        }
-
-        /* Print Styles */
-        @media print {
-            .nav-tab, .logout-btn, .start-button, .end-button, .send-button {
-                display: none;
-            }
-            
             .chat-input-container {
-                display: none;
+                flex-direction: row; /* Keep horizontal on mobile */
+                gap: 10px;
+                padding: 10px 0;
             }
-            
-            .modal {
-                display: none;
-            }
-        }
 
-        /* High Contrast Mode */
-        @media (prefers-contrast: high) {
-            .case-card {
-                border-width: 3px;
+            .message {
+                max-width: 95%;
             }
-            
-            .nav-tab.active {
-                border-bottom-width: 5px;
-            }
-            
-            .specialty-badge, .grade-badge, .status-badge {
-                border: 2px solid currentColor;
-            }
-        }
-
-        /* Reduced Motion */
-        @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-            
-            .loading-spinner {
-                animation: none;
-                border: 5px solid #2196F3;
-            }
-        }
-        /* Ensure chat input is always visible */
-        .chat-input-container {
-            display: flex !important;
-            gap: 15px;
-            padding: 15px;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .chat-input-container input {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
-            display: block !important;
-        }
-
-        .chat-input-container button {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            display: block !important;
-        }
-
-        /* Ensure chat messages scroll properly */
-        .chat-messages {
-            height: 400px;
-            overflow-y: auto;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            background: #fafafa;
-            display: block !important;
-        }
-
-        /* Fix for competition chat */
-        #competition-chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
         }
     </style>
 </body>

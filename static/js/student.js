@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     body: JSON.stringify({ case_number: currentCase })
                 });
 
-                if (!response) return; // Authentication failed
+                if (!response) return;
                 
                 if (!response.ok) {
                     throw new Error('Failed to initialize chat');
@@ -116,7 +116,18 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if (chatMessages) chatMessages.innerHTML = '';
                 
                 if (caseSelection) caseSelection.classList.add('hidden');
-                if (chatContainer) chatContainer.classList.remove('hidden');
+                if (chatContainer) {
+                    chatContainer.classList.remove('hidden');
+                    // Ensure input is visible after showing chat
+                    setTimeout(() => {
+                        ensureInputVisibility();
+                        // Focus the input
+                        const userInput = document.getElementById('user-input');
+                        if (userInput) {
+                            userInput.focus();
+                        }
+                    }, 100);
+                }
                 
                 const configuredTime = data.consultation_time || 10;
                 startTimer(configuredTime);
@@ -1282,6 +1293,7 @@ function showStudentTab(tabName) {
     if (tabName !== 'competition-tab') {
         stopCompetitionPolling();
     }
+    
 }
 
 // Practice functions
@@ -2086,5 +2098,95 @@ function downloadCompetitionReport(sessionId) {
     } catch (error) {
         console.error('Error downloading competition report:', error);
         alert('Erreur lors du téléchargement du rapport de compétition');
+    }
+}
+// Function to ensure input visibility
+function ensureInputVisibility() {
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const inputContainer = document.querySelector('.chat-input-container');
+    
+    if (userInput) {
+        userInput.style.display = 'block';
+        userInput.style.visibility = 'visible';
+        userInput.style.opacity = '1';
+    }
+    
+    if (sendBtn) {
+        sendBtn.style.display = 'block';
+        sendBtn.style.visibility = 'visible';
+        sendBtn.style.opacity = '1';
+    }
+    
+    if (inputContainer) {
+        inputContainer.style.display = 'flex';
+        inputContainer.style.visibility = 'visible';
+        inputContainer.style.opacity = '1';
+    }
+}
+
+
+async function sendMessage() {
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    
+    if (!userInput || !sendBtn) {
+        console.error('Input elements not found');
+        return;
+    }
+    
+    const message = userInput.value.trim();
+    if (!message) return;
+
+    try {
+        userInput.disabled = true;
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Envoi...';
+        
+        addMessageToChat('user', message);
+        userInput.value = '';
+        
+        // Add loading indicator
+        const loadingMsg = document.createElement('div');
+        loadingMsg.classList.add('message', 'assistant', 'loading');
+        loadingMsg.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+        if (chatMessages) {
+            chatMessages.appendChild(loadingMsg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        const response = await authenticatedFetch('/chat', {
+            method: 'POST',
+            body: JSON.stringify({ message })
+        });
+
+        // Remove loading indicator
+        const loadingElement = document.querySelector('.loading');
+        if (loadingElement) {
+            loadingElement.remove();
+        }
+
+        if (!response) return;
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.error) {
+            addMessageToChat('system', `Erreur: ${data.error}`);
+        } else {
+            addMessageToChat('assistant', data.reply);
+        }
+
+    } catch (error) {
+        console.error('Error:', error);
+        addMessageToChat('system', 'Une erreur est survenue lors de l\'envoi du message');
+    } finally {
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Envoyer';
+        userInput.focus();
     }
 }
