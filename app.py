@@ -425,7 +425,6 @@ def create_app():
         """Render the main landing page with role selection"""
         return render_template('home.html')
 
-    # Add these new routes to handle missing functionality
     @app.route('/initialize_chat', methods=['POST'])
     def initialize_chat():
         """Initialize chat session"""
@@ -442,9 +441,31 @@ def create_app():
             # Initialize conversation
             conversation = initialize_conversation(case_number)
             
-            # Store conversation in session
-            session['current_conversation'] = [msg.content if hasattr(msg, 'content') else str(msg) for msg in conversation]
+            # IMPORTANT: Store conversation as a list of dictionaries
+            # Convert LangChain messages to dict format for session storage
+            conversation_dicts = []
+            for msg in conversation:
+                if hasattr(msg, 'content') and hasattr(msg, 'type'):
+                    # LangChain message object
+                    if msg.type == 'system':
+                        conversation_dicts.append({'role': 'system', 'content': msg.content})
+                    elif msg.type == 'human':
+                        conversation_dicts.append({'role': 'human', 'content': msg.content})
+                    elif msg.type == 'ai':
+                        conversation_dicts.append({'role': 'assistant', 'content': msg.content})
+                elif isinstance(msg, dict):
+                    # Already in dict format
+                    conversation_dicts.append(msg)
+                else:
+                    # String or other format - convert to system message
+                    conversation_dicts.append({'role': 'system', 'content': str(msg)})
+            
+            # Store in session as list of dictionaries
+            session['current_conversation'] = conversation_dicts
             session['current_case'] = case_number
+            
+            logger.info(f"Initialized conversation with {len(conversation_dicts)} messages")
+            logger.info(f"Sample conversation format: {conversation_dicts[0] if conversation_dicts else 'Empty'}")
             
             return jsonify({
                 'success': True,
@@ -457,6 +478,7 @@ def create_app():
         except Exception as e:
             logger.error(f"Error initializing chat: {str(e)}")
             return jsonify({'error': str(e)}), 500
+
 
     @app.route('/chat', methods=['POST'])
     def chat():
@@ -475,12 +497,17 @@ def create_app():
             if not case_number:
                 return jsonify({'error': 'No active case session'}), 400
             
-            # Add user message to conversation
-            conversation.append({'role': 'human', 'content': message})
+            logger.info(f"Current conversation format: {type(conversation)} with {len(conversation)} messages")
+            if conversation:
+                logger.info(f"Sample message format: {type(conversation[0])} - {conversation[0] if conversation else 'Empty'}")
+            
+            # Add user message to conversation (ensure dict format)
+            user_message = {'role': 'human', 'content': message}
+            conversation.append(user_message)
             
             # Get AI response using the Groq client
             try:
-                # Convert conversation to LangChain format
+                # Convert conversation to LangChain format for AI processing
                 langchain_messages = []
                 for msg in conversation:
                     if isinstance(msg, dict):
@@ -491,20 +518,22 @@ def create_app():
                         elif msg['role'] == 'assistant':
                             langchain_messages.append(AIMessage(content=msg['content']))
                     else:
+                        # Handle string format (shouldn't happen with this fix)
+                        logger.warning(f"Unexpected conversation format: {type(msg)} - {msg}")
                         langchain_messages.append(SystemMessage(content=str(msg)))
-                
-                # Add the current user message
-                langchain_messages.append(HumanMessage(content=message))
                 
                 # Get response from Groq
                 response = client.invoke(langchain_messages)
                 ai_reply = response.content
                 
-                # Add AI response to conversation
-                conversation.append({'role': 'assistant', 'content': ai_reply})
+                # Add AI response to conversation (ensure dict format)
+                ai_message = {'role': 'assistant', 'content': ai_reply}
+                conversation.append(ai_message)
                 
-                # Update session
+                # Update session with dict format
                 session['current_conversation'] = conversation
+                
+                logger.info(f"Updated conversation with {len(conversation)} messages")
                 
                 return jsonify({
                     'success': True,
@@ -526,14 +555,45 @@ def create_app():
             conversation = session.get('current_conversation', [])
             case_number = session.get('current_case')
             
+            logger.info(f"=== ENDING CHAT DEBUG INFO ===")
+            logger.info(f"Case number: {case_number}")
+            logger.info(f"Conversation length: {len(conversation) if conversation else 0}")
+            logger.info(f"Session keys: {list(session.keys())}")
+            
             if not case_number:
+                logger.error("No case number found in session")
                 return jsonify({'error': 'No active case session'}), 400
             
-            # Evaluate conversation
-            evaluation_results = evaluate_conversation(conversation, case_number)
+            if not conversation:
+                logger.warning("Empty conversation found")
+                conversation = [{'role': 'system', 'content': 'No conversation recorded'}]
             
-            # Generate PDF report
+            # Evaluate conversation
+            logger.info("Starting conversation evaluation...")
+            evaluation_results = evaluate_conversation(conversation, case_number)
+            logger.info(f"Evaluation completed: {evaluation_results.get('percentage', 0)}%")
+            
+            # Generate PDF report with detailed logging
+            pdf_filename = None
+            pdf_url = None
+            
             try:
+                logger.info("=== STARTING PDF GENERATION ===")
+                
+                # Check if simple_pdf_generator function exists
+                if 'create_simple_consultation_pdf' not in globals():
+                    logger.error("create_simple_consultation_pdf function not found!")
+                    raise ImportError("PDF generation function not available")
+                
+                # Check temp directory
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                logger.info(f"Temp directory: {temp_dir}")
+                logger.info(f"Temp directory exists: {os.path.exists(temp_dir)}")
+                logger.info(f"Temp directory writable: {os.access(temp_dir, os.W_OK)}")
+                
+                # Generate PDF
+                logger.info("Calling create_simple_consultation_pdf...")
                 pdf_filename = create_simple_consultation_pdf(
                     conversation,
                     case_number,
@@ -541,12 +601,38 @@ def create_app():
                     evaluation_results.get('recommendations', [])
                 )
                 
-                # Store in session for later download
-                session['last_pdf'] = pdf_filename
+                logger.info(f"PDF generation returned: {pdf_filename}")
                 
+                if pdf_filename:
+                    # Check if file actually exists
+                    pdf_path = os.path.join(temp_dir, pdf_filename)
+                    logger.info(f"Checking PDF file at: {pdf_path}")
+                    
+                    if os.path.exists(pdf_path):
+                        file_size = os.path.getsize(pdf_path)
+                        logger.info(f"PDF file exists, size: {file_size} bytes")
+                        
+                        if file_size > 0:
+                            pdf_url = f'/download_pdf/{pdf_filename}'
+                            session['last_pdf'] = pdf_filename
+                            logger.info(f"PDF URL created: {pdf_url}")
+                        else:
+                            logger.error("PDF file is empty (0 bytes)")
+                            pdf_filename = None
+                    else:
+                        logger.error(f"PDF file does not exist at expected path: {pdf_path}")
+                        pdf_filename = None
+                else:
+                    logger.error("PDF generation returned None")
+                    
             except Exception as e:
-                logger.error(f"Error generating PDF: {str(e)}")
+                logger.error(f"=== PDF GENERATION ERROR ===")
+                logger.error(f"Error type: {type(e).__name__}")
+                logger.error(f"Error message: {str(e)}")
+                import traceback
+                logger.error(f"Full traceback:\n{traceback.format_exc()}")
                 pdf_filename = None
+                pdf_url = None
             
             # Save performance if user is logged in
             if current_user.is_authenticated:
@@ -571,26 +657,106 @@ def create_app():
             session.pop('current_conversation', None)
             session.pop('current_case', None)
             
-            return jsonify({
+            response_data = {
                 'success': True,
                 'evaluation': evaluation_results,
                 'recommendations': evaluation_results.get('recommendations', []),
-                'pdf_url': f'/download_pdf/{pdf_filename}' if pdf_filename else None
-            })
+                'pdf_url': pdf_url,
+                'pdf_available': pdf_filename is not None,
+                'debug_info': {  # Add debug info to response
+                    'pdf_filename': pdf_filename,
+                    'conversation_length': len(conversation),
+                    'case_number': case_number
+                }
+            }
+            
+            logger.info(f"=== FINAL RESPONSE ===")
+            logger.info(f"PDF URL: {pdf_url}")
+            logger.info(f"PDF Available: {pdf_filename is not None}")
+            logger.info(f"Response keys: {list(response_data.keys())}")
+            
+            return jsonify(response_data)
             
         except Exception as e:
-            logger.error(f"Error ending chat: {str(e)}")
+            logger.error(f"=== FATAL ERROR IN END_CHAT ===")
+            logger.error(f"Error: {str(e)}")
+            import traceback
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             return jsonify({'error': str(e)}), 500
+
+
 
     @app.route('/download_pdf/<filename>')
     def download_pdf(filename):
-        """Download generated PDF"""
+        """Download generated PDF with comprehensive error handling"""
         try:
+            import tempfile
             temp_dir = tempfile.gettempdir()
-            return send_from_directory(temp_dir, filename, as_attachment=True)
+            file_path = os.path.join(temp_dir, filename)
+            
+            logger.info(f"=== PDF DOWNLOAD DEBUG ===")
+            logger.info(f"Requested filename: {filename}")
+            logger.info(f"Full file path: {file_path}")
+            logger.info(f"File exists: {os.path.exists(file_path)}")
+            
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                logger.info(f"File size: {file_size} bytes")
+                
+                if file_size == 0:
+                    logger.error("PDF file is empty")
+                    return jsonify({'error': 'PDF file is empty'}), 404
+            else:
+                logger.error(f"PDF file not found at: {file_path}")
+                
+                # List all files in temp directory for debugging
+                try:
+                    temp_files = os.listdir(temp_dir)
+                    pdf_files = [f for f in temp_files if f.endswith('.pdf')]
+                    logger.info(f"Available PDF files in temp dir: {pdf_files}")
+                except Exception as list_error:
+                    logger.error(f"Could not list temp directory: {list_error}")
+                
+                return jsonify({'error': 'PDF file not found'}), 404
+            
+            return send_from_directory(
+                temp_dir, 
+                filename, 
+                as_attachment=True,
+                download_name=f'consultation_evaluation_{filename}',
+                mimetype='application/pdf'
+            )
+            
         except Exception as e:
-            logger.error(f"Error downloading PDF: {str(e)}")
-            return jsonify({'error': 'PDF not found'}), 404
+            logger.error(f"Error in download_pdf: {str(e)}")
+            import traceback
+            logger.error(f"Download traceback:\n{traceback.format_exc()}")
+            return jsonify({'error': f'Error downloading PDF: {str(e)}'}), 500
+        
+    @app.route('/check_pdf_status')
+    def check_pdf_status():
+        """Check if PDF is ready for download"""
+        try:
+            pdf_filename = session.get('last_pdf')
+            if not pdf_filename:
+                return jsonify({'pdf_ready': False})
+            
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            file_path = os.path.join(temp_dir, pdf_filename)
+            
+            if os.path.exists(file_path):
+                return jsonify({
+                    'pdf_ready': True,
+                    'pdf_url': f'/download_pdf/{pdf_filename}'
+                })
+            else:
+                return jsonify({'pdf_ready': False})
+                
+        except Exception as e:
+            logger.error(f"Error checking PDF status: {str(e)}")
+            return jsonify({'pdf_ready': False})
+
 
     @app.route('/get_case/<case_number>')
     def get_case(case_number):

@@ -165,15 +165,101 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     if (downloadEvaluationBtn) {
-        downloadEvaluationBtn.addEventListener('click', () => {
-            const pdfUrl = downloadEvaluationBtn.getAttribute('data-pdf-url');
-            if (pdfUrl) {
-                window.location.href = pdfUrl;
-            } else {
-                alert('Le PDF n\'est pas disponible');
+        downloadEvaluationBtn.addEventListener('click', async function(event) {
+            event.preventDefault();
+            
+            const pdfUrl = this.getAttribute('data-pdf-url');
+            console.log('=== PDF DOWNLOAD DEBUG ===');
+            console.log('Download button clicked');
+            console.log('PDF URL from button:', pdfUrl);
+            console.log('Button disabled state:', this.disabled);
+            console.log('Button display style:', window.getComputedStyle(this).display);
+            
+            if (!pdfUrl || pdfUrl === 'null' || pdfUrl === 'undefined') {
+                console.error('❌ No valid PDF URL found');
+                alert('Le PDF n\'est pas disponible. Veuillez terminer une consultation d\'abord.');
+                return;
+            }
+            
+            try {
+                // Show loading state
+                this.classList.add('loading');
+                this.disabled = true;
+                this.textContent = 'Téléchargement...';
+                
+                console.log('Attempting to download PDF from:', pdfUrl);
+                
+                // First, verify the PDF exists by making a HEAD request
+                const checkResponse = await fetch(pdfUrl, { 
+                    method: 'HEAD',
+                    credentials: 'same-origin'
+                });
+                
+                console.log('PDF check response status:', checkResponse.status);
+                console.log('PDF check response headers:', [...checkResponse.headers.entries()]);
+                
+                if (!checkResponse.ok) {
+                    throw new Error(`PDF not available (HTTP ${checkResponse.status})`);
+                }
+                
+                // Create a temporary link to trigger download
+                const link = document.createElement('a');
+                link.href = pdfUrl;
+                link.download = `consultation_evaluation_${new Date().getTime()}.pdf`;
+                link.style.display = 'none';
+                
+                // Add to DOM, click, and remove
+                document.body.appendChild(link);
+                console.log('Triggering download...');
+                link.click();
+                document.body.removeChild(link);
+                
+                // Show success state
+                this.classList.remove('loading');
+                this.classList.add('success');
+                this.disabled = false;
+                this.textContent = 'Téléchargé ✓';
+                
+                console.log('✅ PDF download initiated successfully');
+                
+                // Reset to original state after 3 seconds
+                setTimeout(() => {
+                    this.classList.remove('success');
+                    this.textContent = 'Télécharger le rapport PDF';
+                }, 3000);
+                
+            } catch (error) {
+                console.error('❌ PDF download error:', error);
+                
+                // Show error state
+                this.classList.remove('loading');
+                this.classList.add('error');
+                this.disabled = false;
+                this.textContent = 'Erreur ✗';
+                
+                // Show detailed error to user
+                let errorMessage = 'Erreur lors du téléchargement du PDF.';
+                if (error.message.includes('404')) {
+                    errorMessage = 'Le fichier PDF n\'a pas été trouvé. Il a peut-être expiré.';
+                } else if (error.message.includes('403')) {
+                    errorMessage = 'Accès au fichier PDF refusé. Veuillez vous reconnecter.';
+                } else if (error.message.includes('500')) {
+                    errorMessage = 'Erreur serveur lors de la génération du PDF.';
+                }
+                
+                alert(errorMessage + ' Veuillez réessayer ou contacter l\'administrateur.');
+                
+                // Reset to original state after 3 seconds
+                setTimeout(() => {
+                    this.classList.remove('error');
+                    this.textContent = 'Télécharger le rapport PDF';
+                }, 3000);
             }
         });
+    } else {
+        console.error('❌ Download evaluation button not found in DOM');
     }
+
 
     if (userInput) {
         userInput.addEventListener('keypress', (event) => {
@@ -281,6 +367,23 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 });
+// check PDF generation status
+
+async function checkPdfStatus() {
+    try {
+        const response = await authenticatedFetch('/check_pdf_status');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.pdf_ready && downloadEvaluationBtn) {
+                downloadEvaluationBtn.setAttribute('data-pdf-url', data.pdf_url);
+                downloadEvaluationBtn.style.display = 'inline-block';
+                downloadEvaluationBtn.disabled = false;
+            }
+        }
+    } catch (error) {
+        console.error('Error checking PDF status:', error);
+    }
+}
 
 // Utility function for authenticated AJAX requests
 async function authenticatedFetch(url, options = {}) {
@@ -384,6 +487,16 @@ async function endConsultation() {
     clearInterval(timerInterval);
     
     try {
+        console.log('=== ENDING CONSULTATION DEBUG ===');
+        console.log('Current case:', currentCase);
+        console.log('Session storage keys:', Object.keys(sessionStorage));
+        
+        // Show loading state
+        if (endChatButton) {
+            endChatButton.disabled = true;
+            endChatButton.textContent = 'Traitement...';
+        }
+        
         const response = await authenticatedFetch('/end_chat', {
             method: 'POST',
             headers: {
@@ -395,55 +508,113 @@ async function endConsultation() {
             throw new Error('Authentication failed');
         }
 
-        const data = await response.json();
+        console.log('Response status:', response.status);
+        console.log('Response headers:', [...response.headers.entries()]);
+
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
+
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('Failed to parse response as JSON:', parseError);
+            throw new Error('Invalid response format');
+        }
+
+        console.log('Parsed response data:', data);
 
         if (!response.ok) {
-            throw new Error(data.error || 'Failed to end chat');
+            throw new Error(data.error || `HTTP ${response.status}: Failed to end chat`);
         }
 
         // Hide chat container and show evaluation screen
         if (chatContainer) chatContainer.classList.add('hidden');
         if (evaluationContainer) evaluationContainer.classList.remove('hidden');
         
-        // Fetch and display evaluation results with recommendations
+        // Display evaluation results with recommendations
         if (data.evaluation) {
+            console.log('Displaying evaluation results...');
             displayEvaluation(data.evaluation, data.recommendations || []);
         } else {
-            // If no evaluation data, show a default message
-            displayEvaluation({
-                checklist: [],
-                feedback: 'Aucune évaluation disponible pour cette session.',
-                points_total: 0,
-                points_earned: 0,
-                percentage: 0
-            }, []);
+            console.warn('No evaluation data received');
         }
         
-        // Store PDF URL for later download
-        if (data.pdf_url && downloadEvaluationBtn) {
-            downloadEvaluationBtn.setAttribute('data-pdf-url', data.pdf_url);
-            downloadEvaluationBtn.style.display = 'inline-block';
-        } else if (downloadEvaluationBtn) {
-            downloadEvaluationBtn.style.display = 'none';
+        // Handle PDF download button
+        console.log('=== PDF HANDLING DEBUG ===');
+        console.log('PDF URL from response:', data.pdf_url);
+        console.log('PDF available:', data.pdf_available);
+        console.log('Debug info:', data.debug_info);
+        
+        if (downloadEvaluationBtn) {
+            if (data.pdf_url) {
+                downloadEvaluationBtn.setAttribute('data-pdf-url', data.pdf_url);
+                downloadEvaluationBtn.style.display = 'inline-block';
+                downloadEvaluationBtn.disabled = false;
+                downloadEvaluationBtn.textContent = 'Télécharger le rapport PDF';
+                console.log('✅ PDF URL set successfully:', data.pdf_url);
+                
+                // Add visual indicator that PDF is ready
+                downloadEvaluationBtn.classList.add('pdf-ready');
+                
+            } else {
+                console.warn('❌ No PDF URL provided in response');
+                downloadEvaluationBtn.style.display = 'none';
+                downloadEvaluationBtn.disabled = true;
+                
+                // Show user-friendly message
+                const pdfMessage = document.createElement('div');
+                pdfMessage.className = 'pdf-message warning';
+                pdfMessage.innerHTML = '⚠️ Le rapport PDF n\'a pas pu être généré. L\'évaluation reste disponible à l\'écran.';
+                
+                const evaluationHeader = document.querySelector('.evaluation-header');
+                if (evaluationHeader) {
+                    evaluationHeader.appendChild(pdfMessage);
+                }
+            }
+        } else {
+            console.error('Download evaluation button not found in DOM');
         }
+        
+        // Add success message
+        addMessageToChat('system', 'Consultation terminée. Évaluation générée avec succès.');
+        console.log('✅ Consultation ended successfully');
         
     } catch (error) {
-        console.error('Error ending consultation:', error);
-        alert(`Une erreur est survenue: ${error.message}`);
+        console.error('=== ERROR ENDING CONSULTATION ===');
+        console.error('Error type:', error.constructor.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
         
-        // Show evaluation screen anyway with error message
+        // Show user-friendly error message
+        const errorMessage = `Une erreur est survenue lors de la finalisation: ${error.message}`;
+        alert(errorMessage);
+        
+        // Try to show a basic evaluation screen even if PDF failed
         if (chatContainer) chatContainer.classList.add('hidden');
-        if (evaluationContainer) evaluationContainer.classList.remove('hidden');
+        if (evaluationContainer) {
+            evaluationContainer.classList.remove('hidden');
+            const evaluationResults = document.getElementById('evaluation-results');
+            if (evaluationResults) {
+                evaluationResults.innerHTML = `
+                    <div class="error-message">
+                        <h3>Erreur lors de l'évaluation</h3>
+                        <p>Une erreur technique est survenue. Veuillez réessayer ou contacter l'administrateur.</p>
+                        <p><strong>Détails:</strong> ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
         
-        displayEvaluation({
-            checklist: [],
-            feedback: `Erreur lors de l'évaluation: ${error.message}`,
-            points_total: 0,
-            points_earned: 0,
-            percentage: 0
-        }, []);
+        // Re-enable the button
+        if (endChatButton) {
+            endChatButton.disabled = false;
+            endChatButton.textContent = 'Terminer la consultation';
+        }
     }
 }
+
+
 
 // Competition status polling with proper cleanup
 function startCompetitionPolling(sessionId) {
