@@ -66,7 +66,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     // IMPORTANT: Set manual entry as default active tab
     // This ensures the correct form is visible on page load
     if (manualTabBtn && fileTabBtn) {
-        manualTabBtn.click(); // This will trigger the tab switching logic
+        // Ensure manual tab is active and file tab is not
+        manualTabBtn.classList.add('active');
+        fileTabBtn.classList.remove('active');
+        
+        // Show manual entry section and hide file upload section
+        if (manualEntrySection) {
+            manualEntrySection.classList.remove('hidden');
+        }
+        if (fileUploadSection) {
+            fileUploadSection.classList.add('hidden');
+        }
     }
     
     console.log('Case number validation set up for teacher interface');

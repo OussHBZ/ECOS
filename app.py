@@ -311,8 +311,26 @@ def create_app():
             # Log evaluation start time
             start_time = time.time()
             
+            # Ensure conversation is in the right format
+            formatted_conversation = []
+            for msg in conversation:
+                if isinstance(msg, dict):
+                    formatted_conversation.append(msg)
+                elif isinstance(msg, str):
+                    # If it's a string, assume it's a system message
+                    formatted_conversation.append({'role': 'system', 'content': msg})
+                else:
+                    # Try to convert to dict
+                    try:
+                        formatted_conversation.append({'role': 'system', 'content': str(msg)})
+                    except:
+                        logger.warning(f"Could not format message: {msg}")
+                        continue
+            
             # Check if we have an empty conversation (just started)
-            if not any(msg['role'] == 'human' for msg in conversation):
+            human_messages = [msg for msg in formatted_conversation if isinstance(msg, dict) and msg.get('role') == 'human']
+            
+            if not human_messages:
                 # Return a default minimal evaluation for empty conversations
                 logger.info("Empty conversation detected, returning minimal evaluation")
                 checklist = case_data.get('evaluation_checklist', [])
@@ -324,38 +342,75 @@ def create_app():
                     'feedback': "La consultation n'a pas été réalisée ou vient juste de commencer.",
                     'points_total': sum(item.get('points', 1) for item in checklist),
                     'points_earned': 0,
-                    'percentage': 0
+                    'percentage': 0,
+                    'recommendations': ["Commencez la consultation en posant des questions au patient."]
                 }
-                
+            
             # For short conversations (fewer than 3 messages), use a simpler evaluation
-            if sum(1 for msg in conversation if msg['role'] == 'human') < 3:
-                logger.info("Brief conversation detected, using pattern-based evaluation")
-                evaluation_agent.state = {
-                    "conversation": conversation,
-                    "case_data": case_data,
-                    "checklist": case_data.get('evaluation_checklist', []),
-                    "results": {},
-                    "recommendations": [],
-                    "evaluation_complete": False
+            if len(human_messages) < 3:
+                logger.info("Brief conversation detected, using simplified evaluation")
+                checklist = case_data.get('evaluation_checklist', [])
+                
+                # Simple pattern matching for basic evaluation
+                completed_items = []
+                for item in checklist:
+                    item_copy = item.copy()
+                    item_copy['completed'] = False
+                    item_copy['justification'] = "Conversation trop courte pour évaluer cet élément."
+                    completed_items.append(item_copy)
+                
+                return {
+                    'checklist': completed_items,
+                    'feedback': "La consultation est trop courte pour une évaluation complète.",
+                    'points_total': sum(item.get('points', 1) for item in checklist),
+                    'points_earned': 0,
+                    'percentage': 0,
+                    'recommendations': [
+                        "Posez plus de questions sur les symptômes du patient.",
+                        "Explorez les antécédents médicaux.",
+                        "Effectuez un examen clinique approprié."
+                    ]
                 }
-                evaluation_agent._prepare_transcript()
-                evaluation_agent._evaluate_with_patterns()
-                evaluation_agent._generate_basic_recommendations()
-                evaluation_results = evaluation_agent.state["results"]
-            else:
-                # Full evaluation for normal conversations
-                evaluation_results = evaluation_agent.evaluate_conversation(conversation, case_data)
+            
+            # Full evaluation for normal conversations
+            try:
+                evaluation_results = evaluation_agent.evaluate_conversation(formatted_conversation, case_data)
+            except Exception as e:
+                logger.error(f"Error in evaluation agent: {str(e)}")
+                # Return a basic evaluation on error
+                checklist = case_data.get('evaluation_checklist', [])
+                return {
+                    'checklist': [
+                        {**item, 'completed': False, 'justification': "Erreur lors de l'évaluation."} 
+                        for item in checklist
+                    ],
+                    'feedback': f"Erreur lors de l'évaluation automatique: {str(e)}",
+                    'points_total': sum(item.get('points', 1) for item in checklist),
+                    'points_earned': 0,
+                    'percentage': 0,
+                    'recommendations': ["Veuillez réessayer ou contacter le support."]
+                }
             
             # Log completion time
             elapsed = time.time() - start_time
             logger.info(f"Evaluation completed in {elapsed:.2f} seconds")
             
-            # Return the evaluation results
+            # Ensure the evaluation results have all required fields
+            if 'recommendations' not in evaluation_results:
+                evaluation_results['recommendations'] = []
+            
             return evaluation_results
                     
         except Exception as e:
-            logger.error(f"Error evaluating conversation: {str(e)}")
-            return {'checklist': [], 'feedback': f"Erreur lors de l'évaluation: {str(e)}"}
+            logger.error(f"Error evaluating conversation: {str(e)}", exc_info=True)
+            return {
+                'checklist': [], 
+                'feedback': f"Erreur lors de l'évaluation: {str(e)}",
+                'points_total': 0,
+                'points_earned': 0,
+                'percentage': 0,
+                'recommendations': []
+            }
 
     # Store functions in app config
     app.config['LOAD_PATIENT_CASE'] = load_patient_case

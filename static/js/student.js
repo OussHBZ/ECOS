@@ -380,6 +380,10 @@ async function endConsultation() {
             }
         });
 
+        if (!response) {
+            throw new Error('Authentication failed');
+        }
+
         const data = await response.json();
 
         if (!response.ok) {
@@ -393,16 +397,40 @@ async function endConsultation() {
         // Fetch and display evaluation results with recommendations
         if (data.evaluation) {
             displayEvaluation(data.evaluation, data.recommendations || []);
+        } else {
+            // If no evaluation data, show a default message
+            displayEvaluation({
+                checklist: [],
+                feedback: 'Aucune évaluation disponible pour cette session.',
+                points_total: 0,
+                points_earned: 0,
+                percentage: 0
+            }, []);
         }
         
         // Store PDF URL for later download
         if (data.pdf_url && downloadEvaluationBtn) {
             downloadEvaluationBtn.setAttribute('data-pdf-url', data.pdf_url);
+            downloadEvaluationBtn.style.display = 'inline-block';
+        } else if (downloadEvaluationBtn) {
+            downloadEvaluationBtn.style.display = 'none';
         }
         
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error ending consultation:', error);
         alert(`Une erreur est survenue: ${error.message}`);
+        
+        // Show evaluation screen anyway with error message
+        if (chatContainer) chatContainer.classList.add('hidden');
+        if (evaluationContainer) evaluationContainer.classList.remove('hidden');
+        
+        displayEvaluation({
+            checklist: [],
+            feedback: `Erreur lors de l'évaluation: ${error.message}`,
+            points_total: 0,
+            points_earned: 0,
+            percentage: 0
+        }, []);
     }
 }
 
