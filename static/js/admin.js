@@ -692,11 +692,11 @@ async function createCompetitionSession(event) {
 // Helper function to get status display in French
 function getStatusDisplay(status) {
     const statusMap = {
-        'registered': 'Inscrit',
-        'logged_in': 'Connecté',
+        'scheduled': 'Programmée',
         'active': 'En cours',
-        'between_stations': 'Entre stations',
-        'completed': 'Terminé'
+        'paused': 'En pause',
+        'completed': 'Terminée',
+        'cancelled': 'Annulée'
     };
     return statusMap[status] || status;
 }
@@ -2022,3 +2022,718 @@ const sessionDetailsStyles = `
 const sessionStyleSheet = document.createElement('style');
 sessionStyleSheet.textContent = sessionDetailsStyles;
 document.head.appendChild(sessionStyleSheet);
+
+// Enhanced competition session monitoring
+let competitionMonitoringInterval = null;
+
+function startCompetitionMonitoring(sessionId) {
+    if (competitionMonitoringInterval) {
+        clearInterval(competitionMonitoringInterval);
+    }
+    
+    console.log('Starting competition monitoring for session:', sessionId);
+    
+    // Initial load
+    updateCompetitionMonitoring(sessionId);
+    
+    // Set up periodic updates
+    competitionMonitoringInterval = setInterval(() => {
+        updateCompetitionMonitoring(sessionId);
+    }, 5000); // Update every 5 seconds
+}
+
+function stopCompetitionMonitoring() {
+    if (competitionMonitoringInterval) {
+        clearInterval(competitionMonitoringInterval);
+        competitionMonitoringInterval = null;
+        console.log('Competition monitoring stopped');
+    }
+}
+
+async function updateCompetitionMonitoring(sessionId) {
+    try {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/monitor`);
+        if (!response || !response.ok) {
+            return;
+        }
+        
+        const data = await response.json();
+        updateCompetitionMonitoringDisplay(data);
+        
+    } catch (error) {
+        console.error('Error updating competition monitoring:', error);
+    }
+}
+
+function updateCompetitionMonitoringDisplay(data) {
+    // Update session status indicators
+    const statusElements = document.querySelectorAll(`[data-session-id="${data.session_id}"] .status-badge`);
+    statusElements.forEach(element => {
+        element.textContent = getStatusDisplay(data.session_status);
+        element.className = `status-badge status-${data.session_status}`;
+    });
+    
+    // Update participant counts
+    const participantElements = document.querySelectorAll(`[data-session-id="${data.session_id}"] .participant-count`);
+    participantElements.forEach(element => {
+        element.textContent = `${data.logged_in_count}/${data.total_participants}`;
+    });
+    
+    // If monitoring modal is open, update detailed view
+    const monitoringModal = document.getElementById('competition-monitoring-modal');
+    if (monitoringModal && !monitoringModal.classList.contains('hidden')) {
+        updateDetailedMonitoringView(data);
+    }
+}
+
+function updateDetailedMonitoringView(data) {
+    const participantsList = document.getElementById('monitoring-participants-list');
+    if (!participantsList) return;
+    
+    let html = '<div class="participants-monitoring-grid">';
+    
+    data.participants.forEach(participant => {
+        const statusClass = getParticipantStatusClass(participant.status);
+        const progressWidth = participant.progress_percentage || 0;
+        
+        html += `
+            <div class="participant-card ${statusClass}">
+                <div class="participant-header">
+                    <h4>${participant.student_name}</h4>
+                    <span class="participant-code">${participant.student_code}</span>
+                </div>
+                <div class="participant-status">
+                    <span class="status-indicator ${participant.status}">${getStudentStatusDisplay(participant.status)}</span>
+                </div>
+                <div class="participant-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressWidth}%"></div>
+                    </div>
+                    <span class="progress-text">${participant.completed_stations}/${data.session_status === 'active' ? '?' : participant.completed_stations} stations (${progressWidth}%)</span>
+                </div>
+                <div class="participant-details">
+                    <p><strong>Station actuelle:</strong> ${participant.current_station_order || 'Aucune'}</p>
+                    ${participant.current_station_case ? `<p><strong>Cas:</strong> ${participant.current_station_case}</p>` : ''}
+                    ${participant.station_started_at ? `<p><strong>Démarré:</strong> ${new Date(participant.station_started_at).toLocaleTimeString()}</p>` : ''}
+                </div>
+                <div class="participant-actions">
+                    ${participant.status !== 'completed' ? `
+                        <button onclick="resetStudentProgress(${data.session_id}, ${participant.student_id})" 
+                                class="reset-button" title="Réinitialiser">
+                            🔄
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    participantsList.innerHTML = html;
+}
+
+// Enhanced competition session management functions
+async function monitorCompetitionSession(sessionId) {
+    try {
+        console.log('Opening monitoring for competition session:', sessionId);
+        
+        // Create monitoring modal if it doesn't exist
+        let modal = document.getElementById('competition-monitoring-modal');
+        if (!modal) {
+            modal = createCompetitionMonitoringModal();
+        }
+        
+        // Load initial data
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/monitor`);
+        if (!response.ok) {
+            throw new Error('Failed to load monitoring data');
+        }
+        
+        const data = await response.json();
+        
+        // Update modal content
+        document.getElementById('monitoring-session-name').textContent = data.session_name;
+        document.getElementById('monitoring-session-status').textContent = getStatusDisplay(data.session_status);
+        document.getElementById('monitoring-session-status').className = `status-badge status-${data.session_status}`;
+        
+        updateDetailedMonitoringView(data);
+        
+        // Show modal
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
+        
+        // Start real-time monitoring
+        startCompetitionMonitoring(sessionId);
+        
+        // Store session ID for control actions
+        modal.dataset.sessionId = sessionId;
+        
+    } catch (error) {
+        console.error('Error opening competition monitoring:', error);
+        alert('Erreur lors de l\'ouverture du monitoring');
+    }
+}
+
+function createCompetitionMonitoringModal() {
+    const modalHTML = `
+        <div id="competition-monitoring-modal" class="modal hidden">
+            <div class="modal-content monitoring-modal-content">
+                <div class="monitoring-header">
+                    <h3>Monitoring Compétition - <span id="monitoring-session-name"></span></h3>
+                    <div class="monitoring-controls">
+                        <span id="monitoring-session-status" class="status-badge"></span>
+                        <button onclick="closeCompetitionMonitoring()" class="close-button">✕</button>
+                    </div>
+                </div>
+                
+                <div class="monitoring-actions">
+                    <button onclick="forceStartCompetition()" class="force-start-button">
+                        🚀 Démarrage forcé
+                    </button>
+                    <button onclick="pauseCompetition()" class="pause-button">
+                        ⏸️ Pause
+                    </button>
+                    <button onclick="resumeCompetition()" class="resume-button">
+                        ▶️ Reprendre
+                    </button>
+                    <button onclick="endCompetition()" class="end-button">
+                        🛑 Terminer
+                    </button>
+                    <button onclick="exportCompetitionResults()" class="export-button">
+                        📊 Exporter
+                    </button>
+                </div>
+                
+                <div id="monitoring-participants-list" class="monitoring-participants">
+                    <!-- Participants will be loaded here -->
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    return document.getElementById('competition-monitoring-modal');
+}
+
+function closeCompetitionMonitoring() {
+    const modal = document.getElementById('competition-monitoring-modal');
+    if (modal) {
+        modal.classList.remove('visible');
+        modal.classList.add('hidden');
+    }
+    
+    stopCompetitionMonitoring();
+}
+
+// Competition control functions
+async function forceStartCompetition() {
+    const modal = document.getElementById('competition-monitoring-modal');
+    const sessionId = modal?.dataset.sessionId;
+    
+    if (!sessionId) {
+        alert('ID de session non trouvé');
+        return;
+    }
+    
+    if (!confirm('Êtes-vous sûr de vouloir forcer le démarrage de cette compétition ? Les étudiants non connectés seront exclus.')) {
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/force-start`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+            // Monitoring will update automatically
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error force starting competition:', error);
+        alert('Erreur lors du démarrage forcé');
+    }
+}
+
+async function pauseCompetition() {
+    const modal = document.getElementById('competition-monitoring-modal');
+    const sessionId = modal?.dataset.sessionId;
+    
+    if (!sessionId) {
+        alert('ID de session non trouvé');
+        return;
+    }
+    
+    if (!confirm('Êtes-vous sûr de vouloir mettre en pause cette compétition ?')) {
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/pause`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error pausing competition:', error);
+        alert('Erreur lors de la mise en pause');
+    }
+}
+
+async function resumeCompetition() {
+    const modal = document.getElementById('competition-monitoring-modal');
+    const sessionId = modal?.dataset.sessionId;
+    
+    if (!sessionId) {
+        alert('ID de session non trouvé');
+        return;
+    }
+    
+    if (!confirm('Êtes-vous sûr de vouloir reprendre cette compétition ?')) {
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/resume`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error resuming competition:', error);
+        alert('Erreur lors de la reprise');
+    }
+}
+
+async function endCompetition() {
+    const modal = document.getElementById('competition-monitoring-modal');
+    const sessionId = modal?.dataset.sessionId;
+    
+    if (!sessionId) {
+        alert('ID de session non trouvé');
+        return;
+    }
+    
+    if (!confirm('Êtes-vous sûr de vouloir terminer cette compétition ? Cette action est irréversible.')) {
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/end`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+            closeCompetitionMonitoring();
+            loadAdminCompetitionSessions(); // Refresh the list
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error ending competition:', error);
+        alert('Erreur lors de la finalisation');
+    }
+}
+
+async function resetStudentProgress(sessionId, studentId) {
+    if (!confirm('Êtes-vous sûr de vouloir réinitialiser le progrès de cet étudiant ?')) {
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/reset-student/${studentId}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(result.message);
+            // Monitoring will update automatically
+        } else {
+            alert(`Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('Error resetting student progress:', error);
+        alert('Erreur lors de la réinitialisation');
+    }
+}
+
+function exportCompetitionResults() {
+    const modal = document.getElementById('competition-monitoring-modal');
+    const sessionId = modal?.dataset.sessionId;
+    
+    if (!sessionId) {
+        alert('ID de session non trouvé');
+        return;
+    }
+    
+    // Create download link
+    const downloadUrl = `/admin/competition-sessions/${sessionId}/export-results`;
+    window.open(downloadUrl, '_blank');
+}
+
+// Helper functions
+function getParticipantStatusClass(status) {
+    const statusClasses = {
+        'registered': 'status-registered',
+        'logged_in': 'status-logged-in',
+        'active': 'status-active',
+        'between_stations': 'status-between',
+        'completed': 'status-completed'
+    };
+    return statusClasses[status] || 'status-unknown';
+}
+
+function getStudentStatusDisplay(status) {
+    const statusMap = {
+        'registered': 'Inscrit',
+        'logged_in': 'Connecté',
+        'active': 'En cours',
+        'between_stations': 'Entre stations',
+        'completed': 'Terminé'
+    };
+    return statusMap[status] || status;
+}
+
+function getStatusDisplay(status) {
+    const statusMap = {
+        'scheduled': 'Programmée',
+        'active': 'En cours',
+        'paused': 'En pause',
+        'completed': 'Terminée',
+        'cancelled': 'Annulée'
+    };
+    return statusMap[status] || status;
+}
+
+// Enhanced competition sessions table with monitoring button
+function updateCompetitionSessionsTable(sessions) {
+    const tableBody = document.getElementById('competition-sessions-table-body');
+    if (!tableBody) {
+        console.error('Competition sessions table body not found');
+        return;
+    }
+    
+    tableBody.innerHTML = '';
+    
+    if (sessions.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="10" style="text-align: center;">Aucune session de compétition trouvée</td></tr>';
+    } else {
+        sessions.forEach(session => {
+            const row = document.createElement('tr');
+            row.dataset.sessionId = session.id;
+            
+            row.innerHTML = `
+                <td>${session.name}</td>
+                <td>${session.start_time}</td>
+                <td>${session.end_time}</td>
+                <td><span class="participant-badge participant-count">${session.participant_count}</span></td>
+                <td><span class="station-badge">${session.station_count}</span></td>
+                <td><span class="setting-badge">${session.stations_per_session}</span></td>
+                <td><span class="time-badge">${session.time_per_station}min</span></td>
+                <td><span class="status-badge status-${session.status}">${session.status_display}</span></td>
+                <td>
+                    <button class="monitor-button" onclick="monitorCompetitionSession(${session.id})" title="Monitoring">👁️</button>
+                    <button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>
+                    ${session.status === 'scheduled' && session.can_start ? 
+                        `<button class="start-button" onclick="startCompetition(${session.id})">Démarrer</button>` : ''}
+                    ${session.status === 'scheduled' ? 
+                        `<button class="edit-button" onclick="editCompetitionSession(${session.id})">Modifier</button>` : ''}
+                    <button class="delete-button" onclick="deleteCompetitionSession(${session.id})">Supprimer</button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+}
+
+// Add CSS styles for monitoring interface
+const monitoringStyles = `
+.monitoring-modal-content {
+    max-width: 95%;
+    max-height: 95%;
+    width: 1200px;
+}
+
+.monitoring-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #eee;
+}
+
+.monitoring-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.monitoring-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.monitoring-actions button {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    transition: all 0.3s;
+}
+
+.force-start-button {
+    background: #FF6B35;
+    color: white;
+}
+
+.force-start-button:hover {
+    background: #E55A2B;
+}
+
+.pause-button {
+    background: #FFC107;
+    color: black;
+}
+
+.pause-button:hover {
+    background: #FFB300;
+}
+
+.resume-button {
+    background: #4CAF50;
+    color: white;
+}
+
+.resume-button:hover {
+    background: #45a049;
+}
+
+.end-button {
+    background: #F44336;
+    color: white;
+}
+
+.end-button:hover {
+    background: #D32F2F;
+}
+
+.export-button {
+    background: #2196F3;
+    color: white;
+}
+
+.export-button:hover {
+    background: #1976D2;
+}
+
+.monitor-button {
+    background: #9C27B0;
+    color: white;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+}
+
+.monitor-button:hover {
+    background: #7B1FA2;
+}
+
+.participants-monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+    max-height: 600px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.participant-card {
+    background: white;
+    border: 2px solid #eee;
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.3s;
+}
+
+.participant-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.participant-card.status-active {
+    border-color: #4CAF50;
+    background: #f8fff8;
+}
+
+.participant-card.status-completed {
+    border-color: #2196F3;
+    background: #f3f8ff;
+}
+
+.participant-card.status-logged-in {
+    border-color: #FF9800;
+    background: #fff8f0;
+}
+
+.participant-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.participant-header h4 {
+    margin: 0;
+    color: #333;
+}
+
+.participant-code {
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #666;
+}
+
+.participant-status {
+    margin-bottom: 10px;
+}
+
+.status-indicator {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-indicator.registered {
+    background: #E0E0E0;
+    color: #555;
+}
+
+.status-indicator.logged_in {
+    background: #FFF3E0;
+    color: #EF6C00;
+}
+
+.status-indicator.active {
+    background: #E8F5E8;
+    color: #2E7D32;
+}
+
+.status-indicator.between_stations {
+    background: #E3F2FD;
+    color: #1565C0;
+}
+
+.status-indicator.completed {
+    background: #F3E5F5;
+    color: #7B1FA2;
+}
+
+.participant-progress {
+    margin-bottom: 10px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #4CAF50, #8BC34A);
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: #666;
+}
+
+.participant-details {
+    margin-bottom: 10px;
+}
+
+.participant-details p {
+    margin: 3px 0;
+    font-size: 12px;
+    color: #555;
+}
+
+.participant-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.reset-button {
+    background: #FF5722;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.reset-button:hover {
+    background: #E64A19;
+}
+
+.close-button {
+    background: #f44336;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.close-button:hover {
+    background: #d32f2f;
+}
+`;
+
+// Add monitoring styles to document
+const monitoringStyleSheet = document.createElement('style');
+monitoringStyleSheet.textContent = monitoringStyles;
+document.head.appendChild(monitoringStyleSheet);
+            

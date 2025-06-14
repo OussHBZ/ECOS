@@ -621,19 +621,35 @@ function startCompetitionPolling(sessionId) {
     if (competitionUpdateInterval) {
         clearInterval(competitionUpdateInterval);
     }
+    
+    if (!sessionId || sessionId === 'undefined') {
+        console.error('Invalid session ID for polling:', sessionId);
+        showError('ID de session invalide');
+        return;
+    }
+    
     currentCompetitionId = sessionId;
     console.log('Starting competition polling for session:', sessionId);
+    
     updateCompetitionStatus(sessionId); // Initial immediate update
-    competitionUpdateInterval = setInterval(() => updateCompetitionStatus(sessionId), 3000); // Poll every 3 seconds
+    competitionUpdateInterval = setInterval(() => {
+        updateCompetitionStatus(sessionId);
+    }, 3000); // Poll every 3 seconds
 }
 
 // Update competition interface with better state management
 function updateCompetitionInterface(status) {
     console.log('Updating competition interface with status:', status);
     
+    // Validate status data
+    if (!validateCompetitionInterface(status)) {
+        showError('Données de session invalides');
+        return;
+    }
+    
     // Update session name and progress
     const sessionNameElement = document.getElementById('competition-session-name');
-    if (sessionNameElement) {
+    if (sessionNameElement && status.session_name) {
         sessionNameElement.textContent = status.session_name;
     }
     
@@ -641,29 +657,38 @@ function updateCompetitionInterface(status) {
     const progressText = document.getElementById('progress-text');
     
     if (progressFill && progressText) {
-        progressFill.style.width = `${status.progress_percentage}%`;
-        progressText.textContent = `${status.completed_stations}/${status.total_stations} stations`;
+        const progress = status.progress_percentage || 0;
+        progressFill.style.width = `${progress}%`;
+        progressText.textContent = `${status.completed_stations || 0}/${status.total_stations || 0} stations`;
     }
 
-    // Handle different student states
-    switch (status.student_status) {
+    // Handle different student states with validation
+    const studentStatus = status.student_status;
+    switch (studentStatus) {
         case 'logged_in':
             showWaitingState();
             break;
         case 'active':
             if (status.current_station) {
-                showStationInterface(status.current_station, status.time_per_station, status.total_stations);
+                showStationInterface(
+                    status.current_station, 
+                    status.time_per_station || 10, 
+                    status.total_stations || 1
+                );
+            } else {
+                console.warn('Active status but no current_station data');
             }
             break;
         case 'between_stations':
-            showBetweenStations(status.time_between_stations);
+            showBetweenStations(status.time_between_stations || 2);
             break;
         case 'completed':
             showFinalResults(status);
             stopCompetitionPolling();
             break;
         default:
-            console.log('Unknown student status:', status.student_status);
+            console.log('Unknown student status:', studentStatus);
+            showError('État de session inconnu: ' + studentStatus);
     }
 }
 
@@ -922,14 +947,132 @@ function startCountdownTimer(seconds) {
 
 // Start next station function
 async function startNextStation() {
+    if (!currentCompetitionId || currentCompetitionId === 'undefined') {
+        showError('Aucune session de compétition active');
+        return;
+    }
+    
     const button = document.getElementById('start-next-station');
     if (button) {
         button.disabled = true;
         button.textContent = 'Préparation...';
     }
     
-    // The polling system will handle the transition
-    console.log('Starting next station...');
+    try {
+        const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/next-station`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response) {
+            throw new Error('No response received');
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('Next station started successfully');
+            // The polling system will handle the UI update
+        } else {
+            throw new Error(result.error || 'Failed to start next station');
+        }
+        
+    } catch (error) {
+        console.error('Error starting next station:', error);
+        showError('Erreur lors du démarrage de la prochaine station');
+        
+        // Re-enable button on error
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Démarrer la prochaine station';
+        }
+    }
+}
+
+function displayCompetitionResultsModal(results, sessionId) {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('competition-results-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'competition-results-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    const modalContent = `
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeCompetitionResultsModal()">&times;</span>
+            <h3>Résultats de la Compétition</h3>
+            
+            <div class="competition-results-summary">
+                <div class="result-card">
+                    <h4>Votre Performance</h4>
+                    <div class="score-display">
+                        <span class="score-large">${results.final_score || 0}%</span>
+                    </div>
+                    <p>Score moyen sur ${results.total_stations || 0} stations</p>
+                </div>
+                
+                <div class="result-card">
+                    <h4>Classement</h4>
+                    <div class="rank-display">
+                        <span class="rank-large">${results.rank || 'N/A'}</span>
+                        <span class="rank-separator">/</span>
+                        <span class="rank-total">${results.total_participants || 0}</span>
+                    </div>
+                    <p>Position finale</p>
+                </div>
+            </div>
+            
+            ${results.leaderboard && results.leaderboard.length > 0 ? `
+                <h4>Classement Final</h4>
+                <div class="leaderboard-container">
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rang</th>
+                                <th>Étudiant</th>
+                                <th>Score Moyen</th>
+                                <th>Stations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.leaderboard.slice(0, 10).map(entry => `
+                                <tr>
+                                    <td>${entry.rank}</td>
+                                    <td>${entry.student_name}</td>
+                                    <td>${entry.average_score}%</td>
+                                    <td>${entry.stations_completed}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            ` : ''}
+            
+            <div class="modal-actions">
+                <button onclick="downloadCompetitionReport()" class="secondary-button">
+                    Télécharger Rapport
+                </button>
+                <button onclick="closeCompetitionResultsModal()" class="submit-button">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    `;
+    
+    modal.innerHTML = modalContent;
+    modal.classList.add('visible');
+}
+
+function closeCompetitionResultsModal() {
+    const modal = document.getElementById('competition-results-modal');
+    if (modal) {
+        modal.classList.remove('visible');
+        modal.style.display = 'none';
+    }
 }
 
 // End current station
@@ -1205,12 +1348,28 @@ function displayAvailableCompetitions(competitions) {
 
 // Join competition
 async function joinCompetition(sessionId) {
+    if (!sessionId || sessionId === 'undefined') {
+        showError('ID de session invalide');
+        return;
+    }
+    
     try {
+        console.log('Attempting to join competition:', sessionId);
+        
         const response = await authenticatedFetch(`/student/join-competition/${sessionId}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
         
+        if (!response) {
+            showError('Erreur de connexion');
+            return;
+        }
+        
         const result = await response.json();
+        console.log('Join competition result:', result);
         
         if (result.success) {
             currentCompetitionId = sessionId;
@@ -1239,6 +1398,12 @@ async function joinCompetition(sessionId) {
 
 // Continue competition
 async function continueCompetition(sessionId) {
+    if (!sessionId || sessionId === 'undefined') {
+        showError('ID de session invalide');
+        return;
+    }
+    
+    console.log('Continuing competition:', sessionId);
     currentCompetitionId = sessionId;
     
     // Hide competitions list and show competition interface
@@ -1248,7 +1413,8 @@ async function continueCompetition(sessionId) {
     if (competitionsContainer) competitionsContainer.style.display = 'none';
     if (competitionInterface) competitionInterface.classList.remove('hidden');
     
-    await updateCompetitionStatus(sessionId);
+    // Start polling and get current status
+    startCompetitionPolling(sessionId);
 }
 
 // Show waiting room
@@ -1284,6 +1450,9 @@ function hideAllCompetitionScreens() {
 
 // Return to competitions
 function returnToCompetitions() {
+    console.log('Returning to competitions list');
+    
+    // Stop all competition-related polling and timers
     stopCompetitionPolling();
     hideAllCompetitionScreens();
     
@@ -1294,31 +1463,200 @@ function returnToCompetitions() {
     if (competitionInterface) competitionInterface.classList.add('hidden');
     if (competitionsContainer) competitionsContainer.style.display = 'block';
     
+    // Reset competition state
     currentCompetitionId = null;
     currentStationData = null;
     window.currentStationImages = null;
     
-    // Reload competitions
+    // Reload competitions list
     loadAvailableCompetitions();
 }
 
+function showError(message, duration = 5000) {
+    console.error('Showing error:', message);
+    
+    // Remove any existing error notifications
+    const existingErrors = document.querySelectorAll('.error-notification');
+    existingErrors.forEach(error => error.remove());
+    
+    // Create a better error display
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-notification';
+    errorDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #f44336;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        z-index: 10000;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    errorDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <strong>Erreur</strong><br>
+                <span>${message}</span>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" 
+                    style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px; padding: 0;">&times;</button>
+        </div>
+    `;
+    
+    document.body.appendChild(errorDiv);
+    
+    // Auto-remove after specified duration
+    setTimeout(() => {
+        if (errorDiv.parentElement) {
+            errorDiv.style.animation = 'slideOutRight 0.3s ease-in';
+            setTimeout(() => errorDiv.remove(), 300);
+        }
+    }, duration);
+}
+
+// Add CSS animations for error notifications
+const errorAnimationStyles = `
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+`;
+if (!document.getElementById('error-animations')) {
+    const styleSheet = document.createElement('style');
+    styleSheet.id = 'error-animations';
+    styleSheet.textContent = errorAnimationStyles;
+    document.head.appendChild(styleSheet);
+}
+
+function validateCompetitionInterface(status) {
+    if (!status) {
+        console.error('No status provided to validateCompetitionInterface');
+        return false;
+    }
+    
+    if (!status.session_id || status.session_id === 'undefined') {
+        console.error('Invalid session_id in competition status:', status.session_id);
+        return false;
+    }
+    
+    if (!currentCompetitionId) {
+        console.warn('No currentCompetitionId set, using status session_id');
+        currentCompetitionId = status.session_id;
+    }
+    
+    return true;
+}
+
+
 // Update competition status
 async function updateCompetitionStatus(sessionId) {
+    if (!sessionId || sessionId === 'undefined') {
+        console.error('Cannot update status with invalid session ID:', sessionId);
+        return;
+    }
+    
     try {
         const response = await authenticatedFetch(`/student/competition/${sessionId}/status`);
+        if (!response) {
+            console.error('No response received for competition status');
+            return;
+        }
+        
         if (!response.ok) {
             console.error('Failed to get competition status:', response.status);
+            if (response.status === 404) {
+                console.log('Competition session not found, stopping polling');
+                stopCompetitionPolling();
+                showError('Session de compétition non trouvée');
+                returnToCompetitions();
+            }
             return;
         }
         
         const status = await response.json();
+        console.log('Competition status update:', status);
         updateCompetitionInterface(status);
         
     } catch (error) {
         console.error('Error updating competition status:', error);
-        // Don't show error to user for polling failures
+        // Don't show error to user for polling failures unless it's persistent
     }
 }
+
+
+async function viewCompetitionResults(sessionId) {
+    if (!sessionId || sessionId === 'undefined') {
+        showError('ID de session invalide');
+        return;
+    }
+    
+    try {
+        console.log('Viewing competition results for session:', sessionId);
+        
+        const response = await authenticatedFetch(`/student/competition/${sessionId}/results`);
+        
+        if (!response) {
+            showError('Erreur de connexion');
+            return;
+        }
+        
+        if (!response.ok) {
+            throw new Error('Failed to load competition results');
+        }
+        
+        const results = await response.json();
+        console.log('Competition results:', results);
+        
+        // Display results in a modal or navigate to results view
+        displayCompetitionResultsModal(results, sessionId);
+        
+    } catch (error) {
+        console.error('Error viewing competition results:', error);
+        showError('Erreur lors du chargement des résultats');
+    }
+}
+
+function downloadCompetitionReport() {
+    if (!currentCompetitionId || currentCompetitionId === 'undefined') {
+        showError('Aucune session de compétition active');
+        return;
+    }
+    
+    console.log('Downloading competition report for session:', currentCompetitionId);
+    
+    // Create a download link
+    const downloadUrl = `/student/competition/${currentCompetitionId}/report`;
+    
+    // Use a temporary anchor element to trigger download
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `competition_report_${currentCompetitionId}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 
 // Show final results
 function showFinalResults(result) {

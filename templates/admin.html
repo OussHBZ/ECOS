@@ -189,7 +189,6 @@
                             <div class="stat-label">En Cours</div>
                         </div>
                     </div>
-
                     <div class="activity-table-container">
                         <table class="sessions-table" id="competition-sessions-table">
                             <thead>
@@ -377,6 +376,40 @@
                                 <!-- Student performance data will be loaded here -->
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="competition-monitoring-modal" class="modal hidden">
+                <div class="modal-content monitoring-modal-content">
+                    <div class="monitoring-header">
+                        <h3>Monitoring Compétition - <span id="monitoring-session-name"></span></h3>
+                        <div class="monitoring-controls">
+                            <span id="monitoring-session-status" class="status-badge"></span>
+                            <button onclick="closeCompetitionMonitoring()" class="close-button">✕</button>
+                        </div>
+                    </div>
+                    
+                    <div class="monitoring-actions">
+                        <button onclick="forceStartCompetition()" class="force-start-button">
+                            🚀 Démarrage forcé
+                        </button>
+                        <button onclick="pauseCompetition()" class="pause-button">
+                            ⏸️ Pause
+                        </button>
+                        <button onclick="resumeCompetition()" class="resume-button">
+                            ▶️ Reprendre
+                        </button>
+                        <button onclick="endCompetition()" class="end-button">
+                            🛑 Terminer
+                        </button>
+                        <button onclick="exportCompetitionResults()" class="export-button">
+                            📊 Exporter
+                        </button>
+                    </div>
+                    
+                    <div id="monitoring-participants-list" class="monitoring-participants">
+                        <!-- Participants monitoring will be loaded here -->
                     </div>
                 </div>
             </div>

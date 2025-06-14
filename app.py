@@ -41,11 +41,67 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, 
 # Import HTTP client
 from httpx import Client
 
+def setup_enhanced_logging():
+    """Set up enhanced logging with filtering for reduced noise"""
+    import logging
+    from logging.handlers import RotatingFileHandler
+    import os
+    
+    # Create logs directory if it doesn't exist
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
+    
+    # Custom filter to reduce noise from Chrome DevTools and other unwanted requests
+    class RequestFilter(logging.Filter):
+        def filter(self, record):
+            if hasattr(record, 'getMessage'):
+                message = record.getMessage()
+                # Filter out noisy requests
+                noise_patterns = [
+                    '.well-known/appspecific',
+                    'favicon.ico',
+                    '/undefined/',
+                    'Chrome-Lighthouse',
+                    'GET /static/',  # Reduce static file logging
+                    '200 -'  # Reduce successful request logging
+                ]
+                if any(pattern in message for pattern in noise_patterns):
+                    return False
+            return True
+    
+    # Set up file handler with rotation
+    file_handler = RotatingFileHandler('logs/osce_app.log', maxBytes=10240000, backupCount=5)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    file_handler.setLevel(logging.INFO)
+    file_handler.addFilter(RequestFilter())
+    
+    # Set up console handler for development - only show warnings and errors
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
+    console_handler.addFilter(RequestFilter())
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[file_handler, console_handler]
+    )
+    
+    # Reduce werkzeug logging noise
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.WARNING)
+    werkzeug_logger.addFilter(RequestFilter())
+
 # Setup logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+setup_enhanced_logging()
 logger = logging.getLogger(__name__)
 
 def create_app():
@@ -80,7 +136,32 @@ def create_app():
     login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
     login_manager.session_protection = 'basic'
     
-    # Add JSON error handler for AJAX requests
+    # Enhanced error handlers for AJAX and competition routes
+    @app.errorhandler(404)
+    def not_found_error(error):
+        # Handle the Chrome DevTools requests that are causing log spam
+        if request.path.startswith('/.well-known/'):
+            return '', 404
+        
+        # Handle undefined competition routes
+        if '/competition/undefined/' in request.path:
+            logger.warning(f"Undefined competition route accessed: {request.path}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({
+                    'error': 'Invalid competition session',
+                    'message': 'Competition session ID is undefined or invalid',
+                    'redirect': '/student'
+                }), 404
+        
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'error': 'Resource not found',
+                'path': request.path,
+                'method': request.method
+            }), 404
+        
+        return render_template('404.html') if app.template_folder else ('Not Found', 404)
+    
     @app.errorhandler(401)
     def unauthorized(error):
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or \
@@ -92,6 +173,19 @@ def create_app():
             }), 401
         return redirect(url_for('auth.login'))
     
+    @app.errorhandler(500)
+    def internal_error(error):
+        db.session.rollback()
+        logger.error(f"Internal server error: {str(error)}")
+        
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'error': 'Internal server error',
+                'message': 'An unexpected error occurred'
+            }), 500
+        
+        return render_template('500.html') if app.template_folder else ('Internal Server Error', 500)
+    
     @login_manager.user_loader
     def load_user(user_id):
         if user_id and user_id.startswith('student_'):
@@ -101,6 +195,28 @@ def create_app():
             except (ValueError, AttributeError):
                 return None
         return None
+    
+    # Add request logging for debugging competition issues
+    @app.before_request
+    def log_request_info():
+        # Skip logging for static files and Chrome DevTools
+        if (request.endpoint == 'static' or 
+            request.path.startswith('/.well-known/') or
+            'favicon.ico' in request.path):
+            return
+        
+        # Log competition-related requests for debugging
+        if '/competition/' in request.path:
+            logger.info(f"Competition request: {request.method} {request.path}")
+            if current_user.is_authenticated:
+                logger.info(f"  User: {current_user.id} ({current_user.name})")
+    
+    @app.after_request
+    def log_response_info(response):
+        # Log error responses for debugging
+        if response.status_code >= 400 and '/competition/' in request.path:
+            logger.warning(f"Competition error: {response.status_code} for {request.method} {request.path}")
+        return response
     
     # Register blueprints
     app.register_blueprint(auth_bp)
@@ -815,7 +931,6 @@ def create_app():
                 'user_id': None,
                 'username': None
             })
-    
     return app
 
 if __name__ == '__main__':

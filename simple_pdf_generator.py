@@ -514,3 +514,176 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         import traceback
         logger.error(f"PDF creation traceback:\n{traceback.format_exc()}")
         return None
+
+def create_competition_report_pdf(report_data):
+    """Create a PDF report for competition results"""
+    import os
+    import tempfile
+    from datetime import datetime
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    
+    # Create a temporary file
+    temp_dir = tempfile.gettempdir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"competition_report_{report_data['student_code']}_{timestamp}.pdf"
+    filepath = os.path.join(temp_dir, filename)
+    
+    # Create PDF document
+    doc = SimpleDocTemplate(filepath, pagesize=A4, rightMargin=72, leftMargin=72,
+                          topMargin=72, bottomMargin=72)
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceBefore=12,
+        spaceAfter=12
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceBefore=6,
+        spaceAfter=6
+    )
+    
+    # Content elements
+    elements = []
+    
+    # Title
+    elements.append(Paragraph("Rapport de Compétition OSCE", title_style))
+    elements.append(Spacer(1, 20))
+    
+    # Student info
+    student_info = [
+        ["Étudiant:", report_data['student_name']],
+        ["Code étudiant:", report_data['student_code']],
+        ["Compétition:", report_data['competition_name']],
+        ["Date:", report_data['start_time'].strftime('%d/%m/%Y')],
+        ["Rapport généré le:", datetime.now().strftime('%d/%m/%Y à %H:%M')]
+    ]
+    
+    info_table = Table(student_info, colWidths=[150, 300])
+    info_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey)
+    ]))
+    
+    elements.append(info_table)
+    elements.append(Spacer(1, 30))
+    
+    # Summary scores
+    elements.append(Paragraph("Résumé des Performances", subtitle_style))
+    
+    summary_data = [
+        ["Score moyen", f"{report_data['average_score']}%"],
+        ["Score total", f"{report_data['total_score']} points"],
+        ["Stations complétées", f"{report_data['completed_stations']}/{report_data['total_stations']}"],
+        ["Taux de réussite", f"{(report_data['completed_stations']/report_data['total_stations']*100):.1f}%"]
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[200, 150])
+    summary_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.lavender),
+        ('BACKGROUND', (1, 0), (1, -1), colors.white)
+    ]))
+    
+    elements.append(summary_table)
+    elements.append(Spacer(1, 30))
+    
+    # Detailed station results
+    if report_data['station_results']:
+        elements.append(Paragraph("Résultats Détaillés par Station", subtitle_style))
+        
+        # Create table headers
+        station_headers = [
+            "Station", "Cas", "Spécialité", "Score", "Statut", "Temps"
+        ]
+        
+        station_data = [station_headers]
+        
+        for result in report_data['station_results']:
+            # Calculate duration if both times are available
+            duration = "N/A"
+            if result.get('started_at') and result.get('completed_at'):
+                start_time = result['started_at']
+                end_time = result['completed_at']
+                if isinstance(start_time, str):
+                    # Parse datetime strings if needed
+                    from datetime import datetime
+                    start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    end_time = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                
+                duration_seconds = (end_time - start_time).total_seconds()
+                duration = f"{int(duration_seconds // 60)}:{int(duration_seconds % 60):02d}"
+            
+            # Determine status display
+            status_display = {
+                'completed': 'Terminé',
+                'active': 'En cours',
+                'pending': 'En attente'
+            }.get(result['status'], result['status'])
+            
+            station_data.append([
+                str(result['station_order']),
+                result['case_number'],
+                result['specialty'],
+                f"{result['score']}%",
+                status_display,
+                duration
+            ])
+        
+        # Create and style the table
+        station_table = Table(station_data, colWidths=[50, 80, 120, 60, 80, 60])
+        station_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ]))
+        
+        # Add alternating row colors
+        for i in range(1, len(station_data)):
+            if i % 2 == 0:
+                station_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, i), (-1, i), colors.lightgrey)
+                ]))
+        
+        elements.append(station_table)
+        elements.append(Spacer(1, 20))
+    
+    # Footer
+    elements.append(Spacer(1, 30))
+    footer_text = f"Rapport généré automatiquement par le système OSCE - {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+    elements.append(Paragraph(footer_text, normal_style))
+    
+    # Build PDF
+    doc.build(elements)
+    
+    return filename
