@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 
+
+logger = logging.getLogger(__name__)
+
+db = SQLAlchemy()
+
 class SessionMixin:
     def get_participant_count(self):
         """Get number of participants in this session"""
@@ -63,6 +68,58 @@ class Student(db.Model, UserMixin):
         """Get recent performances"""
         return StudentPerformance.query.filter_by(student_id=self.id)\
             .order_by(StudentPerformance.completed_at.desc()).limit(limit).all()
+    def get_competition_history(self):
+        """Get student's competition participation history"""
+        competitions = db.session.query(
+            CompetitionSession, StudentCompetitionSession
+        ).join(
+            StudentCompetitionSession, CompetitionSession.id == StudentCompetitionSession.session_id
+        ).filter(
+            StudentCompetitionSession.student_id == self.id
+        ).order_by(CompetitionSession.start_time.desc()).all()
+        
+        history = []
+        for comp_session, student_session in competitions:
+            history.append({
+                'competition_id': comp_session.id,
+                'competition_name': comp_session.name,
+                'start_time': comp_session.start_time,
+                'status': student_session.status,
+                'progress': student_session.get_progress_percentage(),
+                'average_score': student_session.get_average_score(),
+                'completed_stations': student_session.get_completed_stations_count(),
+                'total_stations': comp_session.stations_per_session
+            })
+        
+        return history
+    
+    def get_competition_stats(self):
+        """Get overall competition statistics for this student"""
+        student_sessions = StudentCompetitionSession.query.filter_by(student_id=self.id).all()
+        
+        if not student_sessions:
+            return {
+                'total_competitions': 0,
+                'completed_competitions': 0,
+                'average_score': 0,
+                'total_stations_completed': 0
+            }
+        
+        completed_sessions = [s for s in student_sessions if s.status == 'completed']
+        total_stations = sum(s.get_completed_stations_count() for s in student_sessions)
+        
+        avg_score = 0
+        if completed_sessions:
+            total_score = sum(s.get_average_score() for s in completed_sessions)
+            avg_score = round(total_score / len(completed_sessions), 1)
+        
+        return {
+            'total_competitions': len(student_sessions),
+            'completed_competitions': len(completed_sessions),
+            'average_score': avg_score,
+            'total_stations_completed': total_stations,
+            'competition_completion_rate': round((len(completed_sessions) / len(student_sessions)) * 100, 1)
+        }
 
 class TeacherAccess(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -429,6 +486,39 @@ class PatientCase(db.Model):
         if not performances:
             return 0
         return round(sum(perf.percentage_score for perf in performances) / len(performances))
+    def get_competition_usage_stats(self):
+        """Get usage statistics for this case in competitions"""
+        # Count how many times this case was used in competitions
+        competition_assignments = StudentStationAssignment.query.filter_by(
+            case_number=self.case_number
+        ).all()
+        
+        total_uses = len(competition_assignments)
+        completed_uses = len([a for a in competition_assignments if a.status == 'completed'])
+        
+        # Calculate average score in competitions
+        avg_score = 0
+        if completed_uses > 0:
+            scores = []
+            for assignment in competition_assignments:
+                if assignment.status == 'completed':
+                    score = assignment.get_performance_score()
+                    if score > 0:
+                        scores.append(score)
+            
+            if scores:
+                avg_score = round(sum(scores) / len(scores), 1)
+        
+        return {
+            'total_competition_uses': total_uses,
+            'completed_uses': completed_uses,
+            'average_competition_score': avg_score,
+            'completion_rate': round((completed_uses / total_uses) * 100, 1) if total_uses > 0 else 0
+        }
+    
+    def __repr__(self):
+        """String representation"""
+        return f'<PatientCase {self.case_number}: {self.specialty}>'
 
 # Student Performance Tracking
 class StudentPerformance(db.Model):
@@ -547,6 +637,7 @@ class StudentPerformance(db.Model):
         return performance
 
 class CompetitionSession(db.Model):
+    """Model for OSCE competition sessions"""
     __tablename__ = 'competition_sessions'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -570,45 +661,19 @@ class CompetitionSession(db.Model):
     student_sessions = db.relationship('StudentCompetitionSession', backref='session', lazy=True, cascade='all, delete-orphan')
     
     def get_participant_count(self):
-        """Get total number of participants registered for this session"""
-        try:
-            return CompetitionParticipant.query.filter_by(session_id=self.id).count()
-        except Exception as e:
-            logger.error(f"Error getting participant count for competition {self.id}: {str(e)}")
-            return 0
+        """Get number of participants in this session"""
+        return len(self.participants)
     
     def get_assigned_stations_count(self):
-        """Get number of stations in the station bank for this session"""
-        try:
-            return CompetitionStationBank.query.filter_by(session_id=self.id).count()
-        except Exception as e:
-            logger.error(f"Error getting assigned stations count for competition {self.id}: {str(e)}")
-            return 0
+        """Get number of stations in the station bank"""
+        return len(self.station_assignments)
     
     def get_logged_in_count(self):
         """Get number of students currently logged into the session"""
-        try:
-            logged_in_count = StudentCompetitionSession.query.filter_by(
-                session_id=self.id,
-                status='logged_in'
-            ).count()
-            
-            # Also count students who are already active or between stations
-            # as they were previously logged in
-            active_count = StudentCompetitionSession.query.filter(
-                StudentCompetitionSession.session_id == self.id,
-                StudentCompetitionSession.status.in_(['active', 'between_stations', 'completed'])
-            ).count()
-            
-            total_logged_in = logged_in_count + active_count
-            
-            logger.debug(f"Competition {self.id}: {logged_in_count} logged_in + {active_count} active/completed = {total_logged_in} total")
-            
-            return total_logged_in
-            
-        except Exception as e:
-            logger.error(f"Error getting logged in count for competition {self.id}: {str(e)}")
-            return 0
+        return StudentCompetitionSession.query.filter_by(
+            session_id=self.id, 
+            status='logged_in'
+        ).count()
     
     def get_active_students_count(self):
         """Get number of students actively participating (in stations)"""
@@ -633,76 +698,63 @@ class CompetitionSession(db.Model):
             return 0
     
     def can_start_competition(self):
-        """Check if competition can start with enhanced validation"""
-        try:
-            logged_in_count = self.get_logged_in_count()
-            total_participants = self.get_participant_count()
-            station_count = self.get_assigned_stations_count()
-            
-            logger.info(f"Competition {self.id} start check: {logged_in_count}/{total_participants} logged in, {station_count} stations, need {self.stations_per_session}")
-            
-            return (logged_in_count >= total_participants and 
-                    total_participants > 0 and 
-                    station_count >= self.stations_per_session and
-                    self.status == 'scheduled')
-        except Exception as e:
-            logger.error(f"Error checking if competition can start: {str(e)}")
-            return False
+        """Check if competition can start (all participants logged in)"""
+        logged_in_count = self.get_logged_in_count()
+        total_participants = self.get_participant_count()
+        station_count = self.get_assigned_stations_count()
+        
+        return (logged_in_count >= total_participants and 
+                total_participants > 0 and 
+                station_count >= self.stations_per_session and
+                self.status == 'scheduled')
     
     def start_competition(self):
-        """Start the competition with improved error handling and logging"""
-        import random
-        
+        """Start the competition by assigning stations to all participants"""
         try:
             if not self.can_start_competition():
-                logger.warning(f"Competition {self.id} cannot be started - requirements not met")
+                logger.error(f"Cannot start competition {self.id}: requirements not met")
                 return False
                 
-            logger.info(f"Starting competition {self.id}: {self.name}")
-            
             # Get all available stations from the station bank
             available_stations = [assignment.case_number for assignment in self.station_assignments]
-            logger.info(f"Available stations: {available_stations}")
+            
+            if len(available_stations) < self.stations_per_session:
+                logger.error(f"Not enough stations in bank: {len(available_stations)} < {self.stations_per_session}")
+                return False
             
             # Get all logged-in students
-            logged_in_students = StudentCompetitionSession.query.filter(
-                StudentCompetitionSession.session_id == self.id,
-                StudentCompetitionSession.status.in_(['registered', 'logged_in'])
+            logged_in_students = StudentCompetitionSession.query.filter_by(
+                session_id=self.id,
+                status='logged_in'
             ).all()
             
             logger.info(f"Starting competition for {len(logged_in_students)} students")
             
             for student_session in logged_in_students:
-                try:
-                    # Randomly select stations for this student
-                    if self.randomize_stations:
-                        selected_stations = random.sample(available_stations, 
-                                                        min(self.stations_per_session, len(available_stations)))
-                    else:
-                        selected_stations = available_stations[:self.stations_per_session]
-                    
-                    logger.info(f"Assigning stations to student {student_session.student_id}: {selected_stations}")
-                    
-                    # Create station assignments for this student
-                    for order, case_number in enumerate(selected_stations, 1):
-                        assignment = StudentStationAssignment(
-                            student_session_id=student_session.id,
-                            case_number=case_number,
-                            station_order=order,
-                            status='pending'
-                        )
-                        db.session.add(assignment)
-                    
-                    # Update student status to active
-                    student_session.status = 'active'
-                    student_session.current_station_order = 1
-                    student_session.started_at = datetime.utcnow()
-                    
-                    logger.info(f"Student {student_session.student_id} set to active with {len(selected_stations)} stations")
-                    
-                except Exception as e:
-                    logger.error(f"Error setting up stations for student {student_session.student_id}: {str(e)}")
-                    continue
+                # Randomly select stations for this student
+                if self.randomize_stations:
+                    import random
+                    selected_stations = random.sample(available_stations, 
+                                                    min(self.stations_per_session, len(available_stations)))
+                else:
+                    selected_stations = available_stations[:self.stations_per_session]
+                
+                # Create station assignments for this student
+                for order, case_number in enumerate(selected_stations, 1):
+                    assignment = StudentStationAssignment(
+                        student_session_id=student_session.id,
+                        case_number=case_number,
+                        station_order=order,
+                        status='pending'
+                    )
+                    db.session.add(assignment)
+                
+                # Update student status to active and set first station
+                student_session.status = 'active'
+                student_session.current_station_order = 1
+                student_session.started_at = datetime.utcnow()
+                
+                logger.info(f"Assigned {len(selected_stations)} stations to student {student_session.student_id}")
             
             # Update session status
             self.status = 'active'
@@ -714,67 +766,73 @@ class CompetitionSession(db.Model):
         except Exception as e:
             logger.error(f"Error starting competition {self.id}: {str(e)}")
             db.session.rollback()
-            return False 
-  
-    
+            return False
+
     def _calculate_duration_minutes(self, student_session):
-        """Calculate competition duration in minutes for a student"""
-        try:
-            if student_session.started_at and student_session.completed_at:
-                delta = student_session.completed_at - student_session.started_at
-                return int(delta.total_seconds() / 60)
+        """Calculate duration in minutes for a student session"""
+        if not student_session.started_at:
             return 0
-        except Exception as e:
-            logger.error(f"Error calculating duration for student session {student_session.id}: {str(e)}")
-            return 0
+        
+        end_time = student_session.completed_at or datetime.utcnow()
+        duration = end_time - student_session.started_at
+        return round(duration.total_seconds() / 60, 1)
 
     def get_competition_statistics(self):
-        """Get comprehensive statistics for this competition"""
+        """Get comprehensive competition statistics"""
         try:
-            stats = {
-                'total_participants': self.get_participant_count(),
-                'logged_in_count': self.get_logged_in_count(),
-                'active_count': self.get_active_students_count(),
-                'completed_count': self.get_completed_students_count(),
-                'stations_in_bank': self.get_assigned_stations_count(),
-                'stations_per_session': self.stations_per_session,
-                'session_duration_hours': self._get_session_duration_hours(),
-                'average_completion_rate': self._get_average_completion_rate(),
+            # Get all student sessions for this competition
+            student_sessions = StudentCompetitionSession.query.filter_by(session_id=self.id).all()
+            
+            total_participants = len(student_sessions)
+            completed_participants = len([s for s in student_sessions if s.status == 'completed'])
+            active_participants = len([s for s in student_sessions if s.status in ['active', 'between_stations']])
+            
+            # Calculate scores
+            completed_sessions = [s for s in student_sessions if s.status == 'completed']
+            avg_score = 0
+            if completed_sessions:
+                total_scores = sum(s.get_average_score() for s in completed_sessions)
+                avg_score = round(total_scores / len(completed_sessions), 1)
+            
+            # Calculate completion rate
+            completion_rate = self._get_average_completion_rate()
+            
+            # Calculate average duration
+            avg_duration = 0
+            if completed_sessions:
+                durations = [self._calculate_duration_minutes(s) for s in completed_sessions]
+                avg_duration = round(sum(durations) / len(durations), 1)
+            
+            return {
+                'total_participants': total_participants,
+                'completed_participants': completed_participants,
+                'active_participants': active_participants,
+                'completion_percentage': round((completed_participants / total_participants) * 100, 1) if total_participants > 0 else 0,
+                'average_score': avg_score,
+                'average_completion_rate': completion_rate,
+                'average_duration_minutes': avg_duration,
                 'status': self.status,
-                'status_display': self.get_status_display()
+                'stations_per_session': self.stations_per_session,
+                'time_per_station': self.time_per_station
             }
-            
-            return stats
-            
         except Exception as e:
-            logger.error(f"Error getting competition statistics for {self.id}: {str(e)}")
+            logger.error(f"Error calculating competition statistics: {str(e)}")
             return {}
-        
-    def _get_session_duration_hours(self):
-        """Get planned session duration in hours"""
-        try:
-            if self.start_time and self.end_time:
-                delta = self.end_time - self.start_time
-                return round(delta.total_seconds() / 3600, 1)
-            return 0
-        except Exception as e:
-            logger.error(f"Error calculating session duration: {str(e)}")
-            return 0
 
     def _get_average_completion_rate(self):
-        """Get average completion rate across all participants"""
+        """Calculate average completion rate across all participants"""
         try:
-            all_sessions = StudentCompetitionSession.query.filter_by(session_id=self.id).all()
-            if not all_sessions:
+            student_sessions = StudentCompetitionSession.query.filter_by(session_id=self.id).all()
+            
+            if not student_sessions:
                 return 0
             
-            total_rate = 0
-            for session in all_sessions:
-                completed = session.get_completed_stations_count()
-                total_rate += (completed / self.stations_per_session) * 100
+            total_completion_rate = 0
+            for student_session in student_sessions:
+                completion_rate = (student_session.get_completed_stations_count() / self.stations_per_session) * 100
+                total_completion_rate += completion_rate
             
-            return round(total_rate / len(all_sessions), 1)
-            
+            return round(total_completion_rate / len(student_sessions), 1)
         except Exception as e:
             logger.error(f"Error calculating average completion rate: {str(e)}")
             return 0
@@ -783,65 +841,78 @@ class CompetitionSession(db.Model):
         """Pause an active competition"""
         try:
             if self.status != 'active':
-                return False, "Seules les compétitions actives peuvent être mises en pause"
+                logger.warning(f"Cannot pause competition {self.id}: status is {self.status}")
+                return False
             
+            # Mark session as paused
             self.status = 'paused'
-            db.session.commit()
             
+            # You could also pause individual student timers here if needed
+            # For now, we'll just change the status
+            
+            db.session.commit()
             logger.info(f"Competition {self.id} paused successfully")
-            return True, "Compétition mise en pause avec succès"
+            return True
             
         except Exception as e:
             logger.error(f"Error pausing competition {self.id}: {str(e)}")
             db.session.rollback()
-            return False, f"Erreur lors de la mise en pause: {str(e)}"
+            return False
 
     def resume_competition(self):
         """Resume a paused competition"""
         try:
             if self.status != 'paused':
-                return False, "Seules les compétitions en pause peuvent être reprises"
+                logger.warning(f"Cannot resume competition {self.id}: status is {self.status}")
+                return False
             
+            # Mark session as active again
             self.status = 'active'
-            db.session.commit()
             
+            db.session.commit()
             logger.info(f"Competition {self.id} resumed successfully")
-            return True, "Compétition reprise avec succès"
+            return True
             
         except Exception as e:
             logger.error(f"Error resuming competition {self.id}: {str(e)}")
             db.session.rollback()
-            return False, f"Erreur lors de la reprise: {str(e)}"
+            return False
 
     def end_competition(self):
-        """End a competition manually"""
+        """Manually end a competition"""
         try:
             if self.status not in ['active', 'paused']:
-                return False, "Seules les compétitions actives ou en pause peuvent être terminées"
+                logger.warning(f"Cannot end competition {self.id}: status is {self.status}")
+                return False
             
-            # Complete all active student sessions
-            active_students = StudentCompetitionSession.query.filter(
-                StudentCompetitionSession.session_id == self.id,
-                StudentCompetitionSession.status.in_(['active', 'between_stations'])
+            # Mark all active student sessions as completed
+            active_sessions = StudentCompetitionSession.query.filter_by(
+                session_id=self.id
+            ).filter(
+                StudentCompetitionSession.status.in_(['active', 'between_stations', 'logged_in'])
             ).all()
             
-            for student_session in active_students:
+            for student_session in active_sessions:
+                if not student_session.completed_at:
+                    student_session.completed_at = datetime.utcnow()
                 student_session.status = 'completed'
-                student_session.completed_at = datetime.utcnow()
             
+            # Mark competition as completed
             self.status = 'completed'
-            db.session.commit()
             
-            logger.info(f"Competition {self.id} ended manually. {len(active_students)} students marked as completed")
-            return True, f"Compétition terminée. {len(active_students)} étudiants marqués comme terminés"
+            db.session.commit()
+            logger.info(f"Competition {self.id} ended successfully")
+            return True
             
         except Exception as e:
             logger.error(f"Error ending competition {self.id}: {str(e)}")
             db.session.rollback()
-            return False, f"Erreur lors de la finalisation: {str(e)}"
+            return False
 
     def __repr__(self):
+        """String representation of the competition session"""
         return f'<CompetitionSession {self.id}: {self.name} ({self.status})>'
+
 
     def get_leaderboard(self):
         """Get competition leaderboard with rankings"""
@@ -852,14 +923,12 @@ class CompetitionSession(db.Model):
         
         leaderboard = []
         for student_session in completed_sessions:
-            total_score = student_session.get_total_score()
             avg_score = student_session.get_average_score()
             
             leaderboard.append({
                 'student_id': student_session.student_id,
                 'student_name': student_session.student.name,
                 'student_code': student_session.student.student_code,
-                'total_score': total_score,
                 'average_score': avg_score,
                 'stations_completed': student_session.get_completed_stations_count(),
                 'completion_time': student_session.completed_at
@@ -883,7 +952,29 @@ class CompetitionSession(db.Model):
             'cancelled': 'Annulée'
         }
         return status_map.get(self.status, self.status)
-
+    
+    def check_and_complete_competition(self):
+        """Check if all students are done and mark competition as completed"""
+        try:
+            all_student_sessions = StudentCompetitionSession.query.filter_by(session_id=self.id).all()
+            
+            if not all_student_sessions:
+                return False
+            
+            completed_students = [s for s in all_student_sessions if s.status == 'completed']
+            
+            if len(completed_students) >= len(all_student_sessions):
+                self.status = 'completed'
+                db.session.commit()
+                logger.info(f"Competition {self.id} automatically completed")
+                return True
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking competition completion: {str(e)}")
+            return False
+    
 class CompetitionParticipant(db.Model):
     """Model for tracking which students are in which competition sessions"""
     __tablename__ = 'competition_participants'
@@ -895,6 +986,9 @@ class CompetitionParticipant(db.Model):
     
     # Unique constraint to prevent duplicate participants
     __table_args__ = (db.UniqueConstraint('session_id', 'student_id', name='unique_session_participant'),)
+    def __repr__(self):
+        """String representation"""
+        return f'<CompetitionParticipant: Student {self.student_id} in Session {self.session_id}>'
 
 class CompetitionStationBank(db.Model):
     """Model for tracking which stations are available in a competition session"""
@@ -907,6 +1001,9 @@ class CompetitionStationBank(db.Model):
     
     # Unique constraint to prevent duplicate stations
     __table_args__ = (db.UniqueConstraint('session_id', 'case_number', name='unique_session_station'),)
+    def __repr__(self):
+        """String representation"""
+        return f'<CompetitionStationBank: Case {self.case_number} in Session {self.session_id}>'
 
 class StudentCompetitionSession(db.Model):
     """Model for tracking individual student participation in competition sessions"""
@@ -927,7 +1024,27 @@ class StudentCompetitionSession(db.Model):
     
     # Relationships
     station_assignments = db.relationship('StudentStationAssignment', backref='student_session', lazy=True, cascade='all, delete-orphan')
+    student = db.relationship('Student', backref='competition_sessions')
     
+    def get_current_station_assignment(self):
+        """Get the current station assignment"""
+        if self.current_station_order <= 0:
+            return None
+            
+        return StudentStationAssignment.query.filter_by(
+            student_session_id=self.id,
+            station_order=self.current_station_order
+        ).first()
+    
+    def get_next_station_assignment(self):
+        """Get the next station assignment"""
+        next_order = self.current_station_order + 1
+        return StudentStationAssignment.query.filter_by(
+            student_session_id=self.id,
+            station_order=next_order
+        ).first()
+
+
     def login_to_session(self):
         """Mark student as logged into the session"""
         self.status = 'logged_in'
@@ -941,40 +1058,41 @@ class StudentCompetitionSession(db.Model):
             station_order=self.current_station_order
         ).first()
     
-    def complete_current_station(self, performance_data):
-        """Complete the current station and move to next with error handling"""
+    def complete_current_station(self, evaluation_results, conversation_transcript=None):
+        """Complete the current station and move to next"""
         try:
-            current_station = self.get_current_station()
+            current_station = self.get_current_station_assignment()
             if not current_station:
                 logger.error(f"No current station found for student session {self.id}")
                 return False
             
-            # Complete current station
+            # Mark current station as completed
             current_station.status = 'completed'
             current_station.completed_at = datetime.utcnow()
+            current_station.performance_data = json.dumps({
+                'conversation_transcript': conversation_transcript or [],  # Use parameter instead of session
+                'evaluation_results': evaluation_results,
+                'percentage_score': evaluation_results.get('percentage', 0),
+                'points_earned': evaluation_results.get('points_earned', 0),
+                'points_total': evaluation_results.get('points_total', 0),
+                'completed_at': datetime.utcnow().isoformat()
+            }, ensure_ascii=False)
             
-            # Store performance data safely
-            if isinstance(performance_data, dict):
-                current_station.performance_data = json.dumps(performance_data, ensure_ascii=False)
+            # Check if this was the last station
+            if self.current_station_order >= self.session.stations_per_session:
+                # Competition completed
+                self.status = 'completed'
+                self.completed_at = datetime.utcnow()
+                logger.info(f"Student {self.student_id} completed competition session {self.session_id}")
+                # Check if all students are done and auto-complete competition
+                self.session.check_and_complete_competition()
             else:
-                current_station.performance_data = str(performance_data)
-            
-            # Get competition session to check total stations
-            competition_session = CompetitionSession.query.get(self.session_id)
-            if not competition_session:
-                logger.error(f"Competition session {self.session_id} not found")
-                return False
-            
-            # Move to next station or complete session
-            if self.current_station_order < competition_session.stations_per_session:
+                # Move to next station
                 self.current_station_order += 1
                 self.status = 'between_stations'
                 logger.info(f"Student {self.student_id} moved to station {self.current_station_order}")
-            else:
-                self.status = 'completed'
-                self.completed_at = datetime.utcnow()
-                logger.info(f"Student {self.student_id} completed all stations")
-                
+
+            
             db.session.commit()
             return True
             
@@ -985,19 +1103,27 @@ class StudentCompetitionSession(db.Model):
     
     def start_next_station(self):
         """Start the next station"""
-        if self.status == 'between_stations':
+        try:
+            if self.status != 'between_stations':
+                logger.error(f"Cannot start next station: wrong status {self.status}")
+                return False
+                
             self.status = 'active'
             db.session.commit()
             return True
-        return False
+            
+        except Exception as e:
+            logger.error(f"Error starting next station for student session {self.id}: {str(e)}")
+            db.session.rollback()
+            return False
     
     def get_total_score(self):
         """Get total score across all completed stations"""
         total = 0
-        completed_count = 0
+        completed_assignments = [a for a in self.station_assignments if a.status == 'completed']
         
-        for assignment in self.station_assignments:
-            if assignment.status == 'completed' and assignment.performance_data:
+        for assignment in completed_assignments:
+            if assignment.performance_data:
                 try:
                     if isinstance(assignment.performance_data, str):
                         data = json.loads(assignment.performance_data)
@@ -1006,9 +1132,8 @@ class StudentCompetitionSession(db.Model):
                         
                     score = data.get('percentage_score', 0)
                     total += score
-                    completed_count += 1
-                except (json.JSONDecodeError, TypeError, AttributeError):
-                    pass
+                except (json.JSONDecodeError, TypeError):
+                    logger.error(f"Error parsing performance data for assignment {assignment.id}")
         
         return total
     
@@ -1022,20 +1147,79 @@ class StudentCompetitionSession(db.Model):
     def get_completed_stations_count(self):
         """Get number of completed stations"""
         return len([a for a in self.station_assignments if a.status == 'completed'])
-
+    
     def get_progress_percentage(self):
         """Get completion progress as percentage"""
         if not hasattr(self, 'session') or not self.session:
-            # Load session if not available
-            session_obj = CompetitionSession.query.get(self.session_id)
-            if not session_obj:
-                return 0
-            total_stations = session_obj.stations_per_session
-        else:
-            total_stations = self.session.stations_per_session
+            return 0
         
+        total_stations = self.session.stations_per_session
         completed = self.get_completed_stations_count()
         return round((completed / total_stations) * 100, 1) if total_stations > 0 else 0
+
+    def get_time_spent_minutes(self):
+        """Get total time spent in competition (in minutes)"""
+        if not self.started_at:
+            return 0
+        
+        end_time = self.completed_at or datetime.utcnow()
+        duration = end_time - self.started_at
+        return round(duration.total_seconds() / 60, 1)
+    
+    def get_current_station_info(self):
+        """Get detailed info about current station"""
+        current_assignment = self.get_current_station_assignment()
+        if not current_assignment:
+            return None
+        
+        case = PatientCase.query.filter_by(case_number=current_assignment.case_number).first()
+        if not case:
+            return None
+        
+        return {
+            'assignment_id': current_assignment.id,
+            'case_number': current_assignment.case_number,
+            'station_order': current_assignment.station_order,
+            'specialty': case.specialty,
+            'consultation_time': case.consultation_time,
+            'status': current_assignment.status,
+            'started_at': current_assignment.started_at.isoformat() if current_assignment.started_at else None
+        }
+    
+    def get_detailed_progress(self):
+        """Get detailed progress information"""
+        completed_stations = []
+        pending_stations = []
+        
+        for assignment in self.station_assignments:
+            station_info = {
+                'station_order': assignment.station_order,
+                'case_number': assignment.case_number,
+                'status': assignment.status
+            }
+            
+            if assignment.status == 'completed':
+                if assignment.performance_data:
+                    try:
+                        perf_data = json.loads(assignment.performance_data)
+                        station_info['score'] = perf_data.get('percentage_score', 0)
+                    except:
+                        station_info['score'] = 0
+                completed_stations.append(station_info)
+            else:
+                pending_stations.append(station_info)
+        
+        return {
+            'completed_stations': sorted(completed_stations, key=lambda x: x['station_order']),
+            'pending_stations': sorted(pending_stations, key=lambda x: x['station_order']),
+            'overall_progress': self.get_progress_percentage(),
+            'current_station_order': self.current_station_order,
+            'status': self.status
+        }
+    
+    def __repr__(self):
+        """String representation"""
+        return f'<StudentCompetitionSession {self.id}: Student {self.student_id} in Session {self.session_id} ({self.status})>'
 
 class StudentStationAssignment(db.Model):
     """Model for tracking individual station assignments within a student's competition session"""
@@ -1057,19 +1241,57 @@ class StudentStationAssignment(db.Model):
     # Relationships
     case = db.relationship('PatientCase', backref='competition_assignments')
     
-    def get_performance_summary(self):
-        """Get performance summary for this station"""
-        if self.performance_data:
-            try:
-                if isinstance(self.performance_data, str):
-                    return json.loads(self.performance_data)
-                return self.performance_data
-            except (json.JSONDecodeError, TypeError):
-                pass
-        return None
-
     def start_station(self):
         """Start this station"""
         self.status = 'active'
         self.started_at = datetime.utcnow()
         db.session.commit()
+    
+    def get_performance_summary(self):
+        """Get performance summary for this station"""
+        if self.performance_data:
+            try:
+                return json.loads(self.performance_data)
+            except:
+                pass
+        return None
+    def get_duration_minutes(self):
+        """Get duration of this station in minutes"""
+        if not self.started_at:
+            return 0
+        
+        end_time = self.completed_at or datetime.utcnow()
+        duration = end_time - self.started_at
+        return round(duration.total_seconds() / 60, 1)
+    
+    def get_case_info(self):
+        """Get case information for this assignment"""
+        case = PatientCase.query.filter_by(case_number=self.case_number).first()
+        if not case:
+            return None
+        
+        return {
+            'case_number': case.case_number,
+            'specialty': case.specialty,
+            'consultation_time': case.consultation_time,
+            'directives': case.directives
+        }
+    
+    def get_performance_score(self):
+        """Get performance score for this station"""
+        if not self.performance_data:
+            return 0
+        
+        try:
+            if isinstance(self.performance_data, str):
+                data = json.loads(self.performance_data)
+            else:
+                data = self.performance_data
+            
+            return data.get('percentage_score', 0)
+        except:
+            return 0
+    
+    def __repr__(self):
+        """String representation"""
+        return f'<StudentStationAssignment {self.id}: Case {self.case_number} Order {self.station_order} ({self.status})>'

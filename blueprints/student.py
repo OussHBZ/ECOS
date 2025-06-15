@@ -50,16 +50,22 @@ def student_available_competitions():
             )
         ).filter(
             CompetitionParticipant.student_id == current_user.id,
-            CompetitionSession.status.in_(['scheduled', 'active'])
+            CompetitionSession.status.in_(['scheduled', 'active', 'completed'])
         ).all()
         
         competitions = []
         for session_obj, participant, student_session in participant_sessions:
             # Get logged in count
-            logged_in_count = StudentCompetitionSession.query.filter_by(
-                session_id=session_obj.id,
-                status='logged_in'
-            ).count()
+            logged_in_count = session_obj.get_logged_in_count()
+            
+            # Determine current status and what actions are available
+            student_status = student_session.status if student_session else 'registered'
+            
+            can_join = (session_obj.status == 'scheduled' and 
+                       student_status in ['registered'])
+            
+            can_continue = (session_obj.status == 'active' and 
+                           student_status in ['logged_in', 'active', 'between_stations'])
             
             competition_data = {
                 'id': session_obj.id,
@@ -74,9 +80,9 @@ def student_available_competitions():
                 'time_between_stations': session_obj.time_between_stations,
                 'participant_count': session_obj.get_participant_count(),
                 'logged_in_count': logged_in_count,
-                'can_join': session_obj.status == 'scheduled',
-                'can_continue': session_obj.status == 'active',
-                'student_status': student_session.status if student_session else 'registered',
+                'can_join': can_join,
+                'can_continue': can_continue,
+                'student_status': student_status,
                 'current_station': student_session.current_station_order if student_session else 0,
                 'progress': student_session.get_progress_percentage() if student_session else 0
             }
@@ -89,7 +95,7 @@ def student_available_competitions():
         return jsonify({"error": str(e)}), 500
 
 @student_bp.route('/join-competition/<int:session_id>', methods=['POST'])
-@student_required
+@student_required  
 def student_join_competition(session_id):
     """Student joins/logs into a competition session"""
     try:
@@ -117,38 +123,50 @@ def student_join_competition(session_id):
                 status='registered'
             )
             db.session.add(student_session)
-            db.session.commit()
+            db.session.flush()  # Get the ID
         
         # Log student into session
-        if student_session.status == 'registered':
+        if student_session.status in ['registered']:
             student_session.status = 'logged_in'
             student_session.logged_in_at = datetime.utcnow()
             db.session.commit()
             
-            # Check if competition can start
-            logged_in_count = StudentCompetitionSession.query.filter_by(
-                session_id=session_id,
-                status='logged_in'
-            ).count()
+            logger.info(f"Student {current_user.id} logged into competition {session_id}")
             
+            # Check if competition can start automatically
+            logged_in_count = session_obj.get_logged_in_count()
             total_participants = session_obj.get_participant_count()
             
-            if logged_in_count >= total_participants and session_obj.status == 'scheduled':
-                # Auto-start competition if all students are logged in
+            logger.info(f"Competition {session_id}: {logged_in_count}/{total_participants} participants logged in")
+            
+            # Auto-start if all students are logged in and session is scheduled
+            if (logged_in_count >= total_participants and 
+                session_obj.status == 'scheduled' and 
+                session_obj.can_start_competition()):
+                
+                logger.info(f"Auto-starting competition {session_id}")
                 start_success = session_obj.start_competition()
                 if start_success:
-                    logger.info(f"Competition {session_id} auto-started")
-                
+                    logger.info(f"Competition {session_id} auto-started successfully")
+                else:
+                    logger.error(f"Failed to auto-start competition {session_id}")
+        
+        # Refresh the student session to get updated status
+        db.session.refresh(student_session)
+        
         return jsonify({
             "success": True,
             "message": "Successfully joined competition",
             "session_status": session_obj.status,
             "student_status": student_session.status,
-            "waiting_for_others": student_session.status == 'logged_in'
+            "waiting_for_others": student_session.status == 'logged_in',
+            "logged_in_count": session_obj.get_logged_in_count(),
+            "total_participants": session_obj.get_participant_count()
         })
         
     except Exception as e:
         logger.error(f"Error joining competition: {str(e)}")
+        db.session.rollback()
         return jsonify({"error": str(e), "success": False}), 500
 
 @student_bp.route('/competition/<int:session_id>/status')
@@ -170,10 +188,7 @@ def get_competition_status(session_id):
         # Get current station if active
         current_station = None
         if student_session.status == 'active' and student_session.current_station_order > 0:
-            station_assignment = StudentStationAssignment.query.filter_by(
-                student_session_id=student_session.id,
-                station_order=student_session.current_station_order
-            ).first()
+            station_assignment = student_session.get_current_station_assignment()
             
             if station_assignment:
                 case = PatientCase.query.filter_by(case_number=station_assignment.case_number).first()
@@ -183,6 +198,7 @@ def get_competition_status(session_id):
                         'station_order': station_assignment.station_order,
                         'specialty': case.specialty,
                         'directives': case.directives,
+                        'consultation_time': case.consultation_time,
                         'images': [
                             {
                                 'path': img.path,
@@ -226,18 +242,13 @@ def start_competition_station(session_id):
             return jsonify({"error": "Student session not found"}), 404
         
         # Get current station assignment
-        station_assignment = StudentStationAssignment.query.filter_by(
-            student_session_id=student_session.id,
-            station_order=student_session.current_station_order
-        ).first()
+        station_assignment = student_session.get_current_station_assignment()
         
         if not station_assignment:
             return jsonify({"error": "No station assignment found"}), 404
         
         # Start the station
-        station_assignment.status = 'active'
-        station_assignment.started_at = datetime.utcnow()
-        db.session.commit()
+        station_assignment.start_station()
         
         # Get case data
         case = PatientCase.query.filter_by(case_number=station_assignment.case_number).first()
@@ -250,6 +261,7 @@ def start_competition_station(session_id):
             conversation = initialize_conversation(case.case_number)
             session['current_conversation'] = [msg.content if hasattr(msg, 'content') else str(msg) for msg in conversation]
             session['current_case'] = case.case_number
+            session['current_competition_session'] = student_session.id
         
         response_data = {
             'success': True,
@@ -266,6 +278,7 @@ def start_competition_station(session_id):
             ] if hasattr(case, 'images') else []
         }
         
+        logger.info(f"Started station {station_assignment.case_number} for student {current_user.id}")
         return jsonify(response_data)
         
     except Exception as e:
@@ -280,68 +293,42 @@ def complete_competition_station():
         # Get current conversation and case from session
         conversation = session.get('current_conversation', [])
         case_number = session.get('current_case')
+        student_session_id = session.get('current_competition_session')
         
         if not case_number:
             return jsonify({"error": "No active station found"}), 400
-        
+
+        if not student_session_id:
+            return jsonify({"error": "No active competition session found"}), 400
+
         # Get student's current competition session
-        student_session = StudentCompetitionSession.query.filter(
-            StudentCompetitionSession.student_id == current_user.id,
-            StudentCompetitionSession.status.in_(['active', 'between_stations'])
-        ).first()
-        
-        if not student_session:
-            return jsonify({"error": "No active competition session found"}), 404
-        
-        # Get the competition session to check stations_per_session
-        competition_session = CompetitionSession.query.get(student_session.session_id)
-        if not competition_session:
-            return jsonify({"error": "Competition session not found"}), 404
-        
+        student_session = StudentCompetitionSession.query.get(student_session_id)
+
+        if not student_session or student_session.student_id != current_user.id:
+            return jsonify({"error": "Invalid competition session"}), 400
+
         # Evaluate the conversation
         evaluate_conversation = current_app.config.get('EVALUATE_CONVERSATION')
         if evaluate_conversation:
             evaluation_results = evaluate_conversation(conversation, case_number)
         else:
             evaluation_results = {'percentage': 0, 'checklist': [], 'feedback': 'Evaluation not available'}
-        
-        # Complete the current station
-        current_assignment = StudentStationAssignment.query.filter_by(
-            student_session_id=student_session.id,
-            station_order=student_session.current_station_order
-        ).first()
-        
-        if current_assignment:
-            current_assignment.status = 'completed'
-            current_assignment.completed_at = datetime.utcnow()
-            
-            # Store performance data as JSON string
-            performance_data = {
-                'conversation_transcript': conversation,
-                'evaluation_results': evaluation_results,
-                'percentage_score': evaluation_results.get('percentage', 0),
-                'points_earned': evaluation_results.get('points_earned', 0),
-                'points_total': evaluation_results.get('points_total', 0),
-                'completed_at': datetime.utcnow().isoformat()
-            }
-            current_assignment.performance_data = json.dumps(performance_data, ensure_ascii=False)
-        
-        # Move to next station or complete session
-        if student_session.current_station_order < competition_session.stations_per_session:
-            student_session.current_station_order += 1
-            student_session.status = 'between_stations'
-            is_finished = False
-        else:
-            student_session.status = 'completed'
-            student_session.completed_at = datetime.utcnow()
-            is_finished = True
-        
-        db.session.commit()
-        
+
+        # Complete the station - PASS the conversation as parameter
+        success = student_session.complete_current_station(evaluation_results, conversation)
+
+        if not success:
+            return jsonify({"error": "Failed to complete station"}), 500
+
         # Clear session data
         session.pop('current_conversation', None)
         session.pop('current_case', None)
-        
+        session.pop('current_competition_session', None)
+
+        # Prepare response
+        is_finished = student_session.status == 'completed'
+        competition_session = student_session.session
+
         response_data = {
             'success': True,
             'current_station': student_session.current_station_order - 1,  # Previous station
@@ -350,21 +337,21 @@ def complete_competition_station():
             'is_finished': is_finished,
             'next_station_delay': competition_session.time_between_stations * 60 if not is_finished else 0
         }
-        
+
         if is_finished:
             # Add final competition results
             response_data.update({
                 'final_score': student_session.get_average_score(),
                 'total_stations': competition_session.stations_per_session,
-                'rank': 1,  # Calculate actual rank later
+                'rank': 1,  # Will be calculated in results endpoint
                 'total_participants': competition_session.get_participant_count()
             })
-        
+
+        logger.info(f"Completed station for student {current_user.id}, finished: {is_finished}")
         return jsonify(response_data)
-        
+
     except Exception as e:
         logger.error(f"Error completing competition station: {str(e)}")
-        db.session.rollback()
         return jsonify({"error": str(e)}), 500
     
 @student_bp.route('/competition/<int:session_id>/report')
@@ -509,21 +496,26 @@ def start_next_station_route(session_id):
             return jsonify({"error": "Student session not found"}), 404
         
         if student_session.status == 'between_stations':
-            student_session.status = 'active'
-            db.session.commit()
+            success = student_session.start_next_station()
             
-            return jsonify({
-                'success': True,
-                'message': 'Next station started'
-            })
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'Next station started'
+                })
+            else:
+                return jsonify({
+                    'error': 'Failed to start next station'
+                }), 500
         else:
             return jsonify({
-                'error': 'Cannot start next station in current state'
+                'error': f'Cannot start next station in current state: {student_session.status}'
             }), 400
         
     except Exception as e:
         logger.error(f"Error starting next station: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
     
 def generate_competition_report(student_session, competition_session):
     """Generate a PDF report for competition results"""

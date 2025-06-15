@@ -622,35 +622,20 @@ function startCompetitionPolling(sessionId) {
     if (competitionUpdateInterval) {
         clearInterval(competitionUpdateInterval);
     }
-    
-    if (!sessionId || sessionId === 'undefined') {
-        console.error('Invalid session ID for polling:', sessionId);
-        showError('ID de session invalide');
-        return;
-    }
-    
     currentCompetitionId = sessionId;
     console.log('Starting competition polling for session:', sessionId);
-    
     updateCompetitionStatus(sessionId); // Initial immediate update
-    competitionUpdateInterval = setInterval(() => {
-        updateCompetitionStatus(sessionId);
-    }, 3000); // Poll every 3 seconds
+    competitionUpdateInterval = setInterval(() => updateCompetitionStatus(sessionId), 2000); // Poll every 2 seconds
 }
+
 
 // Update competition interface with better state management
 function updateCompetitionInterface(status) {
     console.log('Updating competition interface with status:', status);
     
-    // Validate status data
-    if (!validateCompetitionInterface(status)) {
-        showError('Données de session invalides');
-        return;
-    }
-    
     // Update session name and progress
     const sessionNameElement = document.getElementById('competition-session-name');
-    if (sessionNameElement && status.session_name) {
+    if (sessionNameElement) {
         sessionNameElement.textContent = status.session_name;
     }
     
@@ -658,38 +643,32 @@ function updateCompetitionInterface(status) {
     const progressText = document.getElementById('progress-text');
     
     if (progressFill && progressText) {
-        const progress = status.progress_percentage || 0;
-        progressFill.style.width = `${progress}%`;
-        progressText.textContent = `${status.completed_stations || 0}/${status.total_stations || 0} stations`;
+        progressFill.style.width = `${status.progress_percentage}%`;
+        progressText.textContent = `${status.completed_stations}/${status.total_stations} stations`;
     }
 
-    // Handle different student states with validation
-    const studentStatus = status.student_status;
-    switch (studentStatus) {
+    // Handle different student states
+    switch (status.student_status) {
         case 'logged_in':
             showWaitingState();
             break;
         case 'active':
             if (status.current_station) {
-                showStationInterface(
-                    status.current_station, 
-                    status.time_per_station || 10, 
-                    status.total_stations || 1
-                );
+                showStationInterface(status.current_station, status.time_per_station, status.total_stations);
             } else {
-                console.warn('Active status but no current_station data');
+                console.error('Active status but no current station data');
+                showError('Erreur: station active mais aucune donnée de station');
             }
             break;
         case 'between_stations':
-            showBetweenStations(status.time_between_stations || 2);
+            showBetweenStations(status.time_between_stations);
             break;
         case 'completed':
             showFinalResults(status);
             stopCompetitionPolling();
             break;
         default:
-            console.log('Unknown student status:', studentStatus);
-            showError('État de session inconnu: ' + studentStatus);
+            console.log('Unknown student status:', status.student_status);
     }
 }
 
@@ -729,9 +708,65 @@ function showStationInterface(station, timePerStation, totalStations) {
     // Initialize chat if this is a new station
     if (!currentStationData || currentStationData.case_number !== station.case_number) {
         currentStationData = station;
-        initializeCompetitionStationChat(station.case_number);
+        initializeCompetitionStationChat(station);
     }
 }
+
+
+// Initialize competition station chat
+async function initializeCompetitionStationChat(station) {
+    try {
+        console.log('Initializing station chat for:', station);
+        
+        const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/start-station`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Station initialized:', data);
+            
+            // Display directives
+            const directivesElement = document.getElementById('station-directives');
+            if (data.directives && directivesElement) {
+                directivesElement.innerHTML = 
+                    `<h4>Instructions de la Station</h4><p>${data.directives.replace(/\n/g, '<br>')}</p>`;
+            }
+            
+            // Clear chat messages
+            const chatMessages = document.getElementById('competition-chat-messages');
+            if (chatMessages) {
+                chatMessages.innerHTML = '';
+                // Add initial system message
+                addMessageToCompetitionChat('system', 'Station initialisée. Vous pouvez commencer la consultation.');
+            }
+            
+            // Handle images
+            if (data.images && data.images.length > 0) {
+                const viewImagesBtn = document.getElementById('view-competition-images');
+                if (viewImagesBtn) {
+                    viewImagesBtn.style.display = 'inline-block';
+                    // Store images for viewing
+                    window.currentStationImages = data.images;
+                }
+            } else {
+                const viewImagesBtn = document.getElementById('view-competition-images');
+                if (viewImagesBtn) {
+                    viewImagesBtn.style.display = 'none';
+                }
+                window.currentStationImages = null;
+            }
+            
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to start station');
+        }
+    } catch (error) {
+        console.error('Error initializing station:', error);
+        showError(`Erreur lors de l'initialisation de la station: ${error.message}`);
+    }
+}
+
 
 // Station timer with proper cleanup
 function startStationTimer(seconds) {
@@ -782,7 +817,6 @@ function startStationTimer(seconds) {
     stationTimer = setInterval(updateTimer, 1000);
     console.log('Station timer started with', seconds, 'seconds');
 }
-
 // Initialize competition station chat
 async function initializeCompetitionStationChat(caseNumber) {
     try {
@@ -841,6 +875,17 @@ async function sendCompetitionMessage() {
     addMessageToCompetitionChat('user', message);
     input.value = '';
     
+    // Add loading indicator
+    const loadingMsg = document.createElement('div');
+    loadingMsg.classList.add('message', 'loading');
+    loadingMsg.innerHTML = '<em>Patient réfléchit...</em>';
+    
+    const chatMessages = document.getElementById('competition-chat-messages');
+    if (chatMessages) {
+        chatMessages.appendChild(loadingMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    
     try {
         const response = await authenticatedFetch('/chat', {
             method: 'POST',
@@ -852,15 +897,27 @@ async function sendCompetitionMessage() {
             })
         });
         
+        // Remove loading indicator
+        if (loadingMsg.parentElement) {
+            loadingMsg.remove();
+        }
+        
         if (response.ok) {
             const data = await response.json();
             addMessageToCompetitionChat('ai', data.reply);
         } else {
-            throw new Error('Failed to send message');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to send message');
         }
     } catch (error) {
         console.error('Error sending message:', error);
-        addMessageToCompetitionChat('system', 'Erreur lors de l\'envoi du message');
+        
+        // Remove loading indicator
+        if (loadingMsg.parentElement) {
+            loadingMsg.remove();
+        }
+        
+        addMessageToCompetitionChat('system', `Erreur lors de l'envoi du message: ${error.message}`);
     }
 }
 
@@ -884,25 +941,29 @@ function addMessageToCompetitionChat(sender, message) {
         </div>`;
     });
     
-    // Also check for direct image paths
-    if (processedMessage.includes('/static/images/')) {
-        const viewImagesBtn = document.getElementById('view-competition-images');
-        if (viewImagesBtn) {
-            viewImagesBtn.style.display = 'inline-block';
-        }
-    }
-    
     if (sender === 'user') {
         messageDiv.innerHTML = `<strong>Vous:</strong> ${processedMessage}`;
+        messageDiv.style.background = '#e3f2fd';
+        messageDiv.style.borderLeft = '4px solid #2196F3';
     } else if (sender === 'ai') {
         messageDiv.innerHTML = `<strong>Patient:</strong> ${processedMessage}`;
+        messageDiv.style.background = '#f3e5f5';
+        messageDiv.style.borderLeft = '4px solid #9c27b0';
     } else {
         messageDiv.innerHTML = processedMessage;
+        messageDiv.style.background = '#fff3e0';
+        messageDiv.style.borderLeft = '4px solid #ff9800';
+        messageDiv.style.fontStyle = 'italic';
     }
+    
+    messageDiv.style.marginBottom = '10px';
+    messageDiv.style.padding = '10px';
+    messageDiv.style.borderRadius = '5px';
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
+
 
 // Show between stations with proper countdown
 function showBetweenStations(timeBetween) {
@@ -931,6 +992,10 @@ function startCountdownTimer(seconds) {
         return;
     }
     
+    // Disable button initially
+    startButton.disabled = true;
+    startButton.textContent = 'Attendre...';
+    
     function updateCountdown() {
         countdownElement.textContent = timeLeft;
         
@@ -948,11 +1013,6 @@ function startCountdownTimer(seconds) {
 
 // Start next station function
 async function startNextStation() {
-    if (!currentCompetitionId || currentCompetitionId === 'undefined') {
-        showError('Aucune session de compétition active');
-        return;
-    }
-    
     const button = document.getElementById('start-next-station');
     if (button) {
         button.disabled = true;
@@ -961,30 +1021,25 @@ async function startNextStation() {
     
     try {
         const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/next-station`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            method: 'POST'
         });
         
-        if (!response) {
-            throw new Error('No response received');
-        }
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            console.log('Next station started successfully');
-            // The polling system will handle the UI update
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                console.log('Next station started successfully');
+                // The polling system will handle the transition
+            } else {
+                throw new Error(result.error || 'Failed to start next station');
+            }
         } else {
-            throw new Error(result.error || 'Failed to start next station');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to start next station');
         }
-        
     } catch (error) {
         console.error('Error starting next station:', error);
-        showError('Erreur lors du démarrage de la prochaine station');
+        showError(`Erreur lors du démarrage de la prochaine station: ${error.message}`);
         
-        // Re-enable button on error
         if (button) {
             button.disabled = false;
             button.textContent = 'Démarrer la prochaine station';
@@ -1078,41 +1133,32 @@ function closeCompetitionResultsModal() {
 
 // End current station
 async function endCurrentStation() {
+    console.log('Ending current station...');
+    
     // Stop the timer
     if (stationTimer) {
         clearInterval(stationTimer);
+        stationTimer = null;
     }
     isTimerRunning = false; // Reset the flag
     
     try {
         const response = await authenticatedFetch('/student/competition/complete-station', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            method: 'POST'
         });
-        
-        if (!response) return; // Authentication failed
         
         if (response.ok) {
             const result = await response.json();
             
             if (result.success) {
+                console.log('Station completed successfully:', result);
                 showStationFeedback(result);
             } else {
                 throw new Error(result.error || 'Failed to complete station');
             }
         } else {
-            // Try to get error message from response
-            let errorMessage = 'Failed to complete station';
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorMessage;
-            } catch (e) {
-                // If we can't parse JSON, use the status text
-                errorMessage = response.statusText || errorMessage;
-            }
-            throw new Error(errorMessage);
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to complete station');
         }
     } catch (error) {
         console.error('Error ending station:', error);
@@ -1122,6 +1168,8 @@ async function endCurrentStation() {
 
 // Show station feedback
 function showStationFeedback(result) {
+    console.log('Showing station feedback:', result);
+    
     hideAllCompetitionScreens();
     const betweenStations = document.getElementById('between-stations');
     if (betweenStations) {
@@ -1167,13 +1215,13 @@ function showStationFeedback(result) {
         feedbackDetails.innerHTML = feedbackHTML;
     }
     
-    // If not finished, start countdown
+    // If not finished, start countdown for next station
     if (!result.is_finished) {
         startCountdownTimer(result.next_station_delay || 120);
     } else {
         // Show final results after a short delay
         setTimeout(() => {
-            showFinalResults(result);
+            loadFinalResults();
         }, 3000);
     }
 }
@@ -1196,7 +1244,6 @@ function stopCompetitionPolling() {
     }
     
     isTimerRunning = false;
-    currentStationData = null;
 }
 
 // View competition images
@@ -1326,32 +1373,49 @@ function displayAvailableCompetitions(competitions) {
     let html = '<div class="competitions-grid">';
     
     competitions.forEach(competition => {
-        const canJoin = competition.can_join && competition.student_status === 'registered';
-        const canContinue = competition.can_continue && ['logged_in', 'active', 'between_stations'].includes(competition.student_status);
+        const canJoin = competition.can_join;
+        const canContinue = competition.can_continue;
+        const isCompleted = competition.status === 'completed';
+        
+        let statusClass = `status-${competition.status}`;
+        let actionButtons = '';
+        
+        if (canJoin) {
+            actionButtons = `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>`;
+        } else if (canContinue) {
+            actionButtons = `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>`;
+        } else if (isCompleted) {
+            actionButtons = `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>`;
+        }
+        
+        // Additional status info
+        let statusInfo = '';
+        if (competition.status === 'scheduled') {
+            statusInfo = `<p><strong>Participants connectés:</strong> ${competition.logged_in_count}/${competition.participant_count}</p>`;
+        } else if (competition.status === 'active' && competition.progress > 0) {
+            statusInfo = `<p><strong>Progrès:</strong> ${competition.progress}% (Station ${competition.current_station}/${competition.stations_per_session})</p>`;
+        }
         
         html += `
-            <div class="competition-card ${competition.status}">
+            <div class="competition-card ${statusClass}">
                 <div class="competition-header">
                     <h3>${competition.name}</h3>
-                    <span class="competition-status-badge status-${competition.status}">${competition.status_display}</span>
+                    <span class="competition-status-badge ${statusClass}">${competition.status_display}</span>
                 </div>
                 
                 <div class="competition-info">
                     <p><strong>Début:</strong> ${competition.start_time}</p>
                     <p><strong>Fin:</strong> ${competition.end_time}</p>
                     <p><strong>Stations:</strong> ${competition.stations_per_session} stations de ${competition.time_per_station} min</p>
-                    <p><strong>Participants:</strong> ${competition.logged_in_count}/${competition.participant_count} connectés</p>
+                    ${statusInfo}
                 </div>
 
                 <div class="student-progress">
                     <p><strong>Mon statut:</strong> ${getStudentStatusDisplay(competition.student_status)}</p>
-                    ${competition.progress > 0 ? `<p><strong>Progrès:</strong> ${competition.progress}%</p>` : ''}
                 </div>
 
                 <div class="competition-actions">
-                    ${canJoin ? `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>` : ''}
-                    ${canContinue ? `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>` : ''}
-                    ${competition.status === 'completed' ? `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>` : ''}
+                    ${actionButtons}
                 </div>
             </div>
         `;
@@ -1363,28 +1427,14 @@ function displayAvailableCompetitions(competitions) {
 
 // Join competition
 async function joinCompetition(sessionId) {
-    if (!sessionId || sessionId === 'undefined') {
-        showError('ID de session invalide');
-        return;
-    }
-    
     try {
-        console.log('Attempting to join competition:', sessionId);
+        console.log('Joining competition:', sessionId);
         
         const response = await authenticatedFetch(`/student/join-competition/${sessionId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            method: 'POST'
         });
         
-        if (!response) {
-            showError('Erreur de connexion');
-            return;
-        }
-        
         const result = await response.json();
-        console.log('Join competition result:', result);
         
         if (result.success) {
             currentCompetitionId = sessionId;
@@ -1413,27 +1463,30 @@ async function joinCompetition(sessionId) {
 
 // Continue competition
 async function continueCompetition(sessionId) {
-    if (!sessionId || sessionId === 'undefined') {
-        showError('ID de session invalide');
-        return;
+    try {
+        console.log('Continuing competition:', sessionId);
+        
+        currentCompetitionId = sessionId;
+        
+        // Hide competitions list and show competition interface
+        const competitionsContainer = document.getElementById('available-competitions-container');
+        const competitionInterface = document.getElementById('competition-session-interface');
+        
+        if (competitionsContainer) competitionsContainer.style.display = 'none';
+        if (competitionInterface) competitionInterface.classList.remove('hidden');
+        
+        // Start polling for status updates
+        startCompetitionPolling(sessionId);
+        
+    } catch (error) {
+        console.error('Error continuing competition:', error);
+        showError('Erreur lors de la continuation de la compétition');
     }
-    
-    console.log('Continuing competition:', sessionId);
-    currentCompetitionId = sessionId;
-    
-    // Hide competitions list and show competition interface
-    const competitionsContainer = document.getElementById('available-competitions-container');
-    const competitionInterface = document.getElementById('competition-session-interface');
-    
-    if (competitionsContainer) competitionsContainer.style.display = 'none';
-    if (competitionInterface) competitionInterface.classList.remove('hidden');
-    
-    // Start polling and get current status
-    startCompetitionPolling(sessionId);
 }
 
 // Show waiting room
 function showWaitingRoom(sessionId) {
+    console.log('Showing waiting room for session:', sessionId);
     hideAllCompetitionScreens();
     const waitingRoom = document.getElementById('waiting-room');
     if (waitingRoom) {
@@ -1454,22 +1507,35 @@ function startCompetitionSession(sessionId) {
 
 // Hide all competition screens
 function hideAllCompetitionScreens() {
-    const screens = ['waiting-room', 'station-interface', 'between-stations', 'final-results'];
+    const screens = [
+        'waiting-room', 
+        'station-interface', 
+        'between-stations', 
+        'final-results'
+    ];
+    
     screens.forEach(screenId => {
         const element = document.getElementById(screenId);
         if (element) {
             element.classList.add('hidden');
         }
     });
+    
+    // Also hide any modals
+    const modals = document.querySelectorAll('.modal.visible');
+    modals.forEach(modal => {
+        modal.classList.remove('visible');
+        modal.classList.add('hidden');
+    });
 }
+
 
 // Return to competitions
 function returnToCompetitions() {
-    console.log('Returning to competitions list');
+    console.log('Returning to competitions list...');
     
-    // Stop all competition-related polling and timers
+    // Stop all timers and polling
     stopCompetitionPolling();
-    hideAllCompetitionScreens();
     
     // Hide competition interface and show competitions list
     const competitionInterface = document.getElementById('competition-session-interface');
@@ -1478,13 +1544,20 @@ function returnToCompetitions() {
     if (competitionInterface) competitionInterface.classList.add('hidden');
     if (competitionsContainer) competitionsContainer.style.display = 'block';
     
-    // Reset competition state
+    // Reset global variables
     currentCompetitionId = null;
     currentStationData = null;
     window.currentStationImages = null;
     
-    // Reload competitions list
+    // Clear any session data
+    if (typeof session !== 'undefined') {
+        session.clear && session.clear();
+    }
+    
+    // Reload competitions to get updated status
     loadAvailableCompetitions();
+    
+    showSuccess('Retour à la liste des compétitions');
 }
 
 function showError(message, duration = 5000) {
@@ -1586,71 +1659,73 @@ function validateCompetitionInterface(status) {
 
 // Update competition status
 async function updateCompetitionStatus(sessionId) {
-    if (!sessionId || sessionId === 'undefined') {
-        console.error('Cannot update status with invalid session ID:', sessionId);
-        return;
-    }
-    
     try {
         const response = await authenticatedFetch(`/student/competition/${sessionId}/status`);
         if (!response) {
-            console.error('No response received for competition status');
+            console.error('No response from competition status endpoint');
             return;
         }
         
         if (!response.ok) {
             console.error('Failed to get competition status:', response.status);
-            if (response.status === 404) {
-                console.log('Competition session not found, stopping polling');
-                stopCompetitionPolling();
-                showError('Session de compétition non trouvée');
-                returnToCompetitions();
-            }
             return;
         }
         
         const status = await response.json();
-        console.log('Competition status update:', status);
         updateCompetitionInterface(status);
         
     } catch (error) {
         console.error('Error updating competition status:', error);
-        // Don't show error to user for polling failures unless it's persistent
+        // Don't show error to user for polling failures, just log it
+    }
+}
+// Load final results
+async function loadFinalResults() {
+    try {
+        const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/results`);
+        
+        if (response.ok) {
+            const results = await response.json();
+            showFinalResults(results);
+        } else {
+            throw new Error('Failed to load final results');
+        }
+    } catch (error) {
+        console.error('Error loading final results:', error);
+        showError('Erreur lors du chargement des résultats finaux');
     }
 }
 
 
 async function viewCompetitionResults(sessionId) {
-    if (!sessionId || sessionId === 'undefined') {
-        showError('ID de session invalide');
-        return;
-    }
-    
     try {
-        console.log('Viewing competition results for session:', sessionId);
-        
         const response = await authenticatedFetch(`/student/competition/${sessionId}/results`);
         
-        if (!response) {
-            showError('Erreur de connexion');
-            return;
-        }
-        
-        if (!response.ok) {
+        if (response.ok) {
+            const results = await response.json();
+            
+            // Store session ID for interface
+            currentCompetitionId = sessionId;
+            
+            // Hide competitions list and show results
+            const competitionsContainer = document.getElementById('available-competitions-container');
+            const competitionInterface = document.getElementById('competition-session-interface');
+            
+            if (competitionsContainer) competitionsContainer.style.display = 'none';
+            if (competitionInterface) competitionInterface.classList.remove('hidden');
+            
+            // Show final results directly
+            showFinalResults(results);
+            
+        } else {
             throw new Error('Failed to load competition results');
         }
-        
-        const results = await response.json();
-        console.log('Competition results:', results);
-        
-        // Display results in a modal or navigate to results view
-        displayCompetitionResultsModal(results, sessionId);
-        
     } catch (error) {
         console.error('Error viewing competition results:', error);
         showError('Erreur lors du chargement des résultats');
     }
 }
+
 
 function downloadCompetitionReport() {
     if (!currentCompetitionId || currentCompetitionId === 'undefined') {
@@ -1675,6 +1750,8 @@ function downloadCompetitionReport() {
 
 // Show final results
 function showFinalResults(result) {
+    console.log('Showing final results:', result);
+    
     hideAllCompetitionScreens();
     const finalResults = document.getElementById('final-results');
     if (finalResults) {
@@ -1704,8 +1781,8 @@ function showFinalResults(result) {
         totalStationsCompleted.textContent = result.total_stations;
     }
     
-    if (result.total_score !== undefined && totalScoreEarned) {
-        totalScoreEarned.textContent = result.total_score;
+    if (result.completed_stations !== undefined && totalStationsCompleted) {
+        totalStationsCompleted.textContent = result.completed_stations;
     }
     
     // Display leaderboard
@@ -1747,7 +1824,10 @@ function getStudentStatusDisplay(status) {
     return statusMap[status] || status;
 }
 
+// Enhanced error display function
 function showError(message) {
+    console.error('Showing error:', message);
+    
     // Create a better error display
     const errorDiv = document.createElement('div');
     errorDiv.className = 'error-notification';
@@ -1762,6 +1842,7 @@ function showError(message) {
         z-index: 9999;
         max-width: 300px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideInRight 0.3s ease-out;
     `;
     errorDiv.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1769,6 +1850,25 @@ function showError(message) {
             <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px;">&times;</button>
         </div>
     `;
+    
+    // Add animation keyframes if not already added
+    if (!document.getElementById('error-animation-styles')) {
+        const style = document.createElement('style');
+        style.id = 'error-animation-styles';
+        style.textContent = `
+            @keyframes slideInRight {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
     
     document.body.appendChild(errorDiv);
     
@@ -1778,6 +1878,41 @@ function showError(message) {
             errorDiv.remove();
         }
     }, 5000);
+}
+
+function showSuccess(message) {
+    console.log('Showing success:', message);
+    
+    const successDiv = document.createElement('div');
+    successDiv.className = 'success-notification';
+    successDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #4CAF50;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        z-index: 9999;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideInRight 0.3s ease-out;
+    `;
+    successDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px;">&times;</button>
+        </div>
+    `;
+    
+    document.body.appendChild(successDiv);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (successDiv.parentElement) {
+            successDiv.remove();
+        }
+    }, 3000);
 }
 
 // Tab navigation for student interface
@@ -2714,3 +2849,335 @@ async function sendMessage() {
         userInput.focus();
     }
 }
+
+// Debug function for troubleshooting competitions
+window.debugCompetition = function() {
+    console.log('=== COMPETITION DEBUG INFO ===');
+    console.log('Current Competition ID:', currentCompetitionId);
+    console.log('Current Station Data:', currentStationData);
+    console.log('Timer Running:', isTimerRunning);
+    console.log('Competition Update Interval:', competitionUpdateInterval);
+    console.log('Station Timer:', stationTimer);
+    console.log('Countdown Timer:', countdownTimer);
+    
+    // Check DOM elements
+    console.log('DOM Elements:');
+    console.log('- Competition interface:', document.getElementById('competition-session-interface'));
+    console.log('- Waiting room:', document.getElementById('waiting-room'));
+    console.log('- Station interface:', document.getElementById('station-interface'));
+    console.log('- Between stations:', document.getElementById('between-stations'));
+    console.log('- Final results:', document.getElementById('final-results'));
+    console.log('- Chat messages:', document.getElementById('competition-chat-messages'));
+    console.log('- Station timer:', document.getElementById('station-timer'));
+    
+    // Check session storage (if available)
+    if (typeof Storage !== 'undefined') {
+        console.log('Session Storage:', {
+            currentCase: sessionStorage.getItem('current_case'),
+            currentConversation: sessionStorage.getItem('current_conversation')
+        });
+    }
+    
+    console.log('=== END DEBUG INFO ===');
+};
+
+// Add comprehensive error handling for all competition functions
+function wrapCompetitionFunction(func, name) {
+    return async function(...args) {
+        try {
+            console.log(`Calling ${name} with args:`, args);
+            const result = await func.apply(this, args);
+            console.log(`${name} completed successfully`);
+            return result;
+        } catch (error) {
+            console.error(`Error in ${name}:`, error);
+            showError(`Erreur dans ${name}: ${error.message}`);
+            throw error;
+        }
+    };
+}
+
+// Wrap critical functions with error handling
+if (typeof joinCompetition !== 'undefined') {
+    joinCompetition = wrapCompetitionFunction(joinCompetition, 'joinCompetition');
+}
+if (typeof endCurrentStation !== 'undefined') {
+    endCurrentStation = wrapCompetitionFunction(endCurrentStation, 'endCurrentStation');
+}
+if (typeof sendCompetitionMessage !== 'undefined') {
+    sendCompetitionMessage = wrapCompetitionFunction(sendCompetitionMessage, 'sendCompetitionMessage');
+}
+
+// Add additional CSS styles for better visual feedback
+const additionalCompetitionStyles = `
+/* Enhanced Competition Styles */
+.competition-loading {
+    position: relative;
+    overflow: hidden;
+}
+
+.competition-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: loading-shine 2s infinite;
+}
+
+@keyframes loading-shine {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.station-interface .chat-messages {
+    border: 2px solid #2196F3;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.message.user-message {
+    background: #e3f2fd;
+    border-left: 4px solid #2196F3;
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.message.ai-message {
+    background: #f3e5f5;
+    border-left: 4px solid #9c27b0;
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.message.system {
+    background: #fff3e0;
+    border-left: 4px solid #ff9800;
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 5px;
+    font-style: italic;
+}
+
+.station-timer {
+    font-family: 'Courier New', monospace;
+    font-size: 24px;
+    font-weight: bold;
+    padding: 10px 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 2px solid #2196F3;
+    text-align: center;
+    min-width: 120px;
+}
+
+.station-timer.warning {
+    border-color: #ff9800;
+    background: #fff3e0;
+    color: #ff9800;
+}
+
+.station-timer.danger {
+    border-color: #f44336;
+    background: #ffebee;
+    color: #f44336;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.competition-status-badge {
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-scheduled {
+    background: linear-gradient(135deg, #E3F2FD, #BBDEFB);
+    color: #1565C0;
+    border: 1px solid #2196F3;
+}
+
+.status-active {
+    background: linear-gradient(135deg, #E8F5E8, #C8E6C9);
+    color: #2E7D32;
+    border: 1px solid #4CAF50;
+    animation: glow 2s infinite;
+}
+
+@keyframes glow {
+    0%, 100% { box-shadow: 0 0 5px rgba(76, 175, 80, 0.5); }
+    50% { box-shadow: 0 0 20px rgba(76, 175, 80, 0.8); }
+}
+
+.status-completed {
+    background: linear-gradient(135deg, #F3E5F5, #E1BEE7);
+    color: #7B1FA2;
+    border: 1px solid #9C27B0;
+}
+
+.waiting-container {
+    text-align: center;
+    padding: 60px 20px;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 15px;
+    border: 2px dashed #dee2e6;
+}
+
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 6px solid #f3f3f3;
+    border-top: 6px solid #2196F3;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+.feedback-list li.completed {
+    background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+    border-left: 4px solid #4CAF50;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 4px;
+}
+
+.feedback-list li.not-completed {
+    background: linear-gradient(135deg, #ffebee, #ffcdd2);
+    border-left: 4px solid #f44336;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 4px;
+}
+
+.countdown-timer {
+    font-size: 48px;
+    font-weight: bold;
+    color: #FF9800;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    font-family: 'Courier New', monospace;
+}
+
+.final-results-container {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 15px;
+    padding: 40px;
+    text-align: center;
+}
+
+.score-large {
+    font-size: 64px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #4CAF50, #8BC34A);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+.rank-large {
+    font-size: 48px;
+    font-weight: bold;
+    color: #FF9800;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Notification styles */
+.error-notification, .success-notification {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    border-left: 4px solid;
+    backdrop-filter: blur(10px);
+}
+
+.error-notification {
+    border-left-color: #f44336;
+    background: rgba(244, 67, 54, 0.95);
+}
+
+.success-notification {
+    border-left-color: #4CAF50;
+    background: rgba(76, 175, 80, 0.95);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .station-timer {
+        font-size: 18px;
+        min-width: 100px;
+    }
+    
+    .countdown-timer {
+        font-size: 36px;
+    }
+    
+    .score-large {
+        font-size: 48px;
+    }
+    
+    .rank-large {
+        font-size: 36px;
+    }
+    
+    .waiting-container {
+        padding: 40px 15px;
+    }
+    
+    .competition-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .progress-container {
+        width: 100%;
+    }
+}
+`;
+
+// Add the additional styles to the document
+const additionalStyleSheet = document.createElement('style');
+additionalStyleSheet.textContent = additionalCompetitionStyles;
+document.head.appendChild(additionalStyleSheet);
+
+// Monitor competition state changes
+let lastCompetitionState = null;
+
+function monitorCompetitionState(currentState) {
+    if (lastCompetitionState && lastCompetitionState !== currentState.student_status) {
+        console.log(`Competition state changed: ${lastCompetitionState} -> ${currentState.student_status}`);
+        
+        // Show notification for important state changes
+        switch (currentState.student_status) {
+            case 'active':
+                showSuccess('Station active - vous pouvez commencer !');
+                break;
+            case 'between_stations':
+                showSuccess('Station terminée - préparez-vous pour la suivante');
+                break;
+            case 'completed':
+                showSuccess('Compétition terminée - félicitations !');
+                break;
+        }
+    }
+    
+    lastCompetitionState = currentState.student_status;
+}
+
+// Update the competition interface function to include monitoring
+const originalUpdateCompetitionInterface = updateCompetitionInterface;
+updateCompetitionInterface = function(status) {
+    monitorCompetitionState(status);
+    return originalUpdateCompetitionInterface(status);
+};
+
+console.log('Competition debugging and additional styles loaded');
+console.log('Use window.debugCompetition() to debug competition state');
