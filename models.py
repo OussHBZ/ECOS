@@ -992,72 +992,50 @@ class StudentCompetitionSession(db.Model):
         return False
     
     def get_total_score(self):
-        """Get total score across all completed stations with error handling"""
-        try:
-            total = 0
-            completed_count = 0
-            
-            for assignment in self.station_assignments:
-                if assignment.status == 'completed' and assignment.performance_data:
-                    try:
-                        if isinstance(assignment.performance_data, str):
-                            data = json.loads(assignment.performance_data)
-                        else:
-                            data = assignment.performance_data
-                            
-                        score = data.get('percentage_score', 0)
-                        if isinstance(score, (int, float)) and score >= 0:
-                            total += score
-                            completed_count += 1
-                            
-                    except (json.JSONDecodeError, TypeError, ValueError) as e:
-                        logger.error(f"Error parsing performance data for assignment {assignment.id}: {str(e)}")
-                        continue
-            
-            return total
-            
-        except Exception as e:
-            logger.error(f"Error calculating total score for student session {self.id}: {str(e)}")
-            return 0
+        """Get total score across all completed stations"""
+        total = 0
+        completed_count = 0
+        
+        for assignment in self.station_assignments:
+            if assignment.status == 'completed' and assignment.performance_data:
+                try:
+                    if isinstance(assignment.performance_data, str):
+                        data = json.loads(assignment.performance_data)
+                    else:
+                        data = assignment.performance_data
+                        
+                    score = data.get('percentage_score', 0)
+                    total += score
+                    completed_count += 1
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    pass
+        
+        return total
     
     def get_average_score(self):
-        """Get average score across all completed stations with error handling"""
-        try:
-            completed = self.get_completed_stations_count()
-            if completed == 0:
-                return 0
-            return round(self.get_total_score() / completed, 1)
-            
-        except Exception as e:
-            logger.error(f"Error calculating average score for student session {self.id}: {str(e)}")
+        """Get average score across all completed stations"""
+        completed = self.get_completed_stations_count()
+        if completed == 0:
             return 0
+        return round(self.get_total_score() / completed, 1)
     
     def get_completed_stations_count(self):
-        """Get number of completed stations with error handling"""
-        try:
-            return len([a for a in self.station_assignments if a.status == 'completed'])
-        except Exception as e:
-            logger.error(f"Error counting completed stations for student session {self.id}: {str(e)}")
-            return 0
-    
+        """Get number of completed stations"""
+        return len([a for a in self.station_assignments if a.status == 'completed'])
+
     def get_progress_percentage(self):
-        """Get completion progress as percentage with error handling"""
-        try:
-            if not hasattr(self, 'session') or not self.session:
-                # Try to get session from database
-                competition_session = CompetitionSession.query.get(self.session_id)
-                if not competition_session:
-                    return 0
-                total_stations = competition_session.stations_per_session
-            else:
-                total_stations = self.session.stations_per_session
-            
-            completed = self.get_completed_stations_count()
-            return round((completed / total_stations) * 100, 1) if total_stations > 0 else 0
-            
-        except Exception as e:
-            logger.error(f"Error calculating progress percentage for student session {self.id}: {str(e)}")
-            return 0
+        """Get completion progress as percentage"""
+        if not hasattr(self, 'session') or not self.session:
+            # Load session if not available
+            session_obj = CompetitionSession.query.get(self.session_id)
+            if not session_obj:
+                return 0
+            total_stations = session_obj.stations_per_session
+        else:
+            total_stations = self.session.stations_per_session
+        
+        completed = self.get_completed_stations_count()
+        return round((completed / total_stations) * 100, 1) if total_stations > 0 else 0
 
 class StudentStationAssignment(db.Model):
     """Model for tracking individual station assignments within a student's competition session"""
@@ -1080,25 +1058,18 @@ class StudentStationAssignment(db.Model):
     case = db.relationship('PatientCase', backref='competition_assignments')
     
     def get_performance_summary(self):
-        """Get performance summary for this station with error handling"""
-        if not self.performance_data:
-            return None
-            
-        try:
-            if isinstance(self.performance_data, str):
-                return json.loads(self.performance_data)
-            return self.performance_data
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Error parsing performance data for assignment {self.id}: {str(e)}")
-            return None
+        """Get performance summary for this station"""
+        if self.performance_data:
+            try:
+                if isinstance(self.performance_data, str):
+                    return json.loads(self.performance_data)
+                return self.performance_data
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return None
 
     def start_station(self):
-        """Start this station with error handling"""
-        try:
-            self.status = 'active'
-            self.started_at = datetime.utcnow()
-            db.session.commit()
-            logger.info(f"Station assignment {self.id} started")
-        except Exception as e:
-            logger.error(f"Error starting station assignment {self.id}: {str(e)}")
-            db.session.rollback()
+        """Start this station"""
+        self.status = 'active'
+        self.started_at = datetime.utcnow()
+        db.session.commit()

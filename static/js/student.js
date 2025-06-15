@@ -396,38 +396,39 @@ async function authenticatedFetch(url, options = {}) {
         credentials: 'same-origin' // Important for session cookies
     };
     
-    // FIXED: Merge options properly without recursion
-    const finalOptions = { ...options, ...defaultOptions };
-    if (options.headers) {
-        finalOptions.headers = { ...defaultOptions.headers, ...options.headers };
-    }
+    // Merge options properly
+    const finalOptions = {
+        ...defaultOptions,
+        ...options,
+        headers: {
+            ...defaultOptions.headers,
+            ...options.headers
+        }
+    };
     
     try {
-        // FIXED: Use native fetch instead of calling authenticatedFetch recursively
         const response = await fetch(url, finalOptions);
         
         // Handle authentication errors
         if (response.status === 401) {
             try {
                 const data = await response.json();
-                if (data.auth_required || data.redirect) {
-                    console.error('Session expired or unauthorized access');
+                if (data.redirect) {
                     alert('Session expirée. Veuillez vous reconnecter.');
-                    window.location.href = data.redirect || '/login';
+                    window.location.href = data.redirect;
                     return null;
                 }
             } catch (e) {
-                // If response is not JSON, still handle as auth error
-                console.error('Authentication error:', e);
-                alert('Erreur d\'authentification. Veuillez vous reconnecter.');
-                window.location.href = '/login';
+                // If JSON parsing fails, still redirect
+                alert('Session expirée. Veuillez vous reconnecter.');
+                window.location.href = '/auth/login';
                 return null;
             }
         }
         
         return response;
     } catch (error) {
-        console.error('Network error:', error);
+        console.error('Network error in authenticatedFetch:', error);
         throw error;
     }
 }
@@ -1085,8 +1086,13 @@ async function endCurrentStation() {
     
     try {
         const response = await authenticatedFetch('/student/competition/complete-station', {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
+        
+        if (!response) return; // Authentication failed
         
         if (response.ok) {
             const result = await response.json();
@@ -1094,14 +1100,23 @@ async function endCurrentStation() {
             if (result.success) {
                 showStationFeedback(result);
             } else {
-                throw new Error('Failed to complete station');
+                throw new Error(result.error || 'Failed to complete station');
             }
         } else {
-            throw new Error('Failed to complete station');
+            // Try to get error message from response
+            let errorMessage = 'Failed to complete station';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                // If we can't parse JSON, use the status text
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
         }
     } catch (error) {
         console.error('Error ending station:', error);
-        showError('Erreur lors de la finalisation de la station');
+        showError(`Erreur lors de la finalisation de la station: ${error.message}`);
     }
 }
 

@@ -5,7 +5,8 @@ from auth import student_required
 import logging
 from datetime import datetime
 import time
-import random, json, tempfile
+import random
+import json, tempfile
 
 student_bp = Blueprint('student', __name__)
 logger = logging.getLogger(__name__)
@@ -292,6 +293,11 @@ def complete_competition_station():
         if not student_session:
             return jsonify({"error": "No active competition session found"}), 404
         
+        # Get the competition session to check stations_per_session
+        competition_session = CompetitionSession.query.get(student_session.session_id)
+        if not competition_session:
+            return jsonify({"error": "Competition session not found"}), 404
+        
         # Evaluate the conversation
         evaluate_conversation = current_app.config.get('EVALUATE_CONVERSATION')
         if evaluate_conversation:
@@ -299,7 +305,7 @@ def complete_competition_station():
         else:
             evaluation_results = {'percentage': 0, 'checklist': [], 'feedback': 'Evaluation not available'}
         
-        # Complete the station
+        # Complete the current station
         current_assignment = StudentStationAssignment.query.filter_by(
             student_session_id=student_session.id,
             station_order=student_session.current_station_order
@@ -308,7 +314,8 @@ def complete_competition_station():
         if current_assignment:
             current_assignment.status = 'completed'
             current_assignment.completed_at = datetime.utcnow()
-            # Fix: Store performance data as JSON string, not response object
+            
+            # Store performance data as JSON string
             performance_data = {
                 'conversation_transcript': conversation,
                 'evaluation_results': evaluation_results,
@@ -320,7 +327,6 @@ def complete_competition_station():
             current_assignment.performance_data = json.dumps(performance_data, ensure_ascii=False)
         
         # Move to next station or complete session
-        competition_session = CompetitionSession.query.get(student_session.session_id)
         if student_session.current_station_order < competition_session.stations_per_session:
             student_session.current_station_order += 1
             student_session.status = 'between_stations'
@@ -350,7 +356,7 @@ def complete_competition_station():
             response_data.update({
                 'final_score': student_session.get_average_score(),
                 'total_stations': competition_session.stations_per_session,
-                'rank': 1,  # Calculate actual rank
+                'rank': 1,  # Calculate actual rank later
                 'total_participants': competition_session.get_participant_count()
             })
         
@@ -358,8 +364,9 @@ def complete_competition_station():
         
     except Exception as e:
         logger.error(f"Error completing competition station: {str(e)}")
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
+    
 @student_bp.route('/competition/<int:session_id>/report')
 @student_required
 def download_competition_report(session_id):
@@ -610,4 +617,47 @@ def get_competition_results(session_id):
         
     except Exception as e:
         logger.error(f"Error getting competition results: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@student_bp.route('/competition/debug', methods=['GET'])
+@student_required
+def debug_competition_status():
+    """Debug endpoint to check competition status"""
+    try:
+        # Get current session data
+        conversation = session.get('current_conversation', [])
+        case_number = session.get('current_case')
+        
+        # Get student's competition session
+        student_session = StudentCompetitionSession.query.filter_by(
+            student_id=current_user.id
+        ).first()
+        
+        debug_info = {
+            'user_id': current_user.id,
+            'session_conversation_length': len(conversation),
+            'session_case_number': case_number,
+            'student_session_exists': student_session is not None,
+            'student_session_status': student_session.status if student_session else None,
+            'student_session_id': student_session.session_id if student_session else None,
+            'current_station_order': student_session.current_station_order if student_session else None
+        }
+        
+        if student_session:
+            # Get current station assignment
+            current_assignment = StudentStationAssignment.query.filter_by(
+                student_session_id=student_session.id,
+                station_order=student_session.current_station_order
+            ).first()
+            
+            debug_info.update({
+                'current_assignment_exists': current_assignment is not None,
+                'current_assignment_status': current_assignment.status if current_assignment else None,
+                'current_assignment_case': current_assignment.case_number if current_assignment else None
+            })
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
