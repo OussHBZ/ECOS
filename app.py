@@ -139,52 +139,152 @@ def create_app():
     # Enhanced error handlers for AJAX and competition routes
     @app.errorhandler(404)
     def not_found_error(error):
-        # Handle the Chrome DevTools requests that are causing log spam
-        if request.path.startswith('/.well-known/'):
-            return '', 404
-        
-        # Handle undefined competition routes
-        if '/competition/undefined/' in request.path:
-            logger.warning(f"Undefined competition route accessed: {request.path}")
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({
-                    'error': 'Invalid competition session',
-                    'message': 'Competition session ID is undefined or invalid',
-                    'redirect': '/student'
-                }), 404
-        
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({
-                'error': 'Resource not found',
-                'path': request.path,
-                'method': request.method
-            }), 404
-        
-        return render_template('404.html') if app.template_folder else ('Not Found', 404)
+        """Handle 404 errors with a simple response instead of template"""
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Page Not Found - ECOS</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+                .error-container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .error-code { font-size: 72px; color: #ff6b6b; margin-bottom: 20px; }
+                .error-message { font-size: 24px; margin-bottom: 20px; }
+                .back-link { display: inline-block; background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <div class="error-container">
+                <div class="error-code">404</div>
+                <div class="error-message">Page Not Found</div>
+                <p>The page you're looking for doesn't exist.</p>
+                <a href="/" class="back-link">Go to Homepage</a>
+            </div>
+        </body>
+        </html>
+        ''', 404
     
     @app.errorhandler(401)
-    def unauthorized(error):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or \
-           request.headers.get('Content-Type') == 'application/json':
+    def unauthorized_error(error):
+        """Handle 401 Unauthorized errors"""
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 'error': 'Authentication required',
                 'redirect': url_for('auth.login'),
                 'auth_required': True
             }), 401
-        return redirect(url_for('auth.login'))
+        
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Unauthorized - ECOS</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f8f9fa; }
+                .error-container { max-width: 600px; margin: 0 auto; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                .error-code { font-size: 72px; color: #dc3545; margin-bottom: 20px; font-weight: bold; }
+                .error-message { font-size: 24px; margin-bottom: 20px; color: #333; }
+                .back-link { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="error-container">
+                <div class="error-code">401</div>
+                <div class="error-message">Unauthorized</div>
+                <p>You need to be logged in to access this page.</p>
+                <a href="/login" class="back-link">Login</a>
+                <a href="/" class="back-link">Go to Homepage</a>
+            </div>
+        </body>
+        </html>
+        ''', 401
     
     @app.errorhandler(500)
     def internal_error(error):
+        """Handle 500 errors with proper rollback and response"""
         db.session.rollback()
         logger.error(f"Internal server error: {str(error)}")
         
+        # For AJAX requests, return JSON
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 'error': 'Internal server error',
                 'message': 'An unexpected error occurred'
             }), 500
         
-        return render_template('500.html') if app.template_folder else ('Internal Server Error', 500)
+        # For regular requests, return HTML without template dependency
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Internal Server Error - ECOS</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    margin-top: 50px; 
+                    background-color: #f8f9fa; 
+                }
+                .error-container { 
+                    max-width: 600px; 
+                    margin: 0 auto; 
+                    padding: 30px; 
+                    background: white; 
+                    border-radius: 10px; 
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+                }
+                .error-code { 
+                    font-size: 72px; 
+                    color: #dc3545; 
+                    margin-bottom: 20px; 
+                    font-weight: bold; 
+                }
+                .error-message { 
+                    font-size: 24px; 
+                    margin-bottom: 20px; 
+                    color: #333; 
+                }
+                .error-description { 
+                    color: #666; 
+                    margin-bottom: 30px; 
+                    line-height: 1.6; 
+                }
+                .back-link { 
+                    display: inline-block; 
+                    background: #007bff; 
+                    color: white; 
+                    padding: 12px 24px; 
+                    text-decoration: none; 
+                    border-radius: 5px; 
+                    margin: 10px; 
+                    transition: background-color 0.3s; 
+                }
+                .back-link:hover { 
+                    background: #0056b3; 
+                }
+                .refresh-link { 
+                    background: #28a745; 
+                }
+                .refresh-link:hover { 
+                    background: #1e7e34; 
+                }
+            </style>
+        </head>
+        <body>
+            <div class="error-container">
+                <div class="error-code">500</div>
+                <div class="error-message">Internal Server Error</div>
+                <div class="error-description">
+                    Something went wrong on our end. We're working to fix this issue.
+                    <br><br>
+                    If this problem persists, please try refreshing the page or contact support.
+                </div>
+                <a href="/" class="back-link">Go to Homepage</a>
+                <a href="javascript:location.reload()" class="back-link refresh-link">Refresh Page</a>
+            </div>
+        </body>
+        </html>
+        ''', 500
     
     @login_manager.user_loader
     def load_user(user_id):
