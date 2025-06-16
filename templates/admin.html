@@ -2,419 +2,394 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>OSCE Chat Simulator - Interface Administrateur</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interface Administrateur - ECOS FMPM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    <div class="container">
-        <!-- Navigation Tabs for Admin -->
-        <div class="admin-nav-tabs">
-            <button class="nav-tab active" onclick="showAdminTab('overview-tab')">Vue d'ensemble</button>
-            <button class="nav-tab" onclick="showAdminTab('stations-tab')">Stations</button>
-            <button class="nav-tab" onclick="showAdminTab('students-tab')">Étudiants</button>
-            <button class="nav-tab" onclick="showAdminTab('competition-sessions-tab')">Sessions Compétition</button>
+    <!-- FMPM Header -->
+    <header class="fmpm-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo-section">
+                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
+                    <div class="brand-text">
+                        <h1 class="brand-title">Interface Administrateur</h1>
+                        <p class="brand-subtitle">Gestion complète du système ECOS</p>
+                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <div class="user-info">
+                        <div class="user-name">Administrateur</div>
+                        <div class="user-role">Système ECOS</div>
+                    </div>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Déconnexion</a>
+                </div>
+            </div>
         </div>
+    </header>
 
-        <div class="admin-interface">
-            <h1>Interface Administrateur</h1>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <div>
-                    <p>Gestion complète du système OSCE</p>
-                </div>
-                <div>
-                    <a href="{{ url_for('auth.logout') }}" class="back-button">Déconnexion</a>
-                </div>
-            </div>
-
-            <!-- Overview Tab (existing content) -->
-            <div id="overview-tab" class="admin-tab-content active">
-                <!-- Keep existing overview content -->
-                <div class="overview-container">
-                    <div class="overview-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-stations-overview">-</div>
-                            <div class="stat-label">Stations Totales</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-students-overview">-</div>
-                            <div class="stat-label">Étudiants</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="active-sessions-overview">-</div>
-                            <div class="stat-label">Sessions Actives</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-consultations-overview">-</div>
-                            <div class="stat-label">Consultations</div>
-                        </div>
-                    </div>
-
-                    <div class="activity-table-container">
-                        <h3>Activité Récente</h3>
-                        <table class="activity-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Étudiant</th>
-                                    <th>Station</th>
-                                    <th>Score</th>
-                                    <th>Statut</th>
-                                </tr>
-                            </thead>
-                            <tbody id="recent-activity-body">
-                                <!-- Activity data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Stations Tab (existing content) -->
-            <div id="stations-tab" class="admin-tab-content">
-                <!-- Keep existing stations content -->
-                <div class="stations-management-container">
-                    <div class="section-header">
-                        <h2>Gestion des Stations</h2>
-                        <div class="search-container">
-                            <input type="text" id="admin-stations-search" placeholder="Rechercher stations..." class="search-input">
-                            <button onclick="searchAdminStations()" class="search-btn">Rechercher</button>
-                        </div>
-                    </div>
-
-                    <div class="stations-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-stations">-</div>
-                            <div class="stat-label">Total Stations</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="avg-station-score">-</div>
-                            <div class="stat-label">Score Moyen</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="most-used-specialty">-</div>
-                            <div class="stat-label">Spécialité Populaire</div>
-                        </div>
-                    </div>
-
-                    <div class="stations-table-container">
-                        <table class="activity-table" id="admin-stations-table">
-                            <thead>
-                                <tr>
-                                    <th>Station #</th>
-                                    <th>Spécialité</th>
-                                    <th>Durée</th>
-                                    <th>Créé le</th>
-                                    <th>Utilisations</th>
-                                    <th>Score Moyen</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="admin-stations-table-body">
-                                <!-- Station data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Students Tab (existing content) -->
-            <div id="students-tab" class="admin-tab-content">
-                <!-- Keep existing students content -->
-                <div class="students-management-container">
-                    <div class="section-header">
-                        <h2>Gestion des Étudiants</h2>
-                        <div class="search-container">
-                            <input type="text" id="admin-students-search" placeholder="Rechercher étudiants..." class="search-input">
-                            <button onclick="searchAdminStudents()" class="search-btn">Rechercher</button>
-                        </div>
-                    </div>
-
-                    <div class="students-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-students">-</div>
-                            <div class="stat-label">Total Étudiants</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="active-students">-</div>
-                            <div class="stat-label">Étudiants Actifs</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="avg-student-score">-</div>
-                            <div class="stat-label">Score Moyen</div>
-                        </div>
-                    </div>
-
-                    <div class="activity-table-container">
-                        <table class="activity-table" id="admin-students-table">
-                            <thead>
-                                <tr>
-                                    <th>Code</th>
-                                    <th>Nom</th>
-                                    <th>Créé le</th>
-                                    <th>Dernière Connexion</th>
-                                    <th>Consultations</th>
-                                    <th>Score Moyen</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="admin-students-table-body">
-                                <!-- Student data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Competition Sessions Tab (NEW) -->
-            <div id="competition-sessions-tab" class="admin-tab-content">
-                <div class="sessions-management-container">
-                    <div class="section-header">
-                        <h2>Sessions de Compétition OSCE</h2>
-                        <button onclick="openCreateCompetitionSessionModal()" class="submit-button">
-                            + Nouvelle Session de Compétition
-                        </button>
-                    </div>
-
-                    <div class="sessions-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-sessions">-</div>
-                            <div class="stat-label">Total Sessions</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="scheduled-sessions">-</div>
-                            <div class="stat-label">Programmées</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="active-sessions">-</div>
-                            <div class="stat-label">En Cours</div>
-                        </div>
-                    </div>
-                    <div class="activity-table-container">
-                        <table class="sessions-table" id="competition-sessions-table">
-                            <thead>
-                                <tr>
-                                    <th>Nom</th>
-                                    <th>Début</th>
-                                    <th>Fin</th>
-                                    <th>Participants</th>
-                                    <th>Banque Stations</th>
-                                    <th>Stations/Session</th>
-                                    <th>Temps/Station</th>
-                                    <th>Statut</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="competition-sessions-table-body">
-                                <!-- Competition session data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Create Competition Session Modal (NEW) -->
-            <div id="create-competition-session-modal" class="modal hidden">
-                <div class="modal-content" style="max-width: 90%; max-height: 90%; overflow-y: auto;">
-                    <span class="close-modal" onclick="closeCreateCompetitionSessionModal()">&times;</span>
-                    <h3>Créer une Nouvelle Session de Compétition</h3>
-                    <form id="create-competition-session-form">
-                        <!-- Basic Information -->
-                        <div class="form-section">
-                            <h4>Informations Générales</h4>
-                            <div class="form-group">
-                                <label for="competition-session-name">Nom de la session :</label>
-                                <input type="text" id="competition-session-name" name="session_name" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="competition-session-description">Description :</label>
-                                <textarea id="competition-session-description" name="session_description" rows="3"></textarea>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="competition-session-start">Heure de début :</label>
-                                    <input type="datetime-local" id="competition-session-start" name="start_time" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="competition-session-end">Heure de fin :</label>
-                                    <input type="datetime-local" id="competition-session-end" name="end_time" required>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Competition Settings -->
-                        <div class="competition-form-section">
-                            <h4>Paramètres de la Compétition</h4>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="stations-per-session">Nombre de stations par session :</label>
-                                    <input type="number" id="stations-per-session" name="stations_per_session" min="1" max="20" value="3" required>
-                                    <small>Chaque étudiant passera ce nombre de stations</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="time-per-station">Temps par station (minutes) :</label>
-                                    <input type="number" id="time-per-station" name="time_per_station" min="1" max="60" value="10" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="time-between-stations">Temps entre stations (minutes) :</label>
-                                    <input type="number" id="time-between-stations" name="time_between_stations" min="0" max="10" value="2">
-                                    <small>Temps de pause entre les stations</small>
-                                </div>
-                            </div>
-                            <div class="form-group-inline">
-                                <input type="checkbox" id="randomize-stations" name="randomize_stations" checked>
-                                <label for="randomize-stations">Attribuer les stations aléatoirement aux étudiants</label>
-                            </div>
-                        </div>
-
-                        <!-- Participants Selection -->
-                        <div class="form-section">
-                            <h4>Sélection des Participants</h4>
-                            <div class="participants-selection">
-                                <div>
-                                    <h5>Étudiants Disponibles</h5>
-                                    <input type="text" id="student-search" placeholder="Rechercher étudiant..." style="width: 100%; margin-bottom: 10px;">
-                                    <div id="available-students-list" class="selection-list">
-                                        <!-- Available students will be loaded here -->
-                                    </div>
-                                </div>
-                                
-                                <div class="selection-controls">
-                                    <button type="button" onclick="addSelectedStudents()" class="secondary-button">Ajouter →</button>
-                                    <button type="button" onclick="removeSelectedStudents()" class="secondary-button">← Retirer</button>
-                                </div>
-                                
-                                <div>
-                                    <h5>Participants Sélectionnés</h5>
-                                    <div id="selected-students-list" class="selection-list">
-                                        <!-- Selected students will be shown here -->
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Stations Selection -->
-                        <div class="form-section">
-                            <h4>Banque de Stations</h4>
-                            <p>Sélectionnez les stations qui seront disponibles dans cette compétition. La banque doit contenir au moins autant de stations que le nombre de stations par session.</p>
-                            <div class="stations-selection">
-                                <div>
-                                    <h5>Stations Disponibles</h5>
-                                    <input type="text" id="station-search" placeholder="Rechercher station..." style="width: 100%; margin-bottom: 10px;">
-                                    <div id="available-stations-list" class="selection-list">
-                                        <!-- Available stations will be loaded here -->
-                                    </div>
-                                </div>
-                                
-                                <div class="selection-controls">
-                                    <button type="button" onclick="addSelectedStations()" class="secondary-button">Ajouter →</button>
-                                    <button type="button" onclick="removeSelectedStations()" class="secondary-button">← Retirer</button>
-                                </div>
-                                
-                                <div>
-                                    <h5>Banque de Stations</h5>
-                                    <div id="selected-stations-list" class="selection-list">
-                                        <!-- Selected stations will be shown here -->
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-actions" style="text-align: center; margin-top: 30px;">
-                            <button type="submit" class="submit-button">Créer la Session</button>
-                            <button type="button" onclick="closeCreateCompetitionSessionModal()" class="cancel-button">Annuler</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Keep existing modals: station details, student details, etc. -->
-            
-            <!-- Station Details Modal -->
-            <div id="station-details-modal" class="modal hidden">
-                <div class="modal-content">
-                    <span class="close-modal">&times;</span>
-                    <h3>Détails de la Station</h3>
-                    <div id="station-details-content"></div>
-                </div>
-            </div>
-
-            <!-- Student Details Modal -->
-            <div id="student-details-modal" class="modal hidden">
-                <div class="modal-content" style="max-width: 90%; max-height: 90%;">
-                    <span class="close-modal">&times;</span>
-                    <h3>Détails de l'Étudiant - <span id="student-details-name"></span></h3>
-                    
-                    <div class="student-details-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="student-total-consultations">-</div>
-                            <div class="stat-label">Total Consultations</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="student-unique-stations">-</div>
-                            <div class="stat-label">Stations Uniques</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="student-avg-score">-</div>
-                            <div class="stat-label">Score Moyen</div>
-                        </div>
-                    </div>
-
-                    <div class="student-performance-table-container">
-                        <table class="student-performance-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Station</th>
-                                    <th>Spécialité</th>
-                                    <th>Score</th>
-                                    <th>Note</th>
-                                    <th>Durée</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="student-performance-table-body">
-                                <!-- Student performance data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div id="competition-monitoring-modal" class="modal hidden">
-                <div class="modal-content monitoring-modal-content">
-                    <div class="monitoring-header">
-                        <h3>Monitoring Compétition - <span id="monitoring-session-name"></span></h3>
-                        <div class="monitoring-controls">
-                            <span id="monitoring-session-status" class="status-badge"></span>
-                            <button onclick="closeCompetitionMonitoring()" class="close-button">✕</button>
-                        </div>
-                    </div>
-                    
-                    <div class="monitoring-actions">
-                        <button onclick="forceStartCompetition()" class="force-start-button">
-                            🚀 Démarrage forcé
-                        </button>
-                        <button onclick="pauseCompetition()" class="pause-button">
-                            ⏸️ Pause
-                        </button>
-                        <button onclick="resumeCompetition()" class="resume-button">
-                            ▶️ Reprendre
-                        </button>
-                        <button onclick="endCompetition()" class="end-button">
-                            🛑 Terminer
-                        </button>
-                        <button onclick="exportCompetitionResults()" class="export-button">
-                            📊 Exporter
-                        </button>
-                    </div>
-                    
-                    <div id="monitoring-participants-list" class="monitoring-participants">
-                        <!-- Participants monitoring will be loaded here -->
-                    </div>
-                </div>
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs-container">
+        <div class="container">
+            <div class="admin-nav-tabs">
+                <button class="nav-tab active" onclick="showAdminTab('overview-tab')">Vue d'ensemble</button>
+                <button class="nav-tab" onclick="showAdminTab('stations-tab')">Stations</button>
+                <button class="nav-tab" onclick="showAdminTab('students-tab')">Étudiants</button>
+                <button class="nav-tab" onclick="showAdminTab('competition-sessions-tab')">Sessions Compétition</button>
             </div>
         </div>
     </div>
+
+    <div class="main-content">
+        <!-- Overview Tab -->
+        <div id="overview-tab" class="admin-tab-content active">
+            <div class="section-header">
+                <h2>Vue d'ensemble du système</h2>
+            </div>
+
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-stations-overview">-</div>
+                    <div class="stat-label">Stations Totales</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="total-students-overview">-</div>
+                    <div class="stat-label">Étudiants</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="active-sessions-overview">-</div>
+                    <div class="stat-label">Sessions Actives</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="total-consultations-overview">-</div>
+                    <div class="stat-label">Consultations</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h3>Activité Récente</h3>
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Étudiant</th>
+                            <th>Station</th>
+                            <th>Score</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-activity-body">
+                        <!-- Activity data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Stations Tab -->
+        <div id="stations-tab" class="admin-tab-content">
+            <div class="section-header">
+                <h2>Gestion des Stations</h2>
+                <div class="search-container">
+                    <input type="text" id="admin-stations-search" placeholder="Rechercher stations..." class="search-input">
+                    <button onclick="searchAdminStations()" class="btn btn-primary search-btn">Rechercher</button>
+                </div>
+            </div>
+
+            <div class="stations-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-stations">-</div>
+                    <div class="stat-label">Total Stations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="avg-station-score">-</div>
+                    <div class="stat-label">Score Moyen</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="most-used-specialty">-</div>
+                    <div class="stat-label">Spécialité Populaire</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="stations-table" id="admin-stations-table">
+                    <thead>
+                        <tr>
+                            <th>Station #</th>
+                            <th>Spécialité</th>
+                            <th>Durée</th>
+                            <th>Créé le</th>
+                            <th>Utilisations</th>
+                            <th>Score Moyen</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-stations-table-body">
+                        <!-- Station data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Students Tab -->
+        <div id="students-tab" class="admin-tab-content">
+            <div class="section-header">
+                <h2>Gestion des Étudiants</h2>
+                <div class="search-container">
+                    <input type="text" id="admin-students-search" placeholder="Rechercher étudiants..." class="search-input">
+                    <button onclick="searchAdminStudents()" class="btn btn-primary search-btn">Rechercher</button>
+                </div>
+            </div>
+
+            <div class="students-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-students">-</div>
+                    <div class="stat-label">Total Étudiants</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="active-students">-</div>
+                    <div class="stat-label">Étudiants Actifs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="avg-student-score">-</div>
+                    <div class="stat-label">Score Moyen</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="students-table" id="admin-students-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Nom</th>
+                            <th>Créé le</th>
+                            <th>Dernière Connexion</th>
+                            <th>Consultations</th>
+                            <th>Score Moyen</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-students-table-body">
+                        <!-- Student data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Competition Sessions Tab -->
+        <div id="competition-sessions-tab" class="admin-tab-content">
+            <div class="section-header">
+                <h2>Sessions de Compétition ECOS</h2>
+                <button onclick="openCreateCompetitionSessionModal()" class="btn btn-primary">
+                    + Nouvelle Session de Compétition
+                </button>
+            </div>
+
+            <div class="sessions-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-sessions">-</div>
+                    <div class="stat-label">Total Sessions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="scheduled-sessions">-</div>
+                    <div class="stat-label">Programmées</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="active-sessions">-</div>
+                    <div class="stat-label">En Cours</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="sessions-table" id="competition-sessions-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Début</th>
+                            <th>Fin</th>
+                            <th>Participants</th>
+                            <th>Banque Stations</th>
+                            <th>Stations/Session</th>
+                            <th>Temps/Station</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="competition-sessions-table-body">
+                        <!-- Competition session data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Competition Session Modal -->
+    <div id="create-competition-session-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 90%; max-height: 90%; overflow-y: auto;">
+            <span class="close-modal" onclick="closeCreateCompetitionSessionModal()">&times;</span>
+            <h3>Créer une Nouvelle Session de Compétition</h3>
+            <form id="create-competition-session-form">
+                <!-- Basic Information -->
+                <div class="form-section">
+                    <legend>Informations Générales</legend>
+                    <div class="form-group">
+                        <label for="competition-session-name">Nom de la session :</label>
+                        <input type="text" id="competition-session-name" name="session_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="competition-session-description">Description :</label>
+                        <textarea id="competition-session-description" name="session_description" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="competition-session-start">Heure de début :</label>
+                            <input type="datetime-local" id="competition-session-start" name="start_time" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="competition-session-end">Heure de fin :</label>
+                            <input type="datetime-local" id="competition-session-end" name="end_time" required>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Competition Settings -->
+                <div class="form-section">
+                    <legend>Paramètres de la Compétition</legend>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="stations-per-session">Nombre de stations par session :</label>
+                            <input type="number" id="stations-per-session" name="stations_per_session" min="1" max="20" value="3" required>
+                            <div class="field-help">Chaque étudiant passera ce nombre de stations</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="time-per-station">Temps par station (minutes) :</label>
+                            <input type="number" id="time-per-station" name="time_per_station" min="1" max="60" value="10" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="time-between-stations">Temps entre stations (minutes) :</label>
+                            <input type="number" id="time-between-stations" name="time_between_stations" min="0" max="10" value="2">
+                            <div class="field-help">Temps de pause entre les stations</div>
+                        </div>
+                    </div>
+                    <div class="form-group-inline">
+                        <input type="checkbox" id="randomize-stations" name="randomize_stations" checked>
+                        <label for="randomize-stations">Attribuer les stations aléatoirement aux étudiants</label>
+                    </div>
+                </div>
+
+                <!-- Participants Selection -->
+                <div class="form-section">
+                    <legend>Sélection des Participants</legend>
+                    <div class="participants-selection">
+                        <div>
+                            <h5>Étudiants Disponibles</h5>
+                            <input type="text" id="student-search" placeholder="Rechercher étudiant..." style="width: 100%; margin-bottom: 10px;">
+                            <div id="available-students-list" class="selection-list">
+                                <!-- Available students will be loaded here -->
+                            </div>
+                        </div>
+                        
+                        <div class="selection-controls">
+                            <button type="button" onclick="addSelectedStudents()" class="btn btn-secondary">Ajouter →</button>
+                            <button type="button" onclick="removeSelectedStudents()" class="btn btn-secondary">← Retirer</button>
+                        </div>
+                        
+                        <div>
+                            <h5>Participants Sélectionnés</h5>
+                            <div id="selected-students-list" class="selection-list">
+                                <!-- Selected students will be shown here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stations Selection -->
+                <div class="form-section">
+                    <legend>Banque de Stations</legend>
+                    <p>Sélectionnez les stations qui seront disponibles dans cette compétition. La banque doit contenir au moins autant de stations que le nombre de stations par session.</p>
+                    <div class="stations-selection">
+                        <div>
+                            <h5>Stations Disponibles</h5>
+                            <input type="text" id="station-search" placeholder="Rechercher station..." style="width: 100%; margin-bottom: 10px;">
+                            <div id="available-stations-list" class="selection-list">
+                                <!-- Available stations will be loaded here -->
+                            </div>
+                        </div>
+                        
+                        <div class="selection-controls">
+                            <button type="button" onclick="addSelectedStations()" class="btn btn-secondary">Ajouter →</button>
+                            <button type="button" onclick="removeSelectedStations()" class="btn btn-secondary">← Retirer</button>
+                        </div>
+                        
+                        <div>
+                            <h5>Banque de Stations</h5>
+                            <div id="selected-stations-list" class="selection-list">
+                                <!-- Selected stations will be shown here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Créer la Session</button>
+                    <button type="button" onclick="closeCreateCompetitionSessionModal()" class="btn btn-secondary">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Station Details Modal -->
+    <div id="station-details-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Détails de la Station</h3>
+            <div id="station-details-content"></div>
+        </div>
+    </div>
+
+    <!-- Student Details Modal -->
+    <div id="student-details-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 90%; max-height: 90%;">
+            <span class="close-modal">&times;</span>
+            <h3>Détails de l'Étudiant - <span id="student-details-name"></span></h3>
+            
+            <div class="student-details-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="student-total-consultations">-</div>
+                    <div class="stat-label">Total Consultations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="student-unique-stations">-</div>
+                    <div class="stat-label">Stations Uniques</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="student-avg-score">-</div>
+                    <div class="stat-label">Score Moyen</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="student-performance-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Station</th>
+                            <th>Spécialité</th>
+                            <th>Score</th>
+                            <th>Note</th>
+                            <th>Durée</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="student-performance-table-body">
+                        <!-- Student performance data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>

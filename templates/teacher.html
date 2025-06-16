@@ -2,56 +2,82 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>OSCE Chat Simulator - Interface Enseignant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interface Enseignant - ECOS FMPM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    <div class="container">
-        <!-- Navigation Tabs for Teacher -->
-        <div class="teacher-nav-tabs">
-            <button class="nav-tab active" onclick="showTeacherTab('create-cases-tab')">Créer/Gérer Cas</button>
-            <button class="nav-tab" onclick="showTeacherTab('stations-management-tab')">Gestion Stations</button>
-            <button class="nav-tab" onclick="showTeacherTab('student-performance-tab')">Performance Étudiants</button>
-        </div>
-
-        <div class="teacher-interface">
-            <h1>Interface Enseignant</h1>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <div>
-                    <p>Interface de gestion OSCE</p>
+    <!-- FMPM Header -->
+    <header class="fmpm-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo-section">
+                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
+                    <div class="brand-text">
+                        <h1 class="brand-title">Interface Enseignant</h1>
+                        <p class="brand-subtitle">Gestion des cas cliniques et suivi pédagogique</p>
+                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
+                    </div>
                 </div>
-                <div>
-                    <a href="{{ url_for('auth.logout') }}" class="back-button">Déconnexion</a>
+                <div class="header-actions">
+                    <div class="user-info">
+                        <div class="user-name">Enseignant</div>
+                        <div class="user-role">Interface Pédagogique</div>
+                    </div>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Déconnexion</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs-container">
+        <div class="container">
+            <div class="teacher-nav-tabs">
+                <button class="nav-tab active" onclick="showTeacherTab('create-cases-tab')">Créer/Gérer Cas</button>
+                <button class="nav-tab" onclick="showTeacherTab('stations-management-tab')">Gestion Stations</button>
+                <button class="nav-tab" onclick="showTeacherTab('student-performance-tab')">Performance Étudiants</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Create/Manage Cases Tab -->
+        <div id="create-cases-tab" class="teacher-tab-content active">
+            <div class="section-header">
+                <h2>Gestion des Cas Cliniques</h2>
+            </div>
+
+            <div class="method-selection">
+                <h3>Ajouter un nouveau cas ECOS</h3>
+                <p class="method-subtitle">Choisissez comment ajouter un nouveau cas :</p>
+                
+                <div class="method-tabs">
+                    <button id="manual-tab-btn" class="tab-btn active">
+                        Saisie manuelle <span class="recommended-badge">Recommandée</span>
+                    </button>
+                    <button id="file-tab-btn" class="tab-btn">Par fichier</button>
                 </div>
             </div>
             
-            <!-- Create/Manage Cases Tab (existing functionality) -->
-            <div id="create-cases-tab" class="teacher-tab-content active">
-                <div class="method-selection">
-                    <h2>Ajouter un nouveau cas OSCE</h2>
-                    <p class="method-subtitle">Choisissez comment ajouter un nouveau cas :</p>
-                    
-                    <div class="method-tabs">
-                        <button id="manual-tab-btn" class="tab-btn active">Saisie manuelle <span class="recommended-badge">Recommandée</span></button>
-                        <button id="file-tab-btn" class="tab-btn">Par fichier</button>
-                    </div>
-                </div>
-                
-                <!-- Manual Entry Section -->
-                <div id="manual-entry-section" class="upload-section">
-                    <form id="manual-entry-form">
+            <!-- Manual Entry Section -->
+            <div id="manual-entry-section" class="upload-section">
+                <form id="manual-entry-form">
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="manual-case-number">Numéro du cas :</label>
-                            <input type="number" id="manual-case-number" name="case_number" min="1">
+                            <input type="number" id="manual-case-number" name="case_number" min="1" required>
                         </div>
                         <div class="form-group">
                             <label for="manual-specialty">Spécialité :</label>
-                            <input type="text" id="manual-specialty" name="specialty">
+                            <input type="text" id="manual-specialty" name="specialty" required>
                         </div>
-                        
-                        <!-- Patient Information Section -->
-                        <fieldset class="form-section">
-                            <legend>Informations du patient</legend>
+                    </div>
+                    
+                    <!-- Patient Information Section -->
+                    <div class="form-section">
+                        <legend>Informations du patient</legend>
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="patient-name">Nom du patient :</label>
                                 <input type="text" id="patient-name" name="patient_name">
@@ -60,6 +86,8 @@
                                 <label for="patient-age">Âge :</label>
                                 <input type="number" id="patient-age" name="patient_age" min="0" max="120">
                             </div>
+                        </div>
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="patient-gender">Sexe :</label>
                                 <select id="patient-gender" name="patient_gender">
@@ -73,17 +101,19 @@
                                 <label for="patient-occupation">Profession :</label>
                                 <input type="text" id="patient-occupation" name="patient_occupation">
                             </div>
-                        </fieldset>
-                        
-                        <!-- Symptoms Section -->
-                        <fieldset class="form-section">
-                            <legend>Symptômes et motif de consultation</legend>
-                            <div class="form-group">
-                                <label for="chief-complaint">Motif principal de consultation :</label>
-                                <textarea id="chief-complaint" name="chief_complaint" rows="2"></textarea>
-                            </div>
-                            <div id="symptoms-container">
-                                <div class="symptom-entry">
+                        </div>
+                    </div>
+                    
+                    <!-- Symptoms Section -->
+                    <div class="form-section">
+                        <legend>Symptômes et motif de consultation</legend>
+                        <div class="form-group">
+                            <label for="chief-complaint">Motif principal de consultation :</label>
+                            <textarea id="chief-complaint" name="chief_complaint" rows="2"></textarea>
+                        </div>
+                        <div id="symptoms-container">
+                            <div class="symptom-entry">
+                                <div class="form-row">
                                     <div class="form-group">
                                         <label>Symptôme :</label>
                                         <input type="text" name="symptoms[]">
@@ -92,18 +122,20 @@
                                         <label>Depuis quand :</label>
                                         <input type="text" name="symptom_duration[]">
                                     </div>
-                                    <div class="form-group">
-                                        <label>Intensité/Description :</label>
-                                        <textarea name="symptom_description[]" rows="2"></textarea>
-                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Intensité/Description :</label>
+                                    <textarea name="symptom_description[]" rows="2"></textarea>
                                 </div>
                             </div>
-                            <button type="button" id="add-symptom" class="secondary-button">+ Ajouter un symptôme</button>
-                        </fieldset>
-                        
-                        <!-- Medical History Section -->
-                        <fieldset class="form-section">
-                            <legend>Antécédents médicaux</legend>
+                        </div>
+                        <button type="button" id="add-symptom" class="btn btn-secondary">+ Ajouter un symptôme</button>
+                    </div>
+                    
+                    <!-- Medical History Section -->
+                    <div class="form-section">
+                        <legend>Antécédents médicaux</legend>
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="medical-history">Antécédents médicaux :</label>
                                 <textarea id="medical-history" name="medical_history" rows="3"></textarea>
@@ -112,6 +144,8 @@
                                 <label for="surgical-history">Antécédents chirurgicaux :</label>
                                 <textarea id="surgical-history" name="surgical_history" rows="3"></textarea>
                             </div>
+                        </div>
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="family-history">Antécédents familiaux :</label>
                                 <textarea id="family-history" name="family_history" rows="3"></textarea>
@@ -120,147 +154,161 @@
                                 <label for="medications">Traitements actuels :</label>
                                 <textarea id="medications" name="medications" rows="3"></textarea>
                             </div>
-                            <div class="form-group">
-                                <label for="allergies">Allergies :</label>
-                                <textarea id="allergies" name="allergies" rows="2"></textarea>
-                            </div>
-                        </fieldset>
+                        </div>
+                        <div class="form-group">
+                            <label for="allergies">Allergies :</label>
+                            <textarea id="allergies" name="allergies" rows="2"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Images Section -->
+                    <div class="form-section">
+                        <legend>Images et examens complémentaires</legend>
+                        <div class="form-group">
+                            <label for="manual-image-file">Image(s) médicale(s) :</label>
+                            <input type="file" id="manual-image-file" name="manual_images" accept=".jpg,.jpeg,.png" multiple>
+                            <div class="field-help">Sélectionnez plusieurs images en maintenant la touche Ctrl (ou Cmd sur Mac) enfoncée</div>
+                        </div>
+                        <div id="manual-images-preview" class="images-preview"></div>
+                        <div class="form-group">
+                            <label for="image-descriptions">Descriptions des images (une par ligne) :</label>
+                            <textarea id="image-descriptions" name="image_descriptions" rows="3" 
+                                placeholder="Description image 1&#10;Description image 2&#10;Description image 3"></textarea>
+                            <div class="field-help">Entrez une description par ligne, dans le même ordre que les images</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="lab-results">Résultats d'examens complémentaires :</label>
+                            <textarea id="lab-results" name="lab_results" rows="3" placeholder="Ex: NFS: Leucocytes 12.000/mm3, CRP 25 mg/L"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Evaluation Checklist -->
+                    <div class="form-section">
+                        <legend>Grille d'évaluation</legend>
+                        <div class="field-help">Ajoutez les éléments que l'étudiant devrait aborder/réaliser durant la consultation</div>
                         
-                        <!-- Images Section -->
-                        <fieldset class="form-section">
-                            <legend>Images et examens complémentaires</legend>
-                            <div class="form-group">
-                                <label for="manual-image-file">Image(s) médicale(s) :</label>
-                                <input type="file" id="manual-image-file" name="manual_images" accept=".jpg,.jpeg,.png" multiple>
-                                <p class="field-help">Sélectionnez plusieurs images en maintenant la touche Ctrl (ou Cmd sur Mac) enfoncée</p>
-                            </div>
-                            <div id="manual-images-preview" class="images-preview"></div>
-                            <div class="form-group">
-                                <label for="image-descriptions">Descriptions des images (une par ligne) :</label>
-                                <textarea id="image-descriptions" name="image_descriptions" rows="3" 
-                                    placeholder="Description image 1&#10;Description image 2&#10;Description image 3"></textarea>
-                                <p class="field-help">Entrez une description par ligne, dans le même ordre que les images</p>
-                            </div>
-                            <div class="form-group">
-                                <label for="lab-results">Résultats d'examens complémentaires :</label>
-                                <textarea id="lab-results" name="lab_results" rows="3" placeholder="Ex: NFS: Leucocytes 12.000/mm3, CRP 25 mg/L"></textarea>
-                            </div>
-                        </fieldset>
-                        
-                        <!-- Evaluation Checklist -->
-                        <fieldset class="form-section">
-                            <legend>Grille d'évaluation</legend>
-                            <p class="field-help">Ajoutez les éléments que l'étudiant devrait aborder/réaliser durant la consultation</p>
-                            
-                            <div id="checklist-container">
-                                <!-- Initial checklist item -->
-                                <div class="checklist-item">
+                        <div id="checklist-container">
+                            <!-- Initial checklist item -->
+                            <div class="checklist-item">
+                                <div class="form-row">
                                     <div class="form-group">
                                         <label>Description :</label>
                                         <input type="text" name="checklist_descriptions[]" placeholder="Ex: Questionne sur la durée des symptômes">
                                     </div>
                                     <div class="form-group points-group">
                                         <label>Points :</label>
-                                        <input type="number" name="checklist_points[]" value="1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Catégorie :</label>
-                                        <select name="checklist_categories[]">
-                                            <option value="Anamnèse">Anamnèse</option>
-                                            <option value="Examen physique">Examen physique</option>
-                                            <option value="Communication">Communication</option>
-                                            <option value="Diagnostic">Diagnostic</option>
-                                            <option value="Prise en charge">Prise en charge</option>
-                                        </select>
+                                        <input type="number" name="checklist_points[]" value="1" min="1">
                                     </div>
                                 </div>
+                                <div class="form-group">
+                                    <label>Catégorie :</label>
+                                    <select name="checklist_categories[]">
+                                        <option value="Anamnèse">Anamnèse</option>
+                                        <option value="Examen physique">Examen physique</option>
+                                        <option value="Communication">Communication</option>
+                                        <option value="Diagnostic">Diagnostic</option>
+                                        <option value="Prise en charge">Prise en charge</option>
+                                    </select>
+                                </div>
                             </div>
-                            <button type="button" id="add-checklist-item" class="secondary-button">+ Ajouter un élément</button>
-                        </fieldset>
-                        
-                        <!-- Additional Information Section -->
-                        <fieldset class="form-section">
-                            <legend>Informations additionnelles</legend>
+                        </div>
+                        <button type="button" id="add-checklist-item" class="btn btn-secondary">+ Ajouter un élément</button>
+                    </div>
+                    
+                    <!-- Additional Information Section -->
+                    <div class="form-section">
+                        <legend>Informations additionnelles</legend>
+                        <div class="form-row">
                             <div class="form-group">
                                 <label for="diagnosis">Diagnostic correct :</label>
                                 <input type="text" id="diagnosis" name="diagnosis">
                             </div>
                             <div class="form-group">
-                                <label for="differential-diagnosis">Diagnostics différentiels :</label>
-                                <textarea id="differential-diagnosis" name="differential_diagnosis" rows="3"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="additional-notes">Notes supplémentaires pour le patient simulé :</label>
-                                <textarea id="additional-notes" name="additional_notes" rows="4" placeholder="Ex: Le patient est anxieux et inquiet concernant son diagnostic"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="case-directives">Directives pour l'étudiant:</label>
-                                <textarea id="case-directives" name="case_directives" rows="5" 
-                                    placeholder="Ex: 1. Mener l'interrogatoire dans 3 min. 2. Interpréter la radiographie thoracique..."></textarea>
-                                <p class="field-help">Instructions que l'étudiant doit suivre pendant la consultation</p>
-                            </div>
-                            <div class="form-group">
                                 <label for="consultation-time">Durée de la consultation (minutes):</label>
                                 <input type="number" id="consultation-time" name="consultation_time" min="1" max="60" value="10">
-                                <p class="field-help">La durée par défaut est de 10 minutes si non spécifiée.</p>
                             </div>
-                        </fieldset>
+                        </div>
+                        <div class="form-group">
+                            <label for="differential-diagnosis">Diagnostics différentiels :</label>
+                            <textarea id="differential-diagnosis" name="differential_diagnosis" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="additional-notes">Notes supplémentaires pour le patient simulé :</label>
+                            <textarea id="additional-notes" name="additional_notes" rows="4" placeholder="Ex: Le patient est anxieux et inquiet concernant son diagnostic"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="case-directives">Directives pour l'étudiant:</label>
+                            <textarea id="case-directives" name="case_directives" rows="5" 
+                                placeholder="Ex: 1. Mener l'interrogatoire dans 3 min. 2. Interpréter la radiographie thoracique..."></textarea>
+                            <div class="field-help">Instructions que l'étudiant doit suivre pendant la consultation</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom Sections -->
+                    <div class="form-section">
+                        <legend>Sections personnalisées</legend>
+                        <div class="field-help">Ajoutez des sections personnalisées pour des informations supplémentaires</div>
                         
-                        <!-- Custom Sections -->
-                        <fieldset class="form-section">
-                            <legend>Sections personnalisées</legend>
-                            <p class="field-help">Ajoutez des sections personnalisées pour des informations supplémentaires</p>
-                            
-                            <div id="custom-sections-container">
-                                <!-- Custom sections will be added here -->
-                            </div>
-                            <button type="button" id="add-custom-section" class="secondary-button">+ Ajouter une section personnalisée</button>
-                        </fieldset>
-                        
-                        <button type="submit" class="submit-button">Créer le cas</button>
-                    </form>
-                </div>
-                
-                <!-- File Upload Section -->
-                <div id="file-upload-section" class="upload-section hidden">
-                    <form id="upload-form" enctype="multipart/form-data">
+                        <div id="custom-sections-container">
+                            <!-- Custom sections will be added here -->
+                        </div>
+                        <button type="button" id="add-custom-section" class="btn btn-secondary">+ Ajouter une section personnalisée</button>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Créer le cas</button>
+                        <button type="button" class="btn btn-secondary">Annuler</button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- File Upload Section -->
+            <div id="file-upload-section" class="upload-section hidden">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="case-number">Numéro du cas :</label>
-                            <input type="number" id="case-number" name="case_number" min="1">
+                            <input type="number" id="case-number" name="case_number" min="1" required>
                         </div>
                         <div class="form-group">
                             <label for="specialty">Spécialité :</label>
-                            <input type="text" id="specialty" name="specialty">
+                            <input type="text" id="specialty" name="specialty" required>
                         </div>
-                        <div class="form-group">
-                            <label for="case-file">Fichier du cas (PDF, Word, etc.) :</label>
-                            <input type="file" id="case-file" name="case_file" accept=".pdf,.doc,.docx">
-                        </div>
-                        <div class="form-group">
-                            <label for="image-files">Images associées :</label>
-                            <input type="file" id="image-files" name="image_files" accept=".jpg,.jpeg,.png" multiple>
-                            <p class="field-help">Sélectionnez plusieurs images en maintenant la touche Ctrl (ou Cmd sur Mac) enfoncée</p>
-                        </div>
-                        <div id="file-images-preview" class="images-preview"></div>
-                        <button type="submit" class="submit-button">Télécharger et traiter</button>
-                    </form>
-                </div>
-                
-                <div id="upload-status" class="upload-status hidden">
-                    <h3>Statut de l'extraction</h3>
-                    <div id="processing-message"></div>
-                    <div id="extraction-results" class="extraction-results"></div>
-                </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="case-file">Fichier du cas (PDF, Word, etc.) :</label>
+                        <input type="file" id="case-file" name="case_file" accept=".pdf,.doc,.docx">
+                    </div>
+                    <div class="form-group">
+                        <label for="image-files">Images associées :</label>
+                        <input type="file" id="image-files" name="image_files" accept=".jpg,.jpeg,.png" multiple>
+                        <div class="field-help">Sélectionnez plusieurs images en maintenant la touche Ctrl (ou Cmd sur Mac) enfoncée</div>
+                    </div>
+                    <div id="file-images-preview" class="images-preview"></div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Télécharger et traiter</button>
+                        <button type="button" class="btn btn-secondary">Annuler</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div id="upload-status" class="upload-status hidden">
+                <h3>Statut de l'extraction</h3>
+                <div id="processing-message"></div>
+                <div id="extraction-results" class="extraction-results"></div>
+            </div>
 
-                <div class="case-list">
-                    <h2>Cas existants</h2>
-                    <div id="existing-cases">
-                        {% if cases %}
-                            <table>
+            <div class="case-list">
+                <h3>Cas existants</h3>
+                <div id="existing-cases">
+                    {% if cases %}
+                        <div class="table-container">
+                            <table class="stations-table">
                                 <thead>
                                     <tr>
                                         <th>Cas #</th>
                                         <th>Spécialité</th>
+                                        <th>Créé le</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -268,292 +316,298 @@
                                     {% for case in cases %}
                                     <tr>
                                         <td>{{ case.case_number }}</td>
-                                        <td>{{ case.specialty }}</td>
+                                        <td><span class="specialty-badge">{{ case.specialty }}</span></td>
+                                        <td>{{ case.created_at.strftime('%d/%m/%Y') }}</td>
                                         <td>
-                                            <button class="view-button" data-case="{{ case.case_number }}">Voir</button>
-                                            <button class="edit-button" data-case="{{ case.case_number }}">Modifier</button>
-                                            <button class="delete-button" data-case="{{ case.case_number }}">Supprimer</button>
+                                            <button class="btn view-button" data-case="{{ case.case_number }}">Voir</button>
+                                            <button class="btn edit-button" data-case="{{ case.case_number }}">Modifier</button>
+                                            <button class="btn delete-button" data-case="{{ case.case_number }}">Supprimer</button>
                                         </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
-                        {% else %}
+                        </div>
+                    {% else %}
+                        <div class="empty-state">
                             <p>Aucun cas n'a été ajouté.</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Stations Management Tab -->
-            <div id="stations-management-tab" class="teacher-tab-content">
-                <div class="stations-management-container">
-                    <div class="section-header">
-                        <h2>Gestion des Stations</h2>
-                        <div class="search-container">
-                            <input type="text" id="teacher-stations-search" placeholder="Rechercher stations..." class="search-input">
-                            <button onclick="searchTeacherStations()" class="search-btn">Rechercher</button>
                         </div>
-                    </div>
-
-                    <div class="stations-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-stations">-</div>
-                            <div class="stat-label">Total Stations</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="avg-completion-rate">-</div>
-                            <div class="stat-label">Taux Utilisation Moyen</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="avg-station-score">-</div>
-                            <div class="stat-label">Score Moyen Stations</div>
-                        </div>
-                    </div>
-
-                    <div class="stations-table-container">
-                        <table class="stations-table" id="teacher-stations-table">
-                            <thead>
-                                <tr>
-                                    <th>Station #</th>
-                                    <th>Spécialité</th>
-                                    <th>Durée (min)</th>
-                                    <th>Créé le</th>
-                                    <th>Modifié le</th>
-                                    <th>Complétions</th>
-                                    <th>Score Moyen</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="teacher-stations-table-body">
-                                <!-- Station data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Student Performance Tab -->
-            <div id="student-performance-tab" class="teacher-tab-content">
-                <div class="performance-management-container">
-                    <div class="section-header">
-                        <h2>Performance des Étudiants</h2>
-                        <div class="search-container">
-                            <input type="text" id="student-search" placeholder="Rechercher par nom ou code..." class="search-input">
-                            <button onclick="searchStudents()" class="search-btn">Rechercher</button>
-                        </div>
-                    </div>
-
-                    <div class="students-overview">
-                        <div class="stat-card">
-                            <div class="stat-number" id="total-students">-</div>
-                            <div class="stat-label">Total Étudiants</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="active-students">-</div>
-                            <div class="stat-label">Étudiants Actifs</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="overall-avg-score">-</div>
-                            <div class="stat-label">Score Moyen Global</div>
-                        </div>
-                    </div>
-
-                    <div class="students-table-container">
-                        <table class="students-table" id="students-performance-table">
-                            <thead>
-                                <tr>
-                                    <th>Code</th>
-                                    <th>Nom</th>
-                                    <th>Consultations</th>
-                                    <th>Stations</th>
-                                    <th>Score Moyen</th>
-                                    <th>Dernière Connexion</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="students-performance-table-body">
-                                <!-- Student performance data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal for viewing case details -->
-            <div id="case-details-modal" class="modal hidden">
-                <div class="modal-content">
-                    <span class="close-modal">&times;</span>
-                    <h3>Détails du Cas</h3>
-                    <div id="case-details-content"></div>
-                </div>
-            </div>
-
-            <!-- Modal for editing case -->
-            <div id="edit-case-modal" class="modal hidden">
-                <div class="modal-content" style="max-width: 95%; max-height: 95%; overflow-y: auto;">
-                    <span class="close-modal edit-close">&times;</span>
-                    <h3>Modifier le Cas <span id="edit-case-number-title"></span></h3>
-                    
-                    <form id="edit-case-form">
-                        <!-- Basic Information -->
-                        <fieldset class="form-section">
-                            <legend>Informations générales</legend>
-                            <div class="form-group">
-                                <label for="edit-specialty">Spécialité :</label>
-                                <input type="text" id="edit-specialty" name="specialty">
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-consultation-time-edit">Durée de consultation (minutes) :</label>
-                                <input type="number" id="edit-consultation-time-edit" name="consultation_time" min="1" max="60" value="10">
-                            </div>
-                        </fieldset>
-                        
-                        <!-- Patient Information -->
-                        <fieldset class="form-section">
-                            <legend>Informations du patient</legend>
-                            <div class="form-group">
-                                <label for="edit-patient-name">Nom du patient :</label>
-                                <input type="text" id="edit-patient-name" name="patient_name">
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-patient-age">Âge :</label>
-                                <input type="number" id="edit-patient-age" name="patient_age" min="0" max="120">
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-patient-gender">Sexe :</label>
-                                <select id="edit-patient-gender" name="patient_gender">
-                                    <option value="">Sélectionnez</option>
-                                    <option value="Masculin">Masculin</option>
-                                    <option value="Féminin">Féminin</option>
-                                    <option value="Autre">Autre</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-patient-occupation">Profession :</label>
-                                <input type="text" id="edit-patient-occupation" name="patient_occupation">
-                            </div>
-                        </fieldset>
-                        
-                        <!-- Medical History -->
-                        <fieldset class="form-section">
-                            <legend>Antécédents médicaux</legend>
-                            <div id="edit-medical-history-container">
-                                <!-- Medical history items will be added here -->
-                            </div>
-                            <button type="button" id="edit-add-medical-history" class="secondary-button">+ Ajouter un antécédent</button>
-                        </fieldset>
-                        
-                        <!-- Symptoms -->
-                        <fieldset class="form-section">
-                            <legend>Symptômes</legend>
-                            <div id="edit-symptoms-container">
-                                <!-- Symptoms will be added here -->
-                            </div>
-                            <button type="button" id="edit-add-symptom" class="secondary-button">+ Ajouter un symptôme</button>
-                        </fieldset>
-                        
-                        <!-- Evaluation Checklist -->
-                        <fieldset class="form-section">
-                            <legend>Grille d'évaluation</legend>
-                            <div id="edit-checklist-container">
-                                <!-- Checklist items will be added here -->
-                            </div>
-                            <button type="button" id="edit-add-checklist-item" class="secondary-button">+ Ajouter un élément</button>
-                        </fieldset>
-                        
-                        <!-- Additional Information -->
-                        <fieldset class="form-section">
-                            <legend>Informations additionnelles</legend>
-                            <div class="form-group">
-                                <label for="edit-diagnosis">Diagnostic correct :</label>
-                                <input type="text" id="edit-diagnosis" name="diagnosis">
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-differential-diagnosis">Diagnostics différentiels :</label>
-                                <textarea id="edit-differential-diagnosis" name="differential_diagnosis" rows="3"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-directives">Directives pour l'étudiant :</label>
-                                <textarea id="edit-directives" name="directives" rows="5"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="edit-additional-notes">Notes supplémentaires :</label>
-                                <textarea id="edit-additional-notes" name="additional_notes" rows="4"></textarea>
-                            </div>
-                        </fieldset>
-                        
-                        <!-- Custom Sections -->
-                        <fieldset class="form-section">
-                            <legend>Sections personnalisées</legend>
-                            <div id="edit-custom-sections-container">
-                                <!-- Custom sections will be added here -->
-                            </div>
-                            <button type="button" id="edit-add-custom-section" class="secondary-button">+ Ajouter une section personnalisée</button>
-                        </fieldset>
-                        
-                        <!-- Images (read-only for now) -->
-                        <fieldset class="form-section">
-                            <legend>Images associées</legend>
-                            <div id="edit-images-container">
-                                <!-- Images will be displayed here -->
-                            </div>
-                            <p class="field-help">Note: Pour modifier les images, veuillez créer un nouveau cas.</p>
-                        </fieldset>
-                        
-                        <div class="form-actions" style="margin-top: 20px; text-align: center;">
-                            <button type="submit" class="submit-button">Sauvegarder les modifications</button>
-                            <button type="button" class="cancel-button" id="edit-cancel-btn">Annuler</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Student Detail Performance Modal -->
-            <div id="student-detail-modal" class="modal hidden">
-                <div class="modal-content" style="max-width: 90%; max-height: 90%;">
-                    <span class="close-modal student-detail-close">&times;</span>
-                    <h3>Performance Détaillée - <span id="student-detail-name"></span></h3>
-                    
-                    <div class="student-detail-stats">
-                        <div class="stat-card">
-                            <div class="stat-number" id="detail-total-workouts">-</div>
-                            <div class="stat-label">Total Consultations</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="detail-unique-stations">-</div>
-                            <div class="stat-label">Stations Jouées</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number" id="detail-average-score">-</div>
-                            <div class="stat-label">Score Moyen</div>
-                        </div>
-                    </div>
-
-                    <div class="detailed-performance-table-container">
-                        <table class="detailed-performance-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Station</th>
-                                    <th>Spécialité</th>
-                                    <th>Score</th>
-                                    <th>Points</th>
-                                    <th>Note</th>
-                                    <th>Statut</th>
-                                    <th>Durée</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="detailed-performance-table-body">
-                                <!-- Detailed performance data will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
+
+        <!-- Stations Management Tab -->
+        <div id="stations-management-tab" class="teacher-tab-content">
+            <div class="section-header">
+                <h2>Gestion des Stations</h2>
+                <div class="search-container">
+                    <input type="text" id="teacher-stations-search" placeholder="Rechercher stations..." class="search-input">
+                    <button onclick="searchTeacherStations()" class="btn btn-primary search-btn">Rechercher</button>
+                </div>
+            </div>
+
+            <div class="stations-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-stations">-</div>
+                    <div class="stat-label">Total Stations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="avg-completion-rate">-</div>
+                    <div class="stat-label">Taux Utilisation Moyen</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="avg-station-score">-</div>
+                    <div class="stat-label">Score Moyen Stations</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="stations-table" id="teacher-stations-table">
+                    <thead>
+                        <tr>
+                            <th>Station #</th>
+                            <th>Spécialité</th>
+                            <th>Durée (min)</th>
+                            <th>Créé le</th>
+                            <th>Modifié le</th>
+                            <th>Complétions</th>
+                            <th>Score Moyen</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="teacher-stations-table-body">
+                        <!-- Station data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Student Performance Tab -->
+        <div id="student-performance-tab" class="teacher-tab-content">
+            <div class="section-header">
+                <h2>Performance des Étudiants</h2>
+                <div class="search-container">
+                    <input type="text" id="student-search" placeholder="Rechercher par nom ou code..." class="search-input">
+                    <button onclick="searchStudents()" class="btn btn-primary search-btn">Rechercher</button>
+                </div>
+            </div>
+
+            <div class="students-overview">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-students">-</div>
+                    <div class="stat-label">Total Étudiants</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="active-students">-</div>
+                    <div class="stat-label">Étudiants Actifs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="overall-avg-score">-</div>
+                    <div class="stat-label">Score Moyen Global</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="students-table" id="students-performance-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Nom</th>
+                            <th>Consultations</th>
+                            <th>Stations</th>
+                            <th>Score Moyen</th>
+                            <th>Dernière Connexion</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="students-performance-table-body">
+                        <!-- Student performance data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
+
+    <!-- Modal for viewing case details -->
+    <div id="case-details-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Détails du Cas</h3>
+            <div id="case-details-content"></div>
+        </div>
+    </div>
+
+    <!-- Modal for editing case -->
+    <div id="edit-case-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 95%; max-height: 95%; overflow-y: auto;">
+            <span class="close-modal edit-close">&times;</span>
+            <h3>Modifier le Cas <span id="edit-case-number-title"></span></h3>
+            
+            <form id="edit-case-form">
+                <!-- Basic Information -->
+                <div class="form-section">
+                    <legend>Informations générales</legend>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-specialty">Spécialité :</label>
+                            <input type="text" id="edit-specialty" name="specialty">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-consultation-time-edit">Durée de consultation (minutes) :</label>
+                            <input type="number" id="edit-consultation-time-edit" name="consultation_time" min="1" max="60" value="10">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Patient Information -->
+                <div class="form-section">
+                    <legend>Informations du patient</legend>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-patient-name">Nom du patient :</label>
+                            <input type="text" id="edit-patient-name" name="patient_name">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-patient-age">Âge :</label>
+                            <input type="number" id="edit-patient-age" name="patient_age" min="0" max="120">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-patient-gender">Sexe :</label>
+                            <select id="edit-patient-gender" name="patient_gender">
+                                <option value="">Sélectionnez</option>
+                                <option value="Masculin">Masculin</option>
+                                <option value="Féminin">Féminin</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-patient-occupation">Profession :</label>
+                            <input type="text" id="edit-patient-occupation" name="patient_occupation">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Medical History -->
+                <div class="form-section">
+                    <legend>Antécédents médicaux</legend>
+                    <div id="edit-medical-history-container">
+                        <!-- Medical history items will be added here -->
+                    </div>
+                    <button type="button" id="edit-add-medical-history" class="btn btn-secondary">+ Ajouter un antécédent</button>
+                </div>
+                
+                <!-- Symptoms -->
+                <div class="form-section">
+                    <legend>Symptômes</legend>
+                    <div id="edit-symptoms-container">
+                        <!-- Symptoms will be added here -->
+                    </div>
+                    <button type="button" id="edit-add-symptom" class="btn btn-secondary">+ Ajouter un symptôme</button>
+                </div>
+                
+                <!-- Evaluation Checklist -->
+                <div class="form-section">
+                    <legend>Grille d'évaluation</legend>
+                    <div id="edit-checklist-container">
+                        <!-- Checklist items will be added here -->
+                    </div>
+                    <button type="button" id="edit-add-checklist-item" class="btn btn-secondary">+ Ajouter un élément</button>
+                </div>
+                
+                <!-- Additional Information -->
+                <div class="form-section">
+                    <legend>Informations additionnelles</legend>
+                    <div class="form-group">
+                        <label for="edit-diagnosis">Diagnostic correct :</label>
+                        <input type="text" id="edit-diagnosis" name="diagnosis">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-differential-diagnosis">Diagnostics différentiels :</label>
+                        <textarea id="edit-differential-diagnosis" name="differential_diagnosis" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-directives">Directives pour l'étudiant :</label>
+                        <textarea id="edit-directives" name="directives" rows="5"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-additional-notes">Notes supplémentaires :</label>
+                        <textarea id="edit-additional-notes" name="additional_notes" rows="4"></textarea>
+                    </div>
+                </div>
+                
+                <!-- Custom Sections -->
+                <div class="form-section">
+                    <legend>Sections personnalisées</legend>
+                    <div id="edit-custom-sections-container">
+                        <!-- Custom sections will be added here -->
+                    </div>
+                    <button type="button" id="edit-add-custom-section" class="btn btn-secondary">+ Ajouter une section personnalisée</button>
+                </div>
+                
+                <!-- Images (read-only for now) -->
+                <div class="form-section">
+                    <legend>Images associées</legend>
+                    <div id="edit-images-container">
+                        <!-- Images will be displayed here -->
+                    </div>
+                    <div class="field-help">Note: Pour modifier les images, veuillez créer un nouveau cas.</div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Sauvegarder les modifications</button>
+                    <button type="button" class="btn btn-secondary" id="edit-cancel-btn">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Student Detail Performance Modal -->
+    <div id="student-detail-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 90%; max-height: 90%;">
+            <span class="close-modal student-detail-close">&times;</span>
+            <h3>Performance Détaillée - <span id="student-detail-name"></span></h3>
+            
+            <div class="student-detail-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="detail-total-workouts">-</div>
+                    <div class="stat-label">Total Consultations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="detail-unique-stations">-</div>
+                    <div class="stat-label">Stations Jouées</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="detail-average-score">-</div>
+                    <div class="stat-label">Score Moyen</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="detailed-performance-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Station</th>
+                            <th>Spécialité</th>
+                            <th>Score</th>
+                            <th>Points</th>
+                            <th>Note</th>
+                            <th>Statut</th>
+                            <th>Durée</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailed-performance-table-body">
+                        <!-- Detailed performance data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/teacher.js') }}"></script>
 </body>

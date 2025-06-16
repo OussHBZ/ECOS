@@ -3,29 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interface Étudiant - OSCE Simulator</title>
+    <title>Interface Étudiant - ECOS FMPM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header class="main-header">
+    <!-- FMPM Header -->
+    <header class="fmpm-header">
+        <div class="container">
             <div class="header-content">
-                <h1>OSCE Simulator - Interface Étudiant</h1>
-                <div class="user-info">
-                    <span>Bienvenue, {{ student_name }}</span>
-                    <a href="{{ url_for('auth.logout') }}" class="logout-btn">Déconnexion</a>
+                <div class="logo-section">
+                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
+                    <div class="brand-text">
+                        <h1 class="brand-title">Interface Étudiant</h1>
+                        <p class="brand-subtitle">Plateforme d'entraînement aux examens cliniques</p>
+                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <div class="user-info">
+                        <div class="user-name">Bienvenue, {{ student_name }}</div>
+                    </div>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Déconnexion</a>
                 </div>
             </div>
-        </header>
+        </div>
+    </header>
 
-        <!-- Navigation Tabs -->
-        <nav class="student-nav-tabs">
-            <button class="nav-tab active" onclick="showStudentTab('practice-tab')">Entraînement</button>
-            <button class="nav-tab" onclick="showStudentTab('competition-tab')">Compétitions</button>
-            <button class="nav-tab" onclick="showStudentTab('stats-tab')">Mes Statistiques</button>
-        </nav>
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs-container">
+        <div class="container">
+            <div class="student-nav-tabs">
+                <button class="nav-tab active" onclick="showStudentTab('practice-tab')">Entraînement</button>
+                <button class="nav-tab" onclick="showStudentTab('competition-tab')">Compétitions</button>
+                <button class="nav-tab" onclick="showStudentTab('stats-tab')">Mes Statistiques</button>
+            </div>
+        </div>
+    </div>
 
+    <div class="main-content">
         <!-- Practice Tab -->
         <div id="practice-tab" class="student-tab-content active">
             <!-- Case Selection Screen -->
@@ -38,7 +53,7 @@
                 <div class="filter-section">
                     <div class="filter-group">
                         <label for="specialty-filter">Filtrer par spécialité:</label>
-                        <select id="specialty-filter">
+                        <select id="specialty-filter" class="filter-select">
                             <option value="">Toutes les spécialités</option>
                             {% for specialty in specialties %}
                             <option value="{{ specialty }}">{{ specialty }}</option>
@@ -64,7 +79,7 @@
                             <p><strong>Créé le:</strong> {{ case.created_at.strftime('%d/%m/%Y') }}</p>
                         </div>
                         <div class="case-actions">
-                            <button class="select-case-btn" data-case="{{ case.case_number }}">
+                            <button class="btn btn-primary select-case-btn" data-case="{{ case.case_number }}">
                                 Sélectionner ce cas
                             </button>
                         </div>
@@ -85,29 +100,20 @@
                 <div class="chat-header">
                     <div class="case-info">
                         <h2 id="current-case-title">Cas en cours</h2>
-                        <button id="view-directives-btn" class="view-button">Voir les directives</button>
+                        <button id="view-directives-btn" class="btn view-button">Voir les directives</button>
                     </div>
                     <div class="timer-container">
                         <span class="timer-label">Temps restant:</span>
                         <span id="timer" class="timer">10:00</span>
                     </div>
-                    <button id="end-chat" class="end-button">Terminer la consultation</button>
+                    <button id="end-chat" class="btn end-button">Terminer la consultation</button>
                 </div>
 
                 <div class="chat-content">
-                    <div id="chat-messages" class="chat-messages">
-                        <!-- Messages will be added here dynamically -->
-                    </div>
-                    
-                    <!-- This is the critical part - ensure it's properly structured -->
+                    <div id="chat-messages" class="chat-messages"></div>
                     <div class="chat-input-container">
-                        <input type="text" 
-                            id="user-input" 
-                            class="chat-input"
-                            placeholder="Tapez votre message ou question..." 
-                            autocomplete="off"
-                            maxlength="500">
-                        <button id="send-btn" class="send-button" type="button">Envoyer</button>
+                        <input type="text" id="user-input" placeholder="Tapez votre message ou question...">
+                        <button id="send-btn" class="btn send-button">Envoyer</button>
                     </div>
                 </div>
             </div>
@@ -117,8 +123,8 @@
                 <div class="evaluation-header">
                     <h2>Résultats de l'évaluation</h2>
                     <div class="evaluation-actions">
-                        <button id="download-evaluation" class="download-button">Télécharger le rapport PDF</button>
-                        <button id="back-to-cases" class="back-button">Nouveau cas</button>
+                        <button id="download-evaluation" class="btn download-button">Télécharger le rapport PDF</button>
+                        <button id="back-to-cases" class="btn back-button">Nouveau cas</button>
                     </div>
                 </div>
                 <div id="evaluation-results" class="evaluation-results">
@@ -159,7 +165,7 @@
                             </div>
                             <span id="progress-text" class="progress-text">0/0 stations</span>
                         </div>
-                        <button onclick="returnToCompetitions()" class="secondary-button">Retour</button>
+                        <button onclick="returnToCompetitions()" class="btn btn-secondary">Retour</button>
                     </div>
 
                     <!-- Waiting Room -->
@@ -184,8 +190,8 @@
                                 </div>
                             </div>
                             <div class="station-actions">
-                                <button onclick="viewCompetitionImages()" id="view-competition-images" class="view-button" style="display: none;">Voir Images</button>
-                                <button onclick="endCurrentStation()" class="end-button">Terminer Station</button>
+                                <button onclick="viewCompetitionImages()" id="view-competition-images" class="btn view-images-button" style="display: none;">Voir Images</button>
+                                <button onclick="endCurrentStation()" class="btn end-button">Terminer Station</button>
                             </div>
                         </div>
 
@@ -202,7 +208,7 @@
                                 <input type="text" id="competition-chat-input" 
                                        placeholder="Tapez votre message..." 
                                        onkeypress="handleCompetitionChatKeypress(event)">
-                                <button onclick="sendCompetitionMessage()" class="send-button">Envoyer</button>
+                                <button onclick="sendCompetitionMessage()" class="btn send-button">Envoyer</button>
                             </div>
                         </div>
                     </div>
@@ -214,8 +220,8 @@
                             
                             <div class="station-results">
                                 <h4>Votre Score</h4>
-                                <div class="score-display">
-                                    <span id="station-score" class="score-large">85%</span>
+                                <div class="evaluation-score">
+                                    <span id="station-score" class="score-value">85%</span>
                                 </div>
                             </div>
 
@@ -230,7 +236,7 @@
                                     <span class="countdown-label">secondes</span>
                                 </div>
                                 <button id="start-next-station" onclick="startNextStation()" 
-                                        class="submit-button" disabled>
+                                        class="btn btn-primary" disabled>
                                     Attendre...
                                 </button>
                             </div>
@@ -243,15 +249,15 @@
                             <h2>Compétition Terminée!</h2>
                             
                             <div class="final-score-summary">
-                                <div class="score-card">
+                                <div class="stat-card">
                                     <h3>Votre Performance</h3>
-                                    <div class="final-score">
-                                        <span id="final-average-score" class="score-large">0%</span>
+                                    <div class="evaluation-score">
+                                        <span id="final-average-score" class="score-value">0%</span>
                                         <span class="score-label">Score Moyen</span>
                                     </div>
                                 </div>
                                 
-                                <div class="rank-card">
+                                <div class="stat-card">
                                     <h3>Classement</h3>
                                     <div class="rank-display">
                                         <span id="final-rank" class="rank-large">1</span>
@@ -260,7 +266,7 @@
                                     </div>
                                 </div>
                                 
-                                <div class="stats-card">
+                                <div class="stat-card">
                                     <h3>Statistiques</h3>
                                     <p><strong>Stations complétées:</strong> <span id="total-stations-completed">0</span></p>
                                     <p><strong>Score total:</strong> <span id="total-score-earned">0</span> points</p>
@@ -275,8 +281,8 @@
                             </div>
 
                             <div class="final-actions">
-                                <button onclick="returnToCompetitions()" class="submit-button">Retour aux Compétitions</button>
-                                <button onclick="downloadCompetitionReport()" class="secondary-button">Télécharger Rapport</button>
+                                <button onclick="returnToCompetitions()" class="btn btn-primary">Retour aux Compétitions</button>
+                                <button onclick="downloadCompetitionReport()" class="btn btn-secondary">Télécharger Rapport</button>
                             </div>
                         </div>
                     </div>
@@ -286,74 +292,72 @@
 
         <!-- Statistics Tab -->
         <div id="stats-tab" class="student-tab-content">
-            <div class="stats-container">
+            <div class="section-header">
+                <h2>Mes Statistiques</h2>
+            </div>
+
+            <!-- Stats Overview -->
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-workouts">0</div>
+                    <div class="stat-label">Consultations totales</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="unique-stations-played">0</div>
+                    <div class="stat-label">Stations uniques</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="overall-average-score">0%</div>
+                    <div class="stat-label">Score moyen</div>
+                </div>
+            </div>
+
+            <!-- Recent Performances -->
+            <div class="performance-section">
+                <h3>Performances Récentes</h3>
+                <div class="performance-table-container">
+                    <table class="performance-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Cas</th>
+                                <th>Spécialité</th>
+                                <th>Score</th>
+                                <th>Note</th>
+                                <th>Statut</th>
+                                <th>Durée</th>
+                            </tr>
+                        </thead>
+                        <tbody id="student-performance-table-body">
+                            <!-- Performance data will be loaded by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Stations Progress -->
+            <div class="stations-section">
                 <div class="section-header">
-                    <h2>Mes Statistiques</h2>
-                </div>
-
-                <!-- Stats Overview -->
-                <div class="stats-overview">
-                    <div class="stat-card">
-                        <div class="stat-number" id="total-workouts">0</div>
-                        <div class="stat-label">Consultations totales</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="unique-stations-played">0</div>
-                        <div class="stat-label">Stations uniques</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="overall-average-score">0%</div>
-                        <div class="stat-label">Score moyen</div>
+                    <h3>Mes Stations</h3>
+                    <div class="search-container">
+                        <input type="text" id="stations-search" placeholder="Rechercher une station..." class="search-input">
+                        <button onclick="searchStations()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
                 </div>
-
-                <!-- Recent Performances -->
-                <div class="performance-section">
-                    <h3>Performances Récentes</h3>
-                    <div class="performance-table-container">
-                        <table class="performance-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Cas</th>
-                                    <th>Spécialité</th>
-                                    <th>Score</th>
-                                    <th>Note</th>
-                                    <th>Statut</th>
-                                    <th>Durée</th>
-                                </tr>
-                            </thead>
-                            <tbody id="student-performance-table-body">
-                                <!-- Performance data will be loaded by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Stations Progress -->
-                <div class="stations-section">
-                    <div class="section-header">
-                        <h3>Mes Stations</h3>
-                        <div class="search-container">
-                            <input type="text" id="stations-search" placeholder="Rechercher une station...">
-                            <button onclick="searchStations()" class="search-btn">Rechercher</button>
-                        </div>
-                    </div>
-                    <div id="stations-grid" class="stations-grid">
-                        <!-- Stations will be loaded by JavaScript -->
-                    </div>
+                <div id="stations-grid" class="stations-grid">
+                    <!-- Stations will be loaded by JavaScript -->
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Images Modal for Competition -->
-        <div id="images-modal" class="modal hidden">
-            <div class="modal-content">
-                <span class="close-modal" onclick="closeImagesModal()">&times;</span>
-                <h3>Images Médicales</h3>
-                <div id="images-content">
-                    <!-- Images will be populated by JavaScript -->
-                </div>
+    <!-- Images Modal for Competition -->
+    <div id="images-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeImagesModal()">&times;</span>
+            <h3>Images Médicales</h3>
+            <div id="images-content">
+                <!-- Images will be populated by JavaScript -->
             </div>
         </div>
     </div>
@@ -361,307 +365,5 @@
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/student.js') }}"></script>
-
-    <!-- Additional Styles -->
-    <style>
-        /* Main Layout */
-        .chat-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            height: 80vh; /* Fixed height */
-            min-height: 600px;
-        }
-
-        .chat-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0; /* Prevent shrinking */
-        }
-
-        .chat-content {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            padding: 20px;
-            min-height: 0; /* Important for flex */
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            background: #fafafa;
-            min-height: 300px; /* Minimum height */
-        }
-
-        /* Fix the input container - this is the critical fix */
-        .chat-input-container {
-            display: flex !important; /* Force display */
-            gap: 15px;
-            padding: 15px 0;
-            border-top: 1px solid #e0e0e0;
-            background: white;
-            flex-shrink: 0; /* Prevent shrinking */
-            position: relative;
-            z-index: 10;
-        }
-
-        .chat-input-container input {
-            flex: 1;
-            padding: 12px 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-            min-width: 0; /* Allow input to shrink */
-        }
-
-        .chat-input-container input:focus {
-            border-color: #2196F3;
-            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
-        }
-
-        .chat-input-container button {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            transition: background 0.3s;
-            min-width: 100px;
-            flex-shrink: 0; /* Prevent button from shrinking */
-        }
-
-        .chat-input-container button:hover {
-            background: #1976D2;
-        }
-
-        .chat-input-container button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-        }
-
-        /* Ensure the input is never hidden */
-        #user-input {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-        }
-
-        #send-btn {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-        }
-
-        /* Message improvements */
-        .message {
-            margin-bottom: 15px;
-            padding: 15px;
-            border-radius: 12px;
-            line-height: 1.6;
-            max-width: 85%;
-            word-wrap: break-word;
-        }
-
-        .message.user {
-            background: #e3f2fd;
-            border-left: 4px solid #2196F3;
-            margin-left: auto;
-            margin-right: 0;
-        }
-
-        .message.assistant {
-            background: #f3e5f5;
-            border-left: 4px solid #9c27b0;
-            margin-left: 0;
-            margin-right: auto;
-        }
-
-        .message.system {
-            background: #fff3e0;
-            border-left: 4px solid #ff9800;
-            font-style: italic;
-            margin: 0 auto;
-            text-align: center;
-        }
-
-        /* Loading indicator */
-        .loading {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 12px;
-            margin-bottom: 15px;
-        }
-
-        .typing-indicator {
-            display: flex;
-            gap: 4px;
-        }
-
-        .typing-indicator span {
-            height: 8px;
-            width: 8px;
-            background: #2196F3;
-            border-radius: 50%;
-            animation: typing 1.4s infinite ease-in-out;
-        }
-
-        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
-        .typing-indicator span:nth-child(3) { animation-delay: 0s; }
-
-        @keyframes typing {
-            0%, 80%, 100% {
-                transform: scale(0.8);
-                opacity: 0.5;
-            }
-            40% {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
-
-        /* Responsive fixes */
-        @media (max-width: 768px) {
-            .chat-container {
-                height: 90vh;
-                margin: 10px;
-                border-radius: 10px;
-            }
-
-            .chat-header {
-                padding: 15px 20px;
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-
-            .chat-content {
-                padding: 15px;
-            }
-
-            .chat-input-container {
-                flex-direction: row; /* Keep horizontal on mobile */
-                gap: 10px;
-                padding: 10px 0;
-            }
-
-            .message {
-                max-width: 95%;
-            }
-        }
-        .download-button {
-            background: #4CAF50 !important;
-            color: white !important;
-            border: none !important;
-            padding: 12px 24px !important;
-            border-radius: 6px !important;
-            cursor: pointer !important;
-            font-weight: bold !important;
-            transition: all 0.3s !important;
-            text-decoration: none !important;
-            display: inline-block !important;
-            font-size: 14px !important;
-            margin-right: 10px !important;
-        }
-
-        .download-button:hover {
-            background: #45a049 !important;
-            transform: translateY(-2px) !important;
-            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3) !important;
-        }
-
-        .download-button:disabled {
-            background: #cccccc !important;
-            cursor: not-allowed !important;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-
-        /* Make sure the evaluation actions are visible */
-        .evaluation-actions {
-            display: flex !important;
-            gap: 15px !important;
-            margin-bottom: 20px !important;
-            padding: 15px !important;
-            background: #f8f9fa !important;
-            border-radius: 8px !important;
-            border: 1px solid #dee2e6 !important;
-        }
-
-        /* Ensure the evaluation container is properly displayed */
-        .evaluation-container {
-            background: white !important;
-            border-radius: 15px !important;
-            padding: 30px !important;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
-            display: block !important;
-        }
-
-        .evaluation-container.hidden {
-            display: none !important;
-        }
-
-        /* Add loading state for download button */
-        .download-button.loading {
-            background: #6c757d !important;
-            cursor: wait !important;
-        }
-
-        .download-button.loading::after {
-            content: " ⏳";
-        }
-
-        /* Success state */
-        .download-button.success {
-            background: #28a745 !important;
-        }
-
-        .download-button.success::after {
-            content: " ✓";
-        }
-
-        /* Error state */
-        .download-button.error {
-            background: #dc3545 !important;
-        }
-
-        .download-button.error::after {
-            content: " ✗";
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .evaluation-actions {
-                flex-direction: column !important;
-                align-items: stretch !important;
-            }
-            
-            .download-button, .back-button {
-                width: 100% !important;
-                margin-right: 0 !important;
-                margin-bottom: 10px !important;
-            }
-        }
-    </style>
 </body>
 </html>
