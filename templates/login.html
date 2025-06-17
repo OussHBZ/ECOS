@@ -5,8 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion - ECOS FMPM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        /* Additional centering styles specific to login page */
+        .login-page-body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .login-main-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .login-content-wrapper {
+            width: 100%;
+            max-width: 500px;
+        }
+    </style>
 </head>
-<body class="login-page">
+<body class="login-page-body">
     <!-- FMPM Header -->
     <header class="fmpm-header">
         <div class="container">
@@ -23,90 +44,91 @@
         </div>
     </header>
 
-    <!-- Centered Login Container -->
-    <div class="container">
-        <div class="login-container">
-            <h1 class="page-title">Connexion au système</h1>
-            
-            <!-- Flash Messages -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    <div class="flash-messages">
-                        {% for category, message in messages %}
-                            <div class="flash-message flash-{{ category }}">
-                                {{ message }}
-                            </div>
-                        {% endfor %}
+    <div class="login-main-container">
+        <div class="login-content-wrapper">
+            <div class="login-container">
+                <h1 class="page-title">Connexion au système</h1>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-messages">
+                            {% for category, message in messages %}
+                                <div class="flash-message flash-{{ category }}">
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- Login Tabs -->
+                <div class="login-tabs">
+                    <button class="login-tab active" onclick="showLoginForm('student')">Étudiant</button>
+                    <button class="login-tab" onclick="showLoginForm('teacher')">Enseignant</button>
+                    <button class="login-tab admin-tab" onclick="showLoginForm('admin')">Administrateur</button>
+                </div>
+                
+                <!-- Student Login Form -->
+                <form method="POST" id="student-form" class="login-form active">
+                    <input type="hidden" name="login_type" value="student">
+                    
+                    <div class="form-group">
+                        <label for="student_code">Code étudiant (4 chiffres) :</label>
+                        <input type="text" id="student_code" name="student_code" 
+                               pattern="[0-9]{4}" maxlength="4" 
+                               placeholder="Ex: 1234" required>
                     </div>
-                {% endif %}
-            {% endwith %}
-            
-            <!-- Login Tabs -->
-            <div class="login-tabs">
-                <button class="login-tab active" onclick="showLoginForm('student')">Étudiant</button>
-                <button class="login-tab" onclick="showLoginForm('teacher')">Enseignant</button>
-                <button class="login-tab admin-tab" onclick="showLoginForm('admin')">Administrateur</button>
+                    
+                    <div class="form-group">
+                        <label for="student_name">Nom complet :</label>
+                        <input type="text" id="student_name" name="student_name" 
+                               placeholder="Ex: Jean Dupont" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
+                    
+                    <p class="field-help" style="margin-top: 15px; text-align: center;">
+                        Nouvel étudiant ? Votre compte sera créé automatiquement.
+                    </p>
+                </form>
+                
+                <!-- Teacher Login Form -->
+                <form method="POST" id="teacher-form" class="login-form">
+                    <input type="hidden" name="login_type" value="teacher">
+                    
+                    <div class="form-group">
+                        <label for="teacher_access_code">Code d'accès enseignant :</label>
+                        <input type="password" id="teacher_access_code" name="access_code" 
+                               placeholder="Entrez le code d'accès" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
+                    
+                    <p class="field-help" style="margin-top: 15px; text-align: center;">
+                        Demandez le code d'accès à votre coordinateur.
+                    </p>
+                </form>
+                
+                <!-- Administrator Login Form -->
+                <form method="POST" id="admin-form" class="login-form">
+                    <input type="hidden" name="login_type" value="admin">
+                    
+                    <div class="form-group">
+                        <label for="admin_access_code">Code d'accès administrateur :</label>
+                        <input type="password" id="admin_access_code" name="access_code" 
+                               placeholder="Entrez le code administrateur" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
+                    
+                    <p class="field-help" style="margin-top: 15px; text-align: center;">
+                        Accès réservé aux administrateurs système.
+                    </p>
+                </form>
             </div>
             
-            <!-- Student Login Form -->
-            <form method="POST" id="student-form" class="login-form active">
-                <input type="hidden" name="login_type" value="student">
-                
-                <div class="form-group">
-                    <label for="student_code">Code étudiant (4 chiffres) :</label>
-                    <input type="text" id="student_code" name="student_code" 
-                           pattern="[0-9]{4}" maxlength="4" 
-                           placeholder="Ex: 1234" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="student_name">Nom complet :</label>
-                    <input type="text" id="student_name" name="student_name" 
-                           placeholder="Ex: Jean Dupont" required>
-                </div>
-                
-                <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                
-                <p class="field-help" style="margin-top: 15px; text-align: center;">
-                    Nouvel étudiant ? Votre compte sera créé automatiquement.
-                </p>
-            </form>
-            
-            <!-- Teacher Login Form -->
-            <form method="POST" id="teacher-form" class="login-form">
-                <input type="hidden" name="login_type" value="teacher">
-                
-                <div class="form-group">
-                    <label for="teacher_access_code">Code d'accès enseignant :</label>
-                    <input type="password" id="teacher_access_code" name="access_code" 
-                           placeholder="Entrez le code d'accès" required>
-                </div>
-                
-                <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                
-                <p class="field-help" style="margin-top: 15px; text-align: center;">
-                    Demandez le code d'accès à votre coordinateur.
-                </p>
-            </form>
-            
-            <!-- Administrator Login Form -->
-            <form method="POST" id="admin-form" class="login-form">
-                <input type="hidden" name="login_type" value="admin">
-                
-                <div class="form-group">
-                    <label for="admin_access_code">Code d'accès administrateur :</label>
-                    <input type="password" id="admin_access_code" name="access_code" 
-                           placeholder="Entrez le code administrateur" required>
-                </div>
-                
-                <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                
-                <p class="field-help" style="margin-top: 15px; text-align: center;">
-                    Accès réservé aux administrateurs système.
-                </p>
-            </form>
-            
-            <div style="text-align: center; margin-top: 30px;">
+            <div style="text-align: center; margin-top: 20px;">
                 <a href="{{ url_for('index') }}" class="btn btn-secondary" style="text-decoration: none;">
                     ← Retour à l'accueil
                 </a>

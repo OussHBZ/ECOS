@@ -1526,6 +1526,25 @@ a:hover {
         padding: 10px;
     }
 }
+
+@media (max-width: 768px) {
+  .container {
+    padding: 10px;
+  }
+  
+  .login-container {
+    margin: 20px auto;
+    padding: 30px 25px;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-container {
+    margin: 10px auto;
+    padding: 25px 20px;
+  }
+}
 /* ========================================
    Directives and Instructions
    ======================================== */
@@ -1813,16 +1832,16 @@ a:hover {
    Login Page Styles
    ======================================== */
 .login-container {
-  max-width: 500px;
   width: 100%;
+  max-width: 500px;
+  margin: 0 auto; /* This ensures horizontal centering */
   background: var(--white);
-  padding: 40px;
+  padding: 50px 40px;
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-medium);
   border: 2px solid var(--border-color);
   position: relative;
   overflow: hidden;
-  margin: 0;
 }
 
 .login-container::before {
@@ -1933,6 +1952,7 @@ body.login-page {
 
 .login-form {
   display: none;
+  text-align: left;
 }
 
 .login-form.active {
@@ -3340,6 +3360,23 @@ button:disabled {
 .submit-button {
     background: #4CAF50;
     color: white;
+    width: 100%;
+    justify-content: center;
+    margin: 20px 0;
+  }
+
+  .login-container + div {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.login-page-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: var(--background-light);
 }
 
 .submit-button:hover {
