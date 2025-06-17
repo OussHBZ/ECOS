@@ -7,6 +7,7 @@ from datetime import datetime
 import time
 import random
 import json, tempfile
+from simple_pdf_generator import create_competition_pdf_report
 
 student_bp = Blueprint('student', __name__)
 logger = logging.getLogger(__name__)
@@ -359,39 +360,113 @@ def complete_competition_station():
 def download_competition_report(session_id):
     """Download competition report for the student"""
     try:
-        # Get student's competition session
+        # Get the student's competition session
         student_session = StudentCompetitionSession.query.filter_by(
             session_id=session_id,
             student_id=current_user.id
         ).first()
         
         if not student_session:
+            logger.error(f"Student session not found for session {session_id} and student {current_user.id}")
             return jsonify({"error": "Session de compétition non trouvée"}), 404
         
         if student_session.status != 'completed':
+            logger.error(f"Competition not completed yet for session {session_id} and student {current_user.id}")
             return jsonify({"error": "La compétition n'est pas encore terminée"}), 400
         
-        # Get competition session
+        # Get the competition session details
         competition_session = CompetitionSession.query.get(session_id)
         if not competition_session:
             return jsonify({"error": "Session de compétition non trouvée"}), 404
         
-        # Generate competition report
-        report_data = generate_competition_report(student_session, competition_session)
+        # Get all station assignments for this student
+        station_assignments = StudentStationAssignment.query.filter_by(
+            student_session_id=student_session.id
+        ).order_by(StudentStationAssignment.station_order).all()
         
-        if report_data:
+        # Prepare conversation data for PDF generation
+        conversations_data = []
+        total_score = 0
+        total_possible = 0
+        
+        for assignment in station_assignments:
+            if assignment.status == 'completed' and assignment.performance_data:
+                try:
+                    # Parse performance data
+                    if isinstance(assignment.performance_data, str):
+                        perf_data = json.loads(assignment.performance_data)
+                    else:
+                        perf_data = assignment.performance_data
+                    
+                    # Get case information
+                    case = PatientCase.query.filter_by(case_number=assignment.case_number).first()
+                    
+                    # Extract conversation and evaluation
+                    conversation = perf_data.get('conversation_transcript', [])
+                    evaluation_results = perf_data.get('evaluation_results', {})
+                    
+                    # Add to conversations data
+                    conversations_data.append({
+                        'station_number': assignment.station_order,
+                        'case_number': assignment.case_number,
+                        'specialty': case.specialty if case else 'Unknown',
+                        'conversation': conversation,
+                        'evaluation': evaluation_results,
+                        'score': perf_data.get('percentage_score', 0),
+                        'points_earned': perf_data.get('points_earned', 0),
+                        'points_total': perf_data.get('points_total', 0)
+                    })
+                    
+                    # Update totals
+                    total_score += perf_data.get('points_earned', 0)
+                    total_possible += perf_data.get('points_total', 0)
+                    
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    logger.error(f"Error parsing performance data for assignment {assignment.id}: {str(e)}")
+                    continue
+        
+        if not conversations_data:
+            return jsonify({"error": "Aucune donnée de performance trouvée"}), 404
+        
+        # Calculate overall statistics
+        overall_percentage = round((total_score / total_possible * 100) if total_possible > 0 else 0)
+        avg_score = round(sum(conv['score'] for conv in conversations_data) / len(conversations_data))
+        
+        # Create competition summary
+        competition_summary = {
+            'session_name': competition_session.name,
+            'student_name': current_user.name,
+            'student_code': current_user.student_code,
+            'completed_at': student_session.completed_at.strftime('%d/%m/%Y %H:%M') if student_session.completed_at else 'N/A',
+            'total_stations': len(conversations_data),
+            'total_score': total_score,
+            'total_possible': total_possible,
+            'overall_percentage': overall_percentage,
+            'average_score': avg_score,
+            'rank': student_session.get_rank() if hasattr(student_session, 'get_rank') else 'N/A'
+        }
+        
+        # Generate PDF report
+        pdf_filename = create_competition_pdf_report(
+            competition_summary,
+            conversations_data
+        )
+        
+        if pdf_filename:
+            temp_dir = tempfile.gettempdir()
             return send_from_directory(
-                tempfile.gettempdir(),
-                report_data['filename'],
+                temp_dir,
+                pdf_filename,
                 as_attachment=True,
-                download_name=f"competition_report_{current_user.student_code}_{session_id}.pdf"
+                download_name=f"competition_report_{current_user.student_code}_{competition_session.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mimetype='application/pdf'
             )
         else:
-            return jsonify({"error": "Erreur lors de la génération du rapport"}), 500
-            
+            return jsonify({"error": "Erreur lors de la génération du rapport PDF"}), 500
+        
     except Exception as e:
-        logger.error(f"Error downloading competition report: {str(e)}")
-        return jsonify({"error": "Erreur lors du téléchargement du rapport"}), 500
+        logger.error(f"Error generating competition report: {str(e)}", exc_info=True)
+        return jsonify({"error": "Erreur lors de la génération du rapport"}), 500
     
 @student_bp.route('/stats')
 @student_required
@@ -593,24 +668,29 @@ def get_competition_results(session_id):
         
         # Find student's position
         student_rank = 1
+        student_data = None
         for entry in leaderboard:
             if entry['student_id'] == current_user.id:
                 student_rank = entry['rank']
+                student_data = entry
                 break
         
         return jsonify({
+            'session_id': session_id,
+            'session_name': competition_session.name,
             'final_score': student_session.get_average_score(),
             'total_stations': competition_session.stations_per_session,
             'completed_stations': student_session.get_completed_stations_count(),
             'rank': student_rank,
             'total_participants': competition_session.get_participant_count(),
-            'leaderboard': leaderboard[:10]  # Top 10
+            'leaderboard': leaderboard[:10],  # Top 10
+            'student_data': student_data
         })
         
     except Exception as e:
         logger.error(f"Error getting competition results: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @student_bp.route('/competition/debug', methods=['GET'])
 @student_required
 def debug_competition_status():

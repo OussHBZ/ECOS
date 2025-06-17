@@ -1276,8 +1276,8 @@ function displayCompetitionResultsModal(results, sessionId) {
 function closeCompetitionResultsModal() {
     const modal = document.getElementById('competition-results-modal');
     if (modal) {
+        modal.classList.add('hidden');
         modal.classList.remove('visible');
-        modal.style.display = 'none';
     }
 }
 
@@ -1550,49 +1550,34 @@ function displayAvailableCompetitions(competitions) {
     let html = '<div class="competitions-grid">';
     
     competitions.forEach(competition => {
-        const canJoin = competition.can_join;
-        const canContinue = competition.can_continue;
-        const isCompleted = competition.status === 'completed';
-        
-        let statusClass = `status-${competition.status}`;
-        let actionButtons = '';
-        
-        if (canJoin) {
-            actionButtons = `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>`;
-        } else if (canContinue) {
-            actionButtons = `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>`;
-        } else if (isCompleted) {
-            actionButtons = `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>`;
-        }
-        
-        // Additional status info
-        let statusInfo = '';
-        if (competition.status === 'scheduled') {
-            statusInfo = `<p><strong>Participants connectés:</strong> ${competition.logged_in_count}/${competition.participant_count}</p>`;
-        } else if (competition.status === 'active' && competition.progress > 0) {
-            statusInfo = `<p><strong>Progrès:</strong> ${competition.progress}% (Station ${competition.current_station}/${competition.stations_per_session})</p>`;
-        }
+        const canJoin = competition.can_join && competition.student_status === 'registered';
+        const canContinue = competition.can_continue && ['logged_in', 'active', 'between_stations'].includes(competition.student_status);
+        const canViewResults = competition.status === 'completed' && competition.student_status === 'completed';
         
         html += `
-            <div class="competition-card ${statusClass}">
+            <div class="competition-card ${competition.status}">
                 <div class="competition-header">
                     <h3>${competition.name}</h3>
-                    <span class="competition-status-badge ${statusClass}">${competition.status_display}</span>
+                    <span class="competition-status-badge status-${competition.status}">${competition.status_display}</span>
                 </div>
                 
                 <div class="competition-info">
                     <p><strong>Début:</strong> ${competition.start_time}</p>
                     <p><strong>Fin:</strong> ${competition.end_time}</p>
                     <p><strong>Stations:</strong> ${competition.stations_per_session} stations de ${competition.time_per_station} min</p>
-                    ${statusInfo}
+                    <p><strong>Participants:</strong> ${competition.logged_in_count}/${competition.participant_count} connectés</p>
                 </div>
 
                 <div class="student-progress">
                     <p><strong>Mon statut:</strong> ${getStudentStatusDisplay(competition.student_status)}</p>
+                    ${competition.progress > 0 ? `<p><strong>Progrès:</strong> ${competition.progress}%</p>` : ''}
                 </div>
 
                 <div class="competition-actions">
-                    ${actionButtons}
+                    ${canJoin ? `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>` : ''}
+                    ${canContinue ? `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>` : ''}
+                    ${canViewResults ? `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>` : ''}
+                    ${canViewResults ? `<button onclick="downloadCompetitionReport(${competition.id})" class="secondary-button">Télécharger Rapport</button>` : ''}
                 </div>
             </div>
         `;
@@ -1877,29 +1862,18 @@ async function loadFinalResults() {
 async function viewCompetitionResults(sessionId) {
     try {
         const response = await authenticatedFetch(`/student/competition/${sessionId}/results`);
-        
-        if (response.ok) {
-            const results = await response.json();
-            
-            // Store session ID for interface
-            currentCompetitionId = sessionId;
-            
-            // Hide competitions list and show results
-            const competitionsContainer = document.getElementById('available-competitions-container');
-            const competitionInterface = document.getElementById('competition-session-interface');
-            
-            if (competitionsContainer) competitionsContainer.style.display = 'none';
-            if (competitionInterface) competitionInterface.classList.remove('hidden');
-            
-            // Show final results directly
-            showFinalResults(results);
-            
-        } else {
+        if (!response.ok) {
             throw new Error('Failed to load competition results');
         }
+        
+        const results = await response.json();
+        
+        // Display detailed results in a modal
+        showCompetitionResultsModal(results);
+        
     } catch (error) {
-        console.error('Error viewing competition results:', error);
-        showError('Erreur lors du chargement des résultats');
+        console.error('Error loading competition results:', error);
+        showError('Erreur lors du chargement des résultats détaillés');
     }
 }
 
@@ -1924,11 +1898,92 @@ function downloadCompetitionReport() {
     document.body.removeChild(link);
 }
 
+// Add function to show competition results modal
+function showCompetitionResultsModal(results) {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('competition-results-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'competition-results-modal';
+        modal.className = 'modal hidden';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px;">
+                <span class="close-modal" onclick="closeCompetitionResultsModal()">&times;</span>
+                <h3>Résultats Détaillés de la Compétition</h3>
+                <div id="competition-results-content"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    const content = document.getElementById('competition-results-content');
+    
+    let resultsHTML = `
+        <div class="competition-results-summary">
+            <h4>${results.session_name}</h4>
+            <div class="results-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Score Final:</span>
+                    <span class="stat-value">${results.final_score}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Classement:</span>
+                    <span class="stat-value">${results.rank}/${results.total_participants}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Stations Complétées:</span>
+                    <span class="stat-value">${results.completed_stations}/${results.total_stations}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="leaderboard-section">
+            <h5>Classement (Top 10)</h5>
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rang</th>
+                        <th>Étudiant</th>
+                        <th>Score Moyen</th>
+                        <th>Stations</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    results.leaderboard.forEach(entry => {
+        const isCurrentUser = entry.student_id === results.student_data?.student_id;
+        const rowClass = isCurrentUser ? 'current-user-row' : '';
+        
+        resultsHTML += `
+            <tr class="${rowClass}">
+                <td>${entry.rank}</td>
+                <td>${entry.student_name} ${isCurrentUser ? '<strong>(Vous)</strong>' : ''}</td>
+                <td>${entry.average_score}%</td>
+                <td>${entry.stations_completed}</td>
+            </tr>
+        `;
+    });
+    
+    resultsHTML += `
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="download-section" style="text-align: center; margin-top: 20px;">
+            <button class="submit-button" onclick="downloadCompetitionReport(${results.session_id})">
+                Télécharger Rapport Détaillé
+            </button>
+        </div>
+    `;
+    
+    content.innerHTML = resultsHTML;
+    modal.classList.remove('hidden');
+    modal.classList.add('visible');
+}
 
 // Show final results
 function showFinalResults(result) {
-    console.log('Showing final results:', result);
-    
     hideAllCompetitionScreens();
     const finalResults = document.getElementById('final-results');
     if (finalResults) {
@@ -1958,13 +2013,20 @@ function showFinalResults(result) {
         totalStationsCompleted.textContent = result.total_stations;
     }
     
-    if (result.completed_stations !== undefined && totalStationsCompleted) {
-        totalStationsCompleted.textContent = result.completed_stations;
+    if (result.total_score !== undefined && totalScoreEarned) {
+        totalScoreEarned.textContent = result.total_score;
     }
     
     // Display leaderboard
     if (result.leaderboard) {
         displayFinalLeaderboard(result.leaderboard);
+    }
+    
+    // Set up download report button with correct session ID
+    const downloadReportBtn = document.getElementById('download-competition-report');
+    if (downloadReportBtn && currentCompetitionId) {
+        downloadReportBtn.onclick = () => downloadCompetitionReport(currentCompetitionId);
+        downloadReportBtn.style.display = 'inline-block';
     }
 }
 
@@ -2927,15 +2989,51 @@ function createScoreGauge(percentage) {
 }
 // Download competition report function
 function downloadCompetitionReport(sessionId) {
-    try {
-        // Generate a simple report URL or create a PDF download
-        const reportUrl = `/student/competition/${sessionId}/report`;
-        window.location.href = reportUrl;
-    } catch (error) {
-        console.error('Error downloading competition report:', error);
-        alert('Erreur lors du téléchargement du rapport de compétition');
+    if (!sessionId) {
+        showError('ID de session de compétition non disponible');
+        return;
+    }
+    
+    console.log('Downloading competition report for session:', sessionId);
+    
+    // Create download URL
+    const downloadUrl = `/student/competition/${sessionId}/report`;
+    
+    // Show loading state
+    const downloadBtn = document.getElementById('download-competition-report');
+    if (downloadBtn) {
+        const originalText = downloadBtn.textContent;
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = 'Génération...';
+        
+        // Create a hidden iframe to trigger download
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = downloadUrl;
+        
+        // Handle download completion/error
+        iframe.onload = () => {
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = originalText;
+            }, 1000);
+        };
+        
+        iframe.onerror = () => {
+            document.body.removeChild(iframe);
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = originalText;
+            showError('Erreur lors du téléchargement du rapport');
+        };
+        
+        document.body.appendChild(iframe);
+    } else {
+        // Fallback: direct window location
+        window.location.href = downloadUrl;
     }
 }
+
 // Function to ensure input visibility
 function ensureInputVisibility() {
     const userInput = document.getElementById('user-input');

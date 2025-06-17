@@ -1292,6 +1292,30 @@ class StudentCompetitionSession(db.Model):
         """String representation"""
         return f'<StudentCompetitionSession {self.id}: Student {self.student_id} in Session {self.session_id} ({self.status})>'
 
+    def get_rank(self):
+        """Get the student's rank in the competition"""
+        try:
+            if self.status != 'completed':
+                return 'N/A'
+            
+            # Get the competition session
+            competition = CompetitionSession.query.get(self.session_id)
+            if not competition:
+                return 'N/A'
+            
+            # Get leaderboard
+            leaderboard = competition.get_leaderboard()
+            
+            # Find this student's rank
+            for entry in leaderboard:
+                if entry['student_id'] == self.student_id:
+                    return entry['rank']
+            
+            return 'N/A'
+        except Exception as e:
+            logger.error(f"Error getting rank for student competition session: {str(e)}")
+            return 'N/A'
+
 class StudentStationAssignment(db.Model):
     """Model for tracking individual station assignments within a student's competition session"""
     __tablename__ = 'student_station_assignments'

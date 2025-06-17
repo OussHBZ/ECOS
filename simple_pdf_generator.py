@@ -14,6 +14,7 @@ from reportlab.platypus import Frame, BaseDocTemplate, PageTemplate
 logger = logging.getLogger(__name__)
 
 
+
 class SimpleConsultationPDF(BaseDocTemplate):
     """Simplified PDF document template for OSCE consultation reports without renderPM dependency"""
     
@@ -687,3 +688,197 @@ def create_competition_report_pdf(report_data):
     doc.build(elements)
     
     return filename
+
+def create_competition_pdf_report(competition_summary, conversations_data):
+    """Create a comprehensive PDF report for competition results"""
+    try:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"competition_report_{competition_summary['student_code']}_{timestamp}.pdf"
+        temp_path = os.path.join(tempfile.gettempdir(), filename)
+        
+        # Create PDF document
+        doc = SimpleDocTemplate(temp_path, pagesize=A4)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.darkblue,
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        
+        header_style = ParagraphStyle(
+            'CustomHeader',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.darkblue,
+            spaceAfter=12
+        )
+        
+        subheader_style = ParagraphStyle(
+            'CustomSubHeader',
+            parent=styles['Heading3'],
+            fontSize=12,
+            textColor=colors.darkred,
+            spaceAfter=8
+        )
+        
+        # Title
+        story.append(Paragraph("RAPPORT DE COMPÉTITION OSCE", title_style))
+        story.append(Spacer(1, 20))
+        
+        # Competition information
+        story.append(Paragraph("INFORMATIONS GÉNÉRALES", header_style))
+        
+        info_data = [
+            ["Session de compétition:", competition_summary['session_name']],
+            ["Étudiant:", f"{competition_summary['student_name']} ({competition_summary['student_code']})"],
+            ["Date de completion:", competition_summary['completed_at']],
+            ["Nombre de stations:", str(competition_summary['total_stations'])],
+            ["Score total:", f"{competition_summary['total_score']}/{competition_summary['total_possible']} points"],
+            ["Pourcentage global:", f"{competition_summary['overall_percentage']}%"],
+            ["Score moyen:", f"{competition_summary['average_score']}%"],
+            ["Classement:", str(competition_summary['rank'])]
+        ]
+        
+        for label, value in info_data:
+            story.append(Paragraph(f"<b>{label}</b> {value}", styles['Normal']))
+        
+        story.append(Spacer(1, 20))
+        
+        # Performance summary chart (textual representation)
+        story.append(Paragraph("RÉSUMÉ DES PERFORMANCES", header_style))
+        
+        # Calculate performance grade
+        overall_percentage = competition_summary['overall_percentage']
+        if overall_percentage >= 90:
+            grade = "Excellent (A)"
+            grade_color = colors.green
+        elif overall_percentage >= 80:
+            grade = "Très Bien (B)"
+            grade_color = colors.blue
+        elif overall_percentage >= 70:
+            grade = "Bien (C)"
+            grade_color = colors.orange
+        elif overall_percentage >= 60:
+            grade = "Satisfaisant (D)"
+            grade_color = colors.gold
+        else:
+            grade = "Insuffisant (F)"
+            grade_color = colors.red
+        
+        grade_style = ParagraphStyle(
+            'GradeStyle',
+            parent=styles['Normal'],
+            fontSize=14,
+            textColor=grade_color,
+            alignment=TA_CENTER,
+            spaceAfter=20
+        )
+        
+        story.append(Paragraph(f"<b>Note globale: {grade}</b>", grade_style))
+        story.append(Spacer(1, 20))
+        
+        # Detailed station results
+        story.append(Paragraph("RÉSULTATS DÉTAILLÉS PAR STATION", header_style))
+        
+        for i, conv_data in enumerate(conversations_data):
+            # Station header
+            station_title = f"Station {conv_data['station_number']} - Cas {conv_data['case_number']} ({conv_data['specialty']})"
+            story.append(Paragraph(station_title, subheader_style))
+            
+            # Station score
+            score_text = f"Score: {conv_data['score']}% ({conv_data['points_earned']}/{conv_data['points_total']} points)"
+            story.append(Paragraph(f"<b>{score_text}</b>", styles['Normal']))
+            story.append(Spacer(1, 10))
+            
+            # Evaluation details if available
+            evaluation = conv_data.get('evaluation', {})
+            if evaluation and 'checklist' in evaluation:
+                story.append(Paragraph("<b>Éléments d'évaluation:</b>", styles['Normal']))
+                
+                for item in evaluation['checklist']:
+                    status_icon = "✅" if item.get('completed') else "❌"
+                    item_text = f"{status_icon} {item.get('description', 'N/A')} ({item.get('points', 1)} pts)"
+                    story.append(Paragraph(item_text, styles['Normal']))
+                    
+                    # Add justification if available
+                    if item.get('justification'):
+                        justification_style = ParagraphStyle(
+                            'Justification',
+                            parent=styles['Normal'],
+                            leftIndent=20,
+                            fontSize=9,
+                            textColor=colors.grey
+                        )
+                        story.append(Paragraph(f"<i>{item['justification']}</i>", justification_style))
+                
+                story.append(Spacer(1, 10))
+            
+            # Conversation summary (if available and not too long)
+            conversation = conv_data.get('conversation', [])
+            if conversation and len(conversation) > 0:
+                story.append(Paragraph("<b>Résumé de la consultation:</b>", styles['Normal']))
+                
+                # Show only first few exchanges to keep PDF manageable
+                shown_messages = 0
+                max_messages = 6  # Show first 6 messages
+                
+                for msg in conversation:
+                    if shown_messages >= max_messages:
+                        story.append(Paragraph("<i>[...conversation tronquée...]</i>", styles['Normal']))
+                        break
+                    
+                    if isinstance(msg, dict):
+                        role = msg.get('role', 'unknown')
+                        content = msg.get('content', '')
+                    else:
+                        # Handle string messages
+                        content = str(msg)
+                        role = 'unknown'
+                    
+                    # Truncate very long messages
+                    if len(content) > 200:
+                        content = content[:200] + "..."
+                    
+                    if role == 'human':
+                        story.append(Paragraph(f"<b>Médecin:</b> {content}", styles['Normal']))
+                    elif role == 'assistant':
+                        story.append(Paragraph(f"<b>Patient:</b> {content}", styles['Normal']))
+                    elif role == 'system':
+                        story.append(Paragraph(f"<b>Système:</b> {content}", styles['Normal']))
+                    
+                    shown_messages += 1
+            
+            # Add page break between stations (except for the last one)
+            if i < len(conversations_data) - 1:
+                story.append(PageBreak())
+            else:
+                story.append(Spacer(1, 20))
+        
+        # Footer with generation info
+        story.append(Spacer(1, 30))
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.grey,
+            alignment=TA_CENTER
+        )
+        
+        generation_time = datetime.now().strftime('%d/%m/%Y à %H:%M')
+        story.append(Paragraph(f"Rapport généré le {generation_time} - Simulateur OSCE", footer_style))
+        
+        # Build PDF
+        doc.build(story)
+        
+        logger.info(f"Competition PDF report generated successfully: {filename}")
+        return filename
+        
+    except Exception as e:
+        logger.error(f"Error creating competition PDF report: {str(e)}", exc_info=True)
+        return None

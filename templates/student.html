@@ -249,29 +249,48 @@
                             <h2>Compétition Terminée!</h2>
                             
                             <div class="final-score-summary">
-                                <div class="stat-card">
+                                <div class="score-card">
                                     <h3>Votre Performance</h3>
-                                    <div class="evaluation-score">
-                                        <span id="final-average-score" class="score-value">0%</span>
+                                    <div class="score-display">
+                                        <span class="score-value" id="final-average-score">0%</span>
                                         <span class="score-label">Score Moyen</span>
                                     </div>
                                 </div>
                                 
-                                <div class="stat-card">
+                                <div class="rank-card">
                                     <h3>Classement</h3>
                                     <div class="rank-display">
-                                        <span id="final-rank" class="rank-large">1</span>
-                                        <span class="rank-separator">/</span>
-                                        <span id="total-competitors" class="rank-total">10</span>
+                                        <span class="rank-value">
+                                            <span id="final-rank">-</span>/<span id="total-competitors">-</span>
+                                        </span>
+                                        <span class="rank-label">Position</span>
                                     </div>
                                 </div>
                                 
-                                <div class="stat-card">
-                                    <h3>Statistiques</h3>
-                                    <p><strong>Stations complétées:</strong> <span id="total-stations-completed">0</span></p>
-                                    <p><strong>Score total:</strong> <span id="total-score-earned">0</span> points</p>
+                                <div class="stations-card">
+                                    <h3>Stations Complétées</h3>
+                                    <div class="stations-display">
+                                        <span class="stations-value" id="total-stations-completed">0</span>
+                                        <span class="stations-label">Stations</span>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            <div class="final-actions">
+                                <button id="download-competition-report" class="submit-button" style="display: none;">
+                                    📄 Télécharger Rapport Détaillé
+                                </button>
+                                <button onclick="returnToCompetitions()" class="secondary-button">
+                                    🏠 Retour aux Compétitions
+                                </button>
+                            </div>
+                            
+                            <div class="final-leaderboard">
+                                <h3>Classement Final (Top 10)</h3>
+                                <div id="final-leaderboard"></div>
+                            </div>
+                        </div>
+                    </div>
 
                             <div class="leaderboard-section">
                                 <h3>Classement Final</h3>
