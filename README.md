@@ -104,6 +104,8 @@ ecos-simulator/
 ├── requirements.txt           # Dépendances Python
 ├── response_template.json     # Template de simulation patient
 ├── .env                       # Variables d'environnement
+├── init_db.py                 # Database Initialization Script for OSCE Competition System
+├── README.md
 ├── blueprints/
 │   ├── admin.py               # Routes administrateur
 │   ├── student.py             # Routes étudiant
@@ -121,6 +123,7 @@ ecos-simulator/
 │   │   ├── admin.js           # Logique interface admin
 │   │   ├── teacher.js         # Logique interface enseignant
 │   │   └── student.js         # Logique interface étudiant
+│   │   └── auth-utils.js      # making authenticated AJAX requests.
 │   └── images/
 │       └── cases/             # Images médicales téléchargées
 ├── uploads/                   # Téléchargements temporaires
