@@ -226,6 +226,22 @@ async function loadAdminCompetitionSessions() {
         } else {
             data.sessions.forEach(session => {
                 const row = document.createElement('tr');
+                
+                // Determine button visibility based on status
+                let actionButtons = `<button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>`;
+                
+                if (session.status === 'scheduled' && session.can_start) {
+                    actionButtons += `<button class="start-button" onclick="startCompetition(${session.id})">Démarrer</button>`;
+                }
+                
+                if (session.status === 'scheduled') {
+                    actionButtons += `<button class="edit-button" onclick="editCompetitionSession(${session.id})">Modifier</button>`;
+                }
+                
+                // Always show delete button, but with different styling
+                const deleteButtonClass = session.status === 'active' ? 'delete-button warning' : 'delete-button';
+                actionButtons += `<button class="${deleteButtonClass}" onclick="deleteCompetitionSession(${session.id})">Supprimer</button>`;
+                
                 row.innerHTML = `
                     <td>${session.name}</td>
                     <td>${session.start_time}</td>
@@ -235,17 +251,13 @@ async function loadAdminCompetitionSessions() {
                     <td><span class="setting-badge">${session.stations_per_session}</span></td>
                     <td><span class="time-badge">${session.time_per_station}min</span></td>
                     <td><span class="status-badge status-${session.status}">${session.status_display}</span></td>
-                    <td>
-                        <button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>
-                        ${session.status === 'scheduled' && session.can_start ? 
-                            `<button class="start-button" onclick="startCompetition(${session.id})">Démarrer</button>` : ''}
-                        ${session.status === 'scheduled' ? 
-                            `<button class="edit-button" onclick="editCompetitionSession(${session.id})">Modifier</button>` : ''}
-                        <button class="delete-button" onclick="deleteCompetitionSession(${session.id})">Supprimer</button>
-                    </td>
+                    <td>${actionButtons}</td>
                 `;
                 tableBody.appendChild(row);
             });
+            
+            // Update status displays
+            setTimeout(updateSessionStatusDisplay, 100);
         }
         
         console.log('Competition sessions loaded successfully');
@@ -461,11 +473,51 @@ async function editCompetitionSession(sessionId) {
 
 // Delete competition session
 async function deleteCompetitionSession(sessionId) {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette session de compétition ? Cette action est irréversible.')) {
-        return;
-    }
-    
     try {
+        // First, get session details to check status
+        const detailsResponse = await authenticatedFetch(`/admin/competition-sessions/${sessionId}`);
+        if (!detailsResponse.ok) {
+            throw new Error('Impossible de récupérer les détails de la session');
+        }
+        
+        const sessionData = await detailsResponse.json();
+        
+        // Create appropriate confirmation message based on session status
+        let confirmMessage = `Êtes-vous sûr de vouloir supprimer la session "${sessionData.name}" ?`;
+        
+        if (sessionData.status === 'active') {
+            confirmMessage = `⚠️ ATTENTION: La session "${sessionData.name}" est actuellement ACTIVE!\n\n`;
+            confirmMessage += `Participants: ${sessionData.participants.length}\n`;
+            confirmMessage += `Stations: ${sessionData.stations.length}\n\n`;
+            confirmMessage += `La suppression d'une session active peut interrompre les consultations en cours.\n\n`;
+            confirmMessage += `Voulez-vous vraiment continuer ?`;
+        } else if (sessionData.status === 'scheduled') {
+            confirmMessage = `Êtes-vous sûr de vouloir supprimer la session programmée "${sessionData.name}" ?\n\n`;
+            confirmMessage += `Cette action supprimera définitivement:\n`;
+            confirmMessage += `• ${sessionData.participants.length} participant(s) inscrits\n`;
+            confirmMessage += `• ${sessionData.stations.length} station(s) assignées\n`;
+            confirmMessage += `• Toutes les données associées\n\n`;
+            confirmMessage += `Cette action est irréversible.`;
+        } else if (sessionData.status === 'completed') {
+            confirmMessage = `Êtes-vous sûr de vouloir supprimer la session terminée "${sessionData.name}" ?\n\n`;
+            confirmMessage += `⚠️ Cette action supprimera également:\n`;
+            confirmMessage += `• Tous les résultats et scores\n`;
+            confirmMessage += `• L'historique des performances\n`;
+            confirmMessage += `• Les données de classement\n\n`;
+            confirmMessage += `Cette action est irréversible.`;
+        }
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+        
+        // Show loading state
+        const deleteButtons = document.querySelectorAll(`button[onclick*="deleteCompetitionSession(${sessionId})"]`);
+        deleteButtons.forEach(btn => {
+            btn.disabled = true;
+            btn.textContent = 'Suppression...';
+        });
+        
         console.log(`Deleting competition session ID: ${sessionId}`);
         
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/delete`, {
@@ -475,16 +527,98 @@ async function deleteCompetitionSession(sessionId) {
         const result = await response.json();
         
         if (response.ok && result.success) {
-            alert(result.message);
-            loadAdminCompetitionSessions(); // Refresh sessions list
+            // Show success message
+            showSuccessMessage(result.message);
+            
+            // Refresh the sessions list
+            await loadAdminCompetitionSessions();
         } else {
-            alert(`Erreur: ${result.error}`);
+            // Show detailed error message
+            const errorMessage = result.error || 'Erreur inconnue lors de la suppression';
+            
+            // Provide specific guidance based on error type
+            if (errorMessage.includes('active participants')) {
+                alert(`❌ ${errorMessage}\n\n💡 Solutions possibles:\n• Attendez que tous les participants terminent\n• Annulez la session depuis l'interface de gestion\n• Contactez les participants pour qu'ils quittent la session`);
+            } else if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
+                alert(`❌ Impossible de supprimer la session car elle contient des données liées.\n\n💡 Cela peut arriver si:\n• Des étudiants ont des résultats enregistrés\n• La session est référencée par d'autres données\n\nVeuillez contacter l'administrateur technique.`);
+            } else {
+                alert(`❌ Erreur: ${errorMessage}`);
+            }
         }
         
     } catch (error) {
         console.error('Error deleting competition session:', error);
-        alert('Erreur lors de la suppression de la session de compétition');
+        alert(`❌ Erreur de connexion: ${error.message}\n\nVérifiez votre connexion et réessayez.`);
+    } finally {
+        // Re-enable delete buttons
+        const deleteButtons = document.querySelectorAll(`button[onclick*="deleteCompetitionSession(${sessionId})"]`);
+        deleteButtons.forEach(btn => {
+            btn.disabled = false;
+            btn.textContent = 'Supprimer';
+        });
     }
+}
+
+function showSuccessMessage(message) {
+    // Create success notification
+    const successDiv = document.createElement('div');
+    successDiv.className = 'success-notification';
+    successDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #4CAF50;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        z-index: 9999;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    successDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>✅ ${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" 
+                    style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px;">&times;</button>
+        </div>
+    `;
+    
+    document.body.appendChild(successDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (successDiv.parentElement) {
+            successDiv.remove();
+        }
+    }, 5000);
+}
+
+function updateSessionStatusDisplay() {
+    // Add visual indicators for session status in the table
+    const sessionRows = document.querySelectorAll('#competition-sessions-table-body tr');
+    
+    sessionRows.forEach(row => {
+        const statusBadge = row.querySelector('.status-badge');
+        const deleteButton = row.querySelector('.delete-button');
+        
+        if (statusBadge && deleteButton) {
+            const status = statusBadge.textContent.toLowerCase();
+            
+            // Add warning for active sessions
+            if (status.includes('cours') || status.includes('active')) {
+                deleteButton.style.background = '#ff9800';
+                deleteButton.title = '⚠️ Session active - suppression avec précaution';
+            } else if (status.includes('programmé') || status.includes('scheduled')) {
+                deleteButton.style.background = '#f44336';
+                deleteButton.title = 'Supprimer la session programmée';
+            } else {
+                deleteButton.style.background = '#9e9e9e';
+                deleteButton.title = 'Supprimer la session terminée';
+            }
+        }
+    });
 }
 
 // Competition session functions (add more as needed)

@@ -925,9 +925,14 @@ def admin_competition_session_details(session_id):
     try:
         session = CompetitionSession.query.get_or_404(session_id)
         
-        # Get participants with their current status
+        # Get participants with their current status - FIX: Properly join with Student
         participants_data = []
         for participant in session.participants:
+            # Access the student through the relationship
+            student = Student.query.get(participant.student_id)
+            if not student:
+                continue
+                
             student_session = StudentCompetitionSession.query.filter_by(
                 session_id=session_id,
                 student_id=participant.student_id
@@ -937,22 +942,15 @@ def admin_competition_session_details(session_id):
                 current_station = f"{student_session.current_station_order}"
                 progress = student_session.get_progress_percentage()
                 status = student_session.status
-                
-                # Get more detailed status info
-                if status == 'active':
-                    current_assignment = student_session.get_current_station_assignment()
-                    if current_assignment:
-                        current_station = f"{current_assignment.station_order} ({current_assignment.case_number})"
-                
             else:
                 current_station = "0"
                 progress = 0
                 status = "registered"
             
             participants_data.append({
-                'id': participant.student.id,
-                'name': participant.student.name,
-                'student_code': participant.student.student_code,
+                'id': student.id,
+                'name': student.name,
+                'student_code': student.student_code,
                 'status': status,
                 'current_station': current_station,
                 'progress': progress
@@ -974,9 +972,6 @@ def admin_competition_session_details(session_id):
         if session.status in ['active', 'completed']:
             leaderboard = session.get_leaderboard()
         
-        # Get logged in count for status checking
-        logged_in_count = session.get_logged_in_count()
-        
         return jsonify({
             'id': session.id,
             'name': session.name,
@@ -991,10 +986,7 @@ def admin_competition_session_details(session_id):
             'randomize_stations': session.randomize_stations,
             'participants': participants_data,
             'stations': stations_data,
-            'leaderboard': leaderboard,
-            'logged_in_count': logged_in_count,
-            'total_participants': session.get_participant_count(),
-            'can_start': session.can_start_competition()
+            'leaderboard': leaderboard
         })
         
     except Exception as e:
@@ -1309,30 +1301,71 @@ def admin_edit_competition_session(session_id):
 @admin_bp.route('/competition-sessions/<int:session_id>/delete', methods=['DELETE'])
 @admin_required
 def admin_delete_competition_session(session_id):
-    """Delete a competition session"""
+    """Delete a competition session using the safe deletion method"""
     try:
         session = CompetitionSession.query.get_or_404(session_id)
         
-        # Only allow deletion of scheduled sessions
-        if session.status not in ['scheduled', 'completed', 'cancelled']:
+        logger.info(f"Attempting to delete session {session_id} '{session.name}' with status: {session.status}")
+        
+        # Check if session can be deleted
+        can_delete, message = session.can_be_deleted()
+        if not can_delete:
+            logger.warning(f"Cannot delete session {session_id}: {message}")
             return jsonify({
                 "success": False,
-                "error": "Cannot delete active sessions"
+                "error": message
             }), 400
         
-        # Delete the session (cascade will handle related records)
-        db.session.delete(session)
-        db.session.commit()
+        # Get deletion info for logging
+        deletion_info = session.get_deletion_info()
+        logger.info(f"Session {session_id} deletion info: {deletion_info}")
         
-        return jsonify({
-            "success": True,
-            "message": "Competition session deleted successfully"
-        })
+        # Perform safe deletion
+        success, result_message = session.safe_delete()
+        
+        if success:
+            db.session.commit()
+            logger.info(f"Successfully deleted session {session_id}: {result_message}")
+            
+            return jsonify({
+                "success": True,
+                "message": f"Session '{session.name}' supprimée avec succès"
+            })
+        else:
+            db.session.rollback()
+            logger.error(f"Failed to delete session {session_id}: {result_message}")
+            
+            return jsonify({
+                "success": False,
+                "error": result_message
+            }), 500
         
     except Exception as e:
-        logger.error(f"Error deleting competition session: {str(e)}")
+        logger.error(f"Unexpected error deleting session {session_id}: {str(e)}", exc_info=True)
         db.session.rollback()
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": f"Erreur interne du serveur: {str(e)}"
         }), 500
+    
+@admin_bp.route('/competition-sessions/<int:session_id>/deletion-info')
+@admin_required
+def get_session_deletion_info(session_id):
+    """Get information about what will be deleted"""
+    try:
+        session = CompetitionSession.query.get_or_404(session_id)
+        
+        can_delete, message = session.can_be_deleted()
+        deletion_info = session.get_deletion_info()
+        
+        return jsonify({
+            "can_delete": can_delete,
+            "message": message,
+            "deletion_info": deletion_info,
+            "session_name": session.name,
+            "session_status": session.status
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting deletion info for session {session_id}: {str(e)}")
+        return jsonify({"error": str(e)}), 500

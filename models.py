@@ -974,6 +974,77 @@ class CompetitionSession(db.Model):
         except Exception as e:
             logger.error(f"Error checking competition completion: {str(e)}")
             return False
+        
+    def safe_delete(self):
+        """Safely delete a competition session and all related data"""
+        try:
+            # Check if session can be deleted
+            if self.status == 'active':
+                active_participants = StudentCompetitionSession.query.filter(
+                    StudentCompetitionSession.session_id == self.id,
+                    StudentCompetitionSession.status.in_(['active', 'between_stations'])
+                ).count()
+                
+                if active_participants > 0:
+                    return False, f"Cannot delete session with {active_participants} active participants"
+            
+            # Delete in correct order to avoid foreign key constraints
+            
+            # 1. Delete student station assignments first
+            student_sessions = StudentCompetitionSession.query.filter_by(session_id=self.id).all()
+            for student_session in student_sessions:
+                # Delete station assignments for this student session
+                StudentStationAssignment.query.filter_by(student_session_id=student_session.id).delete()
+            
+            # 2. Delete student competition sessions
+            StudentCompetitionSession.query.filter_by(session_id=self.id).delete()
+            
+            # 3. Delete competition participants
+            CompetitionParticipant.query.filter_by(session_id=self.id).delete()
+            
+            # 4. Delete station bank assignments
+            CompetitionStationBank.query.filter_by(session_id=self.id).delete()
+            
+            # 5. Finally delete the session itself
+            db.session.delete(self)
+            
+            return True, "Session deleted successfully"
+            
+        except Exception as e:
+            return False, f"Error during deletion: {str(e)}"
+
+    def can_be_deleted(self):
+        """Check if the session can be safely deleted"""
+        if self.status == 'active':
+            active_participants = StudentCompetitionSession.query.filter(
+                StudentCompetitionSession.session_id == self.id,
+                StudentCompetitionSession.status.in_(['active', 'between_stations'])
+            ).count()
+            
+            if active_participants > 0:
+                return False, f"Session has {active_participants} active participants"
+        
+        return True, "Session can be deleted"
+
+    def get_deletion_info(self):
+        """Get information about what will be deleted"""
+        participant_count = CompetitionParticipant.query.filter_by(session_id=self.id).count()
+        station_count = CompetitionStationBank.query.filter_by(session_id=self.id).count()
+        student_sessions_count = StudentCompetitionSession.query.filter_by(session_id=self.id).count()
+        
+        # Count completed performances
+        completed_performances = StudentCompetitionSession.query.filter_by(
+            session_id=self.id,
+            status='completed'
+        ).count()
+        
+        return {
+            'participants': participant_count,
+            'stations': station_count,
+            'student_sessions': student_sessions_count,
+            'completed_performances': completed_performances,
+            'has_results': completed_performances > 0
+        }
     
 class CompetitionParticipant(db.Model):
     """Model for tracking which students are in which competition sessions"""

@@ -17,6 +17,7 @@ const backToCasesBtn = document.getElementById('back-to-cases');
 const downloadEvaluationBtn = document.getElementById('download-evaluation');
 const viewCaseImagesBtn = document.getElementById('view-case-images');
 
+
 // Directives modal functionality
 const directivesModal = document.getElementById('directives-modal');
 const viewDirectivesBtn = document.getElementById('view-directives-btn');
@@ -30,6 +31,10 @@ let countdownTimer = null;
 let currentCompetitionId = null;
 let currentStationData = null;
 let isTimerRunning = false;
+let countdownStartTime = null;
+let countdownDuration = 0;
+let isCountdownActive = false;
+let currentCompetitionState = null;
 
 // Practice variables
 let currentCase = null;
@@ -366,6 +371,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             specialtyFilterPractice.addEventListener('change', filterPracticeCases);
         }
     }
+    if (viewCaseImagesBtn) {
+        viewCaseImagesBtn.addEventListener('click', viewCurrentCaseImages);
+    }
 });
 // check PDF generation status
 
@@ -384,6 +392,34 @@ async function checkPdfStatus() {
         console.error('Error checking PDF status:', error);
     }
 }
+
+// Function to view current case images in practice mode
+async function viewCurrentCaseImages() {
+    if (!currentCase) {
+        alert('Aucun cas sélectionné');
+        return;
+    }
+    
+    try {
+        const response = await authenticatedFetch(`/get_case/${currentCase}`);
+        if (!response.ok) {
+            throw new Error('Failed to load case data');
+        }
+        
+        const caseData = await response.json();
+        
+        if (caseData.images && caseData.images.length > 0) {
+            showImagesModal(caseData.images);
+        } else {
+            alert('Aucune image disponible pour ce cas');
+        }
+        
+    } catch (error) {
+        console.error('Error loading case images:', error);
+        alert('Erreur lors du chargement des images');
+    }
+}
+
 
 // Utility function for authenticated AJAX requests
 async function authenticatedFetch(url, options = {}) {
@@ -647,28 +683,39 @@ function updateCompetitionInterface(status) {
         progressText.textContent = `${status.completed_stations}/${status.total_stations} stations`;
     }
 
-    // Handle different student states
-    switch (status.student_status) {
-        case 'logged_in':
-            showWaitingState();
-            break;
-        case 'active':
-            if (status.current_station) {
-                showStationInterface(status.current_station, status.time_per_station, status.total_stations);
-            } else {
-                console.error('Active status but no current station data');
-                showError('Erreur: station active mais aucune donnée de station');
-            }
-            break;
-        case 'between_stations':
-            showBetweenStations(status.time_between_stations);
-            break;
-        case 'completed':
-            showFinalResults(status);
-            stopCompetitionPolling();
-            break;
-        default:
-            console.log('Unknown student status:', status.student_status);
+    // Create a state key to detect state changes
+    const stateKey = `${status.student_status}_${status.current_station_order}_${status.completed_stations}`;
+    
+    // Only update interface if state has actually changed
+    if (currentCompetitionState !== stateKey) {
+        console.log('Competition state changed from', currentCompetitionState, 'to', stateKey);
+        currentCompetitionState = stateKey;
+        
+        // Handle different student states
+        switch (status.student_status) {
+            case 'logged_in':
+                showWaitingState();
+                break;
+            case 'active':
+                if (status.current_station) {
+                    showStationInterface(status.current_station, status.time_per_station, status.total_stations);
+                }
+                break;
+            case 'between_stations':
+                showBetweenStations(status.time_between_stations);
+                break;
+            case 'completed':
+                showFinalResults(status);
+                stopCompetitionPolling();
+                break;
+            default:
+                console.log('Unknown student status:', status.student_status);
+        }
+    } else {
+        // State hasn't changed, just update the countdown if we're between stations
+        if (status.student_status === 'between_stations' && isCountdownActive) {
+            updateCountdownDisplay();
+        }
     }
 }
 
@@ -684,6 +731,15 @@ function showWaitingState() {
 // Station interface with proper initialization
 function showStationInterface(station, timePerStation, totalStations) {
     console.log('Showing station interface for:', station);
+    
+    // Reset countdown state when entering station
+    isCountdownActive = false;
+    countdownStartTime = null;
+    countdownDuration = 0;
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
     
     hideAllCompetitionScreens();
     const stationInterface = document.getElementById('station-interface');
@@ -708,7 +764,7 @@ function showStationInterface(station, timePerStation, totalStations) {
     // Initialize chat if this is a new station
     if (!currentStationData || currentStationData.case_number !== station.case_number) {
         currentStationData = station;
-        initializeCompetitionStationChat(station);
+        initializeCompetitionStationChat(station.case_number);
     }
 }
 
@@ -772,7 +828,7 @@ async function initializeCompetitionStationChat(station) {
 function startStationTimer(seconds) {
     // Prevent multiple timers
     if (isTimerRunning) {
-        console.log('Timer already running, skipping...');
+        console.log('Station timer already running, skipping...');
         return;
     }
     
@@ -817,6 +873,7 @@ function startStationTimer(seconds) {
     stationTimer = setInterval(updateTimer, 1000);
     console.log('Station timer started with', seconds, 'seconds');
 }
+
 // Initialize competition station chat
 async function initializeCompetitionStationChat(caseNumber) {
     try {
@@ -967,49 +1024,123 @@ function addMessageToCompetitionChat(sender, message) {
 
 // Show between stations with proper countdown
 function showBetweenStations(timeBetween) {
+    console.log('showBetweenStations called with timeBetween:', timeBetween, 'isCountdownActive:', isCountdownActive);
+    
     hideAllCompetitionScreens();
     const betweenStations = document.getElementById('between-stations');
     if (betweenStations) {
         betweenStations.classList.remove('hidden');
     }
     
-    // Start countdown timer
-    startCountdownTimer(timeBetween * 60); // Convert to seconds
+    // Only start countdown if it's not already active
+    if (!isCountdownActive && timeBetween && timeBetween > 0) {
+        console.log('Starting new countdown timer');
+        startCountdownTimer(timeBetween * 60); // Convert to seconds
+    } else if (isCountdownActive) {
+        console.log('Countdown already active, not restarting');
+        // Just update the display
+        updateCountdownDisplay();
+    } else {
+        console.log('No waiting time or countdown already finished');
+        // If no waiting time, enable button immediately
+        const startButton = document.getElementById('start-next-station');
+        if (startButton) {
+            startButton.disabled = false;
+            startButton.textContent = 'Démarrer la prochaine station';
+        }
+        
+        const countdownElement = document.getElementById('countdown-timer');
+        if (countdownElement) {
+            countdownElement.textContent = '0';
+        }
+    }
 }
-
 // Countdown timer with proper cleanup
 function startCountdownTimer(seconds) {
-    if (countdownTimer) {
-        clearInterval(countdownTimer);
+    console.log('startCountdownTimer called with seconds:', seconds);
+    
+    // Don't start if already active
+    if (isCountdownActive) {
+        console.log('Countdown already active, ignoring start request');
+        return;
     }
     
-    let timeLeft = seconds;
+    // Clear any existing countdown timer
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    
+    // Set up countdown state
+    isCountdownActive = true;
+    countdownStartTime = Date.now();
+    countdownDuration = seconds * 1000; // Convert to milliseconds
+    
     const countdownElement = document.getElementById('countdown-timer');
     const startButton = document.getElementById('start-next-station');
     
     if (!countdownElement || !startButton) {
         console.error('Countdown elements not found');
+        isCountdownActive = false;
         return;
     }
     
-    // Disable button initially
+    // Disable the button initially
     startButton.disabled = true;
-    startButton.textContent = 'Attendre...';
+    startButton.textContent = 'Prochaine station dans...';
     
-    function updateCountdown() {
-        countdownElement.textContent = timeLeft;
+    // Start the countdown interval
+    countdownTimer = setInterval(() => {
+        updateCountdownDisplay();
+    }, 1000);
+    
+    // Initial update
+    updateCountdownDisplay();
+    
+    console.log('Countdown timer started successfully');
+}
+
+// Separate function to update countdown display
+function updateCountdownDisplay() {
+    if (!isCountdownActive || !countdownStartTime) {
+        return;
+    }
+    
+    const elapsed = Date.now() - countdownStartTime;
+    const remaining = Math.max(0, countdownDuration - elapsed);
+    const secondsLeft = Math.ceil(remaining / 1000);
+    
+    const countdownElement = document.getElementById('countdown-timer');
+    const startButton = document.getElementById('start-next-station');
+    
+    if (countdownElement) {
+        countdownElement.textContent = secondsLeft;
+    }
+    
+    if (secondsLeft <= 0) {
+        // Countdown finished
+        isCountdownActive = false;
+        countdownStartTime = null;
+        countdownDuration = 0;
         
-        if (timeLeft <= 0) {
+        if (countdownTimer) {
             clearInterval(countdownTimer);
+            countdownTimer = null;
+        }
+        
+        if (startButton) {
             startButton.disabled = false;
             startButton.textContent = 'Démarrer la prochaine station';
         }
-        timeLeft--;
+        
+        if (countdownElement) {
+            countdownElement.textContent = '0';
+        }
+        
+        console.log('Countdown finished');
     }
-    
-    updateCountdown();
-    countdownTimer = setInterval(updateCountdown, 1000);
 }
+
 
 // Start next station function
 async function startNextStation() {
@@ -1019,7 +1150,23 @@ async function startNextStation() {
         button.textContent = 'Préparation...';
     }
     
+    // Stop countdown timer and reset state
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    isCountdownActive = false;
+    countdownStartTime = null;
+    countdownDuration = 0;
+    
+    // Reset competition state to force interface update
+    currentCompetitionState = null;
+    
     try {
+        if (!currentCompetitionId) {
+            throw new Error('No active competition session');
+        }
+        
         const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/next-station`, {
             method: 'POST'
         });
@@ -1028,24 +1175,27 @@ async function startNextStation() {
             const result = await response.json();
             if (result.success) {
                 console.log('Next station started successfully');
-                // The polling system will handle the transition
+                // Force immediate status update
+                await updateCompetitionStatus(currentCompetitionId);
             } else {
                 throw new Error(result.error || 'Failed to start next station');
             }
         } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to start next station');
+            throw new Error('Failed to start next station');
         }
     } catch (error) {
         console.error('Error starting next station:', error);
-        showError(`Erreur lors du démarrage de la prochaine station: ${error.message}`);
+        showError('Erreur lors du démarrage de la prochaine station');
         
+        // Re-enable button on error
         if (button) {
             button.disabled = false;
             button.textContent = 'Démarrer la prochaine station';
         }
     }
 }
+
+
 
 function displayCompetitionResultsModal(results, sessionId) {
     // Create modal if it doesn't exist
@@ -1230,6 +1380,7 @@ function showStationFeedback(result) {
 function stopCompetitionPolling() {
     console.log('Stopping competition polling...');
     
+    // Clear all timers
     if (competitionUpdateInterval) {
         clearInterval(competitionUpdateInterval);
         competitionUpdateInterval = null;
@@ -1243,7 +1394,15 @@ function stopCompetitionPolling() {
         countdownTimer = null;
     }
     
+    // Reset all state variables
     isTimerRunning = false;
+    isCountdownActive = false;
+    countdownStartTime = null;
+    countdownDuration = 0;
+    currentStationData = null;
+    currentCompetitionState = null;
+    
+    console.log('All timers stopped and state reset');
 }
 
 // View competition images
@@ -1257,11 +1416,26 @@ function viewCompetitionImages() {
 
 // Show images modal
 function showImagesModal(images) {
-    const modal = document.getElementById('images-modal');
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('images-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'images-modal';
+        modal.className = 'modal hidden';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close-modal" onclick="closeImagesModal()">&times;</span>
+                <h3>Images du Cas</h3>
+                <div id="images-content"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
     const content = document.getElementById('images-content');
     
-    if (!modal || !content) {
-        console.error('Images modal elements not found');
+    if (!content) {
+        console.error('Images content container not found');
         return;
     }
     
@@ -1272,8 +1446,8 @@ function showImagesModal(images) {
             <div class="image-item">
                 <h4>${image.description || `Image ${index + 1}`}</h4>
                 <img src="${image.path}" alt="${image.description || 'Image médicale'}" 
-                     onclick="showImageModal('${image.path}', '${image.description || 'Image médicale'}')"
-                     style="max-width: 100%; cursor: pointer; border-radius: 8px;">
+                     onclick="openImageModal('${image.path}', '${image.description || 'Image médicale'}')"
+                     style="max-width: 100%; cursor: pointer; border-radius: 8px; margin: 10px 0;">
             </div>
         `;
     });
@@ -1281,6 +1455,7 @@ function showImagesModal(images) {
     imagesHTML += '</div>';
     content.innerHTML = imagesHTML;
     modal.classList.remove('hidden');
+    modal.classList.add('visible');
 }
 
 // Show single image modal
@@ -1320,8 +1495,10 @@ function closeImagesModal() {
     const modal = document.getElementById('images-modal');
     if (modal) {
         modal.classList.add('hidden');
+        modal.classList.remove('visible');
     }
 }
+
 
 // Handle competition chat keypress
 function handleCompetitionChatKeypress(event) {
