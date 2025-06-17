@@ -41,6 +41,58 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, 
 # Import HTTP client
 from httpx import Client
 
+# Model Configuration
+LLAMA_MODELS = {
+    'primary': 'meta-llama/llama-4-scout-17b-16e-instruct',
+    'fallback': 'llama3-8b-8192',
+    'config': {
+        'temperature': 0.1,  # Low for consistent patient responses
+        'max_tokens': 150,   # Concise patient responses
+        'timeout': 30        # Increased for larger model
+    }
+}
+
+def create_groq_client(api_key, http_client):
+    """Create Groq client with model fallback capability"""
+    
+    # Try primary model first
+    try:
+        client = ChatGroq(
+            api_key=api_key,
+            model=LLAMA_MODELS['primary'],
+            temperature=LLAMA_MODELS['config']['temperature'],
+            max_tokens=LLAMA_MODELS['config']['max_tokens'],
+            timeout=LLAMA_MODELS['config']['timeout'],
+            http_client=http_client
+        )
+        
+        # Test the client with a simple request
+        test_messages = [SystemMessage(content="Test")]
+        test_response = client.invoke(test_messages)
+        
+        logger.info(f"Successfully initialized {LLAMA_MODELS['primary']}")
+        return client, LLAMA_MODELS['primary']
+        
+    except Exception as e:
+        logger.warning(f"Primary model {LLAMA_MODELS['primary']} failed: {str(e)}")
+        
+        # Fallback to secondary model
+        try:
+            client = ChatGroq(
+                api_key=api_key,
+                model=LLAMA_MODELS['fallback'],
+                temperature=0,
+                max_tokens=256,
+                http_client=http_client
+            )
+            
+            logger.info(f"Fallback to {LLAMA_MODELS['fallback']} successful")
+            return client, LLAMA_MODELS['fallback']
+            
+        except Exception as fallback_error:
+            logger.error(f"Fallback model also failed: {str(fallback_error)}")
+            raise Exception(f"Both models failed. Primary: {str(e)}, Fallback: {str(fallback_error)}")
+
 def setup_enhanced_logging():
     """Set up enhanced logging with filtering for reduced noise"""
     import logging
@@ -378,14 +430,9 @@ def create_app():
 
     # Initialize ChatGroq client
     try:
-        client = ChatGroq(
-            api_key=api_key,
-            model="llama3-8b-8192",
-            temperature=0,  # Keeping temperature at 0 for more consistent responses
-            max_tokens=256,  # Limit maximum token output for faster responses            
-            http_client=http_client
-        )
-        logger.info("ChatGroq client initialized successfully")
+        client, active_model = create_groq_client(api_key, http_client)
+        app.config['ACTIVE_MODEL'] = active_model
+        logger.info(f"ChatGroq client initialized successfully with model: {active_model}")
     except Exception as e:
         logger.error(f"Error initializing ChatGroq client: {str(e)}")
         raise
@@ -463,30 +510,66 @@ def create_app():
             raise
 
     def initialize_conversation(case_number):
-        """Initialize a new conversation with system prompt and patient data"""
+        """Initialize a new conversation with enhanced patient simulation prompt"""
         try:
             patient_data = load_patient_case(case_number)
             system_template = load_system_template()
             
-            # Format initial system message
-            initial_system_message = (
+            # Create enhanced system message for realistic patient simulation
+            enhanced_system_message = (
                 f"{system_template['content']}\n\n"
-                f"Données du patient:\n"
+                f"=== DONNÉES DU PATIENT (CONFIDENTIELLES) ===\n"
+                f"Vous incarnez ce patient. Utilisez ces informations UNIQUEMENT pour répondre aux questions spécifiques :\n\n"
             )
             
-            # Add patient info to message
-            for key, value in patient_data.items():
-                if key != 'images':  # Skip images array in the system message
-                    initial_system_message += f"{key}: {json.dumps(value, ensure_ascii=False)}\n"
+            # Format patient information more clearly
+            patient_info = patient_data.get('patient_info', {})
+            if patient_info:
+                enhanced_system_message += "INFORMATIONS PERSONNELLES :\n"
+                for key, value in patient_info.items():
+                    if key == 'name':
+                        enhanced_system_message += f"- Nom : {value}\n"
+                    elif key == 'age':
+                        enhanced_system_message += f"- Âge : {value} ans\n"
+                    elif key == 'gender':
+                        enhanced_system_message += f"- Sexe : {value}\n"
+                    elif key == 'occupation':
+                        enhanced_system_message += f"- Profession : {value}\n"
+                    elif key == 'medical_history':
+                        enhanced_system_message += f"- Antécédents médicaux : {', '.join(value) if isinstance(value, list) else value}\n"
             
-            # Create conversation with system message only
-            conversation = [SystemMessage(content=initial_system_message)]
+            # Add symptoms information
+            symptoms = patient_data.get('symptoms', [])
+            if symptoms:
+                enhanced_system_message += "\nSYMPTÔMES ACTUELS :\n"
+                for symptom in symptoms:
+                    enhanced_system_message += f"- {symptom}\n"
             
-            logger.info(f"Initialized conversation for case {case_number}")
+            # Add diagnosis (for AI reference only)
+            diagnosis = patient_data.get('diagnosis', '')
+            if diagnosis:
+                enhanced_system_message += f"\nDIAGNOSTIC (pour référence IA uniquement) : {diagnosis}\n"
+            
+            # Add behavior instructions
+            enhanced_system_message += (
+                "\n=== INSTRUCTIONS DE COMPORTEMENT ===\n"
+                "- Répondez UNIQUEMENT aux questions posées\n"
+                "- Soyez concis (1-2 phrases maximum par réponse)\n"
+                "- Exprimez les émotions appropriées (inquiétude, douleur, etc.)\n"
+                "- Utilisez un langage simple et naturel\n"
+                "- Ne révélez des informations que si elles sont demandées explicitement\n"
+                "- Si vous ne savez pas quelque chose, dites-le simplement\n"
+                "\nDÉBUTEZ la consultation en attendant que l'étudiant vous pose la première question."
+            )
+            
+            # Create conversation with enhanced system message
+            conversation = [SystemMessage(content=enhanced_system_message)]
+            
+            logger.info(f"Initialized enhanced conversation for case {case_number}")
             return conversation
                 
         except Exception as e:
-            logger.error(f"Error initializing conversation: {str(e)}")
+            logger.error(f"Error initializing enhanced conversation: {str(e)}")
             raise
             
     def get_case_metadata():
@@ -698,7 +781,7 @@ def create_app():
 
     @app.route('/chat', methods=['POST'])
     def chat():
-        """Handle chat messages"""
+        """Handle chat messages with enhanced patient simulation"""
         try:
             data = request.get_json()
             message = data.get('message')
@@ -713,11 +796,9 @@ def create_app():
             if not case_number:
                 return jsonify({'error': 'No active case session'}), 400
             
-            logger.info(f"Current conversation format: {type(conversation)} with {len(conversation)} messages")
-            if conversation:
-                logger.info(f"Sample message format: {type(conversation[0])} - {conversation[0] if conversation else 'Empty'}")
+            logger.info(f"Processing message for case {case_number}: {message[:50]}...")
             
-            # Add user message to conversation (ensure dict format)
+            # Add user message to conversation
             user_message = {'role': 'human', 'content': message}
             conversation.append(user_message)
             
@@ -734,22 +815,24 @@ def create_app():
                         elif msg['role'] == 'assistant':
                             langchain_messages.append(AIMessage(content=msg['content']))
                     else:
-                        # Handle string format (shouldn't happen with this fix)
                         logger.warning(f"Unexpected conversation format: {type(msg)} - {msg}")
                         langchain_messages.append(SystemMessage(content=str(msg)))
                 
-                # Get response from Groq
+                # Get response from Groq with enhanced parameters
                 response = client.invoke(langchain_messages)
                 ai_reply = response.content
                 
-                # Add AI response to conversation (ensure dict format)
+                # Validate and enhance the response
+                ai_reply = validate_patient_response(ai_reply, message)
+                
+                # Add AI response to conversation
                 ai_message = {'role': 'assistant', 'content': ai_reply}
                 conversation.append(ai_message)
                 
-                # Update session with dict format
+                # Update session
                 session['current_conversation'] = conversation
                 
-                logger.info(f"Updated conversation with {len(conversation)} messages")
+                logger.info(f"Generated patient response: {ai_reply[:50]}...")
                 
                 return jsonify({
                     'success': True,
@@ -763,6 +846,40 @@ def create_app():
         except Exception as e:
             logger.error(f"Error in chat: {str(e)}")
             return jsonify({'error': str(e)}), 500
+
+    def validate_patient_response(ai_reply, user_message):
+        """Validate and potentially modify the AI response to ensure it follows patient simulation rules"""
+        
+        # Remove common AI assistant phrases that break patient immersion
+        unwanted_phrases = [
+            "En tant qu'IA", "Je suis une intelligence artificielle", 
+            "Comme assistant", "En tant qu'assistant virtuel",
+            "Je ne peux pas", "Je ne suis pas un vrai patient",
+            "Consultez un médecin", "Je vous recommande de",
+            "Il serait préférable de", "Vous devriez"
+        ]
+        
+        for phrase in unwanted_phrases:
+            if phrase.lower() in ai_reply.lower():
+                # If the response contains AI-like language, provide a generic patient response
+                logger.warning(f"AI response contained unwanted phrase: {phrase}")
+                return "Je ne sais pas vraiment, docteur. Que pensez-vous?"
+        
+        # Ensure response is not too long (patient-like brevity)
+        sentences = ai_reply.split('.')
+        if len(sentences) > 3:
+            # Keep only first 2 sentences for conciseness
+            ai_reply = '. '.join(sentences[:2]) + '.'
+            logger.info("Truncated long response for patient simulation")
+        
+        # Add "docteur" occasionally for realism if not present and appropriate
+        if len(ai_reply) > 20 and "docteur" not in ai_reply.lower() and "merci" not in ai_reply.lower():
+            if ai_reply.endswith('.'):
+                ai_reply = ai_reply[:-1] + ", docteur."
+            else:
+                ai_reply += ", docteur."
+        
+        return ai_reply
 
     @app.route('/end_chat', methods=['POST'])
     def end_chat():
