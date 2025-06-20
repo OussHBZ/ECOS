@@ -33,17 +33,25 @@ def login():
             student_code = request.form.get('student_code', '').strip()
             student_name = request.form.get('student_name', '').strip()
             
-            # Validate student code (4 digits)
-            if not re.match(r'^\d{4}$', student_code):
-                flash('Le code étudiant doit contenir exactement 4 chiffres.', 'error')
+            # Updated validation for Numéro d'Apogée (6-7 digits)
+            if not re.match(r'^\d{6,7}$', student_code):
+                flash('Le numéro d\'Apogée doit contenir entre 6 et 7 chiffres.', 'error')
                 return redirect(url_for('auth.login'))
             
             if not student_name:
                 flash('Le nom est obligatoire.', 'error')
                 return redirect(url_for('auth.login'))
             
+            # Validate using the new validation method
+            is_valid, result = Student.validate_apogee_number(student_code)
+            if not is_valid:
+                flash(result, 'error')  # result contains the error message
+                return redirect(url_for('auth.login'))
+            
+            validated_code = result  # result contains the validated code
+            
             # Check if student exists
-            student = Student.query.filter_by(student_code=student_code).first()
+            student = Student.query.filter_by(student_code=validated_code).first()
             
             if student:
                 # Existing student - verify name
@@ -52,22 +60,28 @@ def login():
                     db.session.commit()
                     login_user(student)
                     session['user_type'] = 'student'
+                    flash(f'Connexion réussie avec le numéro d\'Apogée {validated_code}', 'success')
                     return redirect(url_for('student.student_interface'))
                 else:
-                    flash('Code ou nom incorrect.', 'error')
+                    flash('Numéro d\'Apogée ou nom incorrect.', 'error')
                     return redirect(url_for('auth.login'))
             else:
                 # New student - create account
-                student = Student(
-                    student_code=student_code,
-                    name=student_name
-                )
-                db.session.add(student)
-                db.session.commit()
-                login_user(student)
-                session['user_type'] = 'student'
-                flash('Compte créé avec succès!', 'success')
-                return redirect(url_for('student.student_interface'))
+                try:
+                    student = Student(
+                        student_code=validated_code,
+                        name=student_name
+                    )
+                    db.session.add(student)
+                    db.session.commit()
+                    login_user(student)
+                    session['user_type'] = 'student'
+                    flash(f'Compte créé avec succès avec le numéro d\'Apogée {validated_code}!', 'success')
+                    return redirect(url_for('student.student_interface'))
+                except Exception as e:
+                    logger.error(f"Error creating student account: {str(e)}")
+                    flash('Erreur lors de la création du compte. Le numéro d\'Apogée pourrait déjà être utilisé.', 'error')
+                    return redirect(url_for('auth.login'))
                 
         elif login_type == 'teacher':
             access_code = request.form.get('access_code', '').strip()
@@ -172,4 +186,3 @@ def admin_required(f):
                 return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
-

@@ -5,29 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion - ECOS FMPM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <style>
-        /* Additional centering styles specific to login page */
-        .login-page-body {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .login-main-container {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        
-        .login-content-wrapper {
-            width: 100%;
-            max-width: 500px;
-        }
-    </style>
 </head>
-<body class="login-page-body">
+<body>
     <!-- FMPM Header -->
     <header class="fmpm-header">
         <div class="container">
@@ -44,91 +23,109 @@
         </div>
     </header>
 
-    <div class="login-main-container">
-        <div class="login-content-wrapper">
-            <div class="login-container">
-                <h1 class="page-title">Connexion au système</h1>
-                
-                <!-- Flash Messages -->
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        <div class="flash-messages">
-                            {% for category, message in messages %}
-                                <div class="flash-message flash-{{ category }}">
-                                    {{ message }}
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                {% endwith %}
-                
-                <!-- Login Tabs -->
-                <div class="login-tabs">
-                    <button class="login-tab active" onclick="showLoginForm('student')">Étudiant</button>
-                    <button class="login-tab" onclick="showLoginForm('teacher')">Enseignant</button>
-                    <button class="login-tab admin-tab" onclick="showLoginForm('admin')">Administrateur</button>
-                </div>
-                
-                <!-- Student Login Form -->
-                <form method="POST" id="student-form" class="login-form active">
-                    <input type="hidden" name="login_type" value="student">
-                    
-                    <div class="form-group">
-                        <label for="student_code">Code étudiant (4 chiffres) :</label>
-                        <input type="text" id="student_code" name="student_code" 
-                               pattern="[0-9]{4}" maxlength="4" 
-                               placeholder="Ex: 1234" required>
+    <div class="container">
+        <div class="login-container">
+            <h1 class="page-title">Connexion au système</h1>
+            
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="student_name">Nom complet :</label>
-                        <input type="text" id="student_name" name="student_name" 
-                               placeholder="Ex: Jean Dupont" required>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                    
-                    <p class="field-help" style="margin-top: 15px; text-align: center;">
-                        Nouvel étudiant ? Votre compte sera créé automatiquement.
-                    </p>
-                </form>
-                
-                <!-- Teacher Login Form -->
-                <form method="POST" id="teacher-form" class="login-form">
-                    <input type="hidden" name="login_type" value="teacher">
-                    
-                    <div class="form-group">
-                        <label for="teacher_access_code">Code d'accès enseignant :</label>
-                        <input type="password" id="teacher_access_code" name="access_code" 
-                               placeholder="Entrez le code d'accès" required>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                    
-                    <p class="field-help" style="margin-top: 15px; text-align: center;">
-                        Demandez le code d'accès à votre coordinateur.
-                    </p>
-                </form>
-                
-                <!-- Administrator Login Form -->
-                <form method="POST" id="admin-form" class="login-form">
-                    <input type="hidden" name="login_type" value="admin">
-                    
-                    <div class="form-group">
-                        <label for="admin_access_code">Code d'accès administrateur :</label>
-                        <input type="password" id="admin_access_code" name="access_code" 
-                               placeholder="Entrez le code administrateur" required>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                    
-                    <p class="field-help" style="margin-top: 15px; text-align: center;">
-                        Accès réservé aux administrateurs système.
-                    </p>
-                </form>
+                {% endif %}
+            {% endwith %}
+            
+            <!-- Login Tabs -->
+            <div class="login-tabs">
+                <button class="login-tab active" onclick="showLoginForm('student')">Étudiant</button>
+                <button class="login-tab" onclick="showLoginForm('teacher')">Enseignant</button>
+                <button class="login-tab admin-tab" onclick="showLoginForm('admin')">Administrateur</button>
             </div>
             
-            <div style="text-align: center; margin-top: 20px;">
+            <!-- Student Login Form -->
+            <form method="POST" id="student-form" class="login-form active">
+                <input type="hidden" name="login_type" value="student">
+                
+                <div class="form-group">
+                    <label for="student_code">Numéro d'Apogée (6-7 chiffres) :</label>
+                    <input type="text" id="student_code" name="student_code" 
+                           pattern="[0-9]{6,7}" minlength="6" maxlength="7"
+                           placeholder="Ex: 123456 ou 1234567" required>
+                    <div class="field-help">
+                        <span class="help-icon">ℹ️</span>
+                        Votre numéro d'Apogée est un identifiant unique de 6 ou 7 chiffres attribué par l'université.
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="student_name">Nom complet :</label>
+                    <input type="text" id="student_name" name="student_name" 
+                           placeholder="Ex: Jean Dupont" required>
+                    <div class="field-help">
+                        <span class="help-icon">ℹ️</span>
+                        Entrez votre nom tel qu'il apparaît dans votre dossier universitaire.
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
+                
+                <div class="login-help">
+                    <div class="help-section">
+                        <h4>Nouvel étudiant ?</h4>
+                        <p>Votre compte sera créé automatiquement lors de votre première connexion.</p>
+                    </div>
+                    <div class="help-section">
+                        <h4>Où trouver votre numéro d'Apogée ?</h4>
+                        <ul>
+                            <li>Sur votre carte d'étudiant</li>
+                            <li>Dans vos relevés de notes</li>
+                            <li>Sur votre certificat de scolarité</li>
+                            <li>Dans votre espace étudiant en ligne</li>
+                        </ul>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- Teacher Login Form -->
+            <form method="POST" id="teacher-form" class="login-form">
+                <input type="hidden" name="login_type" value="teacher">
+                
+                <div class="form-group">
+                    <label for="teacher_access_code">Code d'accès enseignant :</label>
+                    <input type="password" id="teacher_access_code" name="access_code" 
+                           placeholder="Entrez le code d'accès" required>
+                </div>
+                
+                <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
+                
+                <p class="field-help" style="margin-top: 15px; text-align: center;">
+                    Demandez le code d'accès à votre coordinateur.
+                </p>
+            </form>
+            
+            <!-- Administrator Login Form -->
+            <form method="POST" id="admin-form" class="login-form">
+                <input type="hidden" name="login_type" value="admin">
+                
+                <div class="form-group">
+                    <label for="admin_access_code">Code d'accès administrateur :</label>
+                    <input type="password" id="admin_access_code" name="access_code" 
+                           placeholder="Entrez le code administrateur" required>
+                </div>
+                
+                <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
+                
+                <p class="field-help" style="margin-top: 15px; text-align: center;">
+                    Accès réservé aux administrateurs système.
+                </p>
+            </form>
+            
+            <div style="text-align: center; margin-top: 30px;">
                 <a href="{{ url_for('index') }}" class="btn btn-secondary" style="text-decoration: none;">
                     ← Retour à l'accueil
                 </a>
@@ -154,6 +151,125 @@
             // Add active class to clicked tab
             event.target.classList.add('active');
         }
+        
+        // Enhanced validation for Numéro d'Apogée
+        document.getElementById('student_code').addEventListener('input', function(e) {
+            const value = e.target.value;
+            const isValid = /^[0-9]{6,7}$/.test(value);
+            
+            // Remove any non-digit characters
+            e.target.value = value.replace(/\D/g, '').slice(0, 7);
+            
+            // Visual feedback
+            if (e.target.value.length > 0) {
+                if (e.target.value.length >= 6 && e.target.value.length <= 7) {
+                    e.target.style.borderColor = '#28a745';
+                    e.target.style.backgroundColor = '#f8fff8';
+                } else {
+                    e.target.style.borderColor = '#dc3545';
+                    e.target.style.backgroundColor = '#fff8f8';
+                }
+            } else {
+                e.target.style.borderColor = '';
+                e.target.style.backgroundColor = '';
+            }
+        });
+        
+        // Form submission validation
+        document.getElementById('student-form').addEventListener('submit', function(e) {
+            const codeInput = document.getElementById('student_code');
+            const nameInput = document.getElementById('student_name');
+            
+            if (!codeInput.value || codeInput.value.length < 6 || codeInput.value.length > 7) {
+                e.preventDefault();
+                alert('Le numéro d\'Apogée doit contenir entre 6 et 7 chiffres.');
+                codeInput.focus();
+                return false;
+            }
+            
+            if (!nameInput.value.trim()) {
+                e.preventDefault();
+                alert('Le nom est obligatoire.');
+                nameInput.focus();
+                return false;
+            }
+        });
     </script>
+    
+    <style>
+        /* Additional styles for the updated login form */
+        .help-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        
+        .help-section h4 {
+            margin: 0 0 10px 0;
+            color: #007bff;
+            font-size: 14px;
+        }
+        
+        .help-section p, .help-section ul {
+            margin: 0;
+            font-size: 13px;
+            color: #6c757d;
+        }
+        
+        .help-section ul {
+            padding-left: 20px;
+        }
+        
+        .help-section li {
+            margin: 3px 0;
+        }
+        
+        .login-help {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .field-help {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+            display: flex;
+            align-items: flex-start;
+            gap: 5px;
+        }
+        
+        .help-icon {
+            color: #007bff;
+            font-size: 14px;
+            margin-top: 1px;
+        }
+        
+        /* Input validation styles */
+        .form-group input:valid {
+            border-color: #28a745;
+        }
+        
+        .form-group input:invalid:not(:placeholder-shown) {
+            border-color: #dc3545;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .help-section {
+                padding: 10px;
+            }
+            
+            .help-section h4 {
+                font-size: 13px;
+            }
+            
+            .help-section p, .help-section ul {
+                font-size: 12px;
+            }
+        }
+    </style>
 </body>
 </html>

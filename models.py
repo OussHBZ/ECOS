@@ -9,11 +9,6 @@ logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 
-
-logger = logging.getLogger(__name__)
-
-db = SQLAlchemy()
-
 class SessionMixin:
     def get_participant_count(self):
         """Get number of participants in this session"""
@@ -36,7 +31,8 @@ class SessionMixin:
 
 class Student(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
-    student_code = db.Column(db.String(4), unique=True, nullable=False)
+    # Updated: Changed from 4 digits to 6-7 digits for Numéro d'Apogée
+    student_code = db.Column(db.String(7), unique=True, nullable=False)  # Changed from String(4) to String(7)
     name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
@@ -68,6 +64,7 @@ class Student(db.Model, UserMixin):
         """Get recent performances"""
         return StudentPerformance.query.filter_by(student_id=self.id)\
             .order_by(StudentPerformance.completed_at.desc()).limit(limit).all()
+    
     def get_competition_history(self):
         """Get student's competition participation history"""
         competitions = db.session.query(
@@ -120,6 +117,29 @@ class Student(db.Model, UserMixin):
             'total_stations_completed': total_stations,
             'competition_completion_rate': round((len(completed_sessions) / len(student_sessions)) * 100, 1)
         }
+    
+    # ADD THE NEW METHOD HERE - RIGHT BEFORE __repr__
+    @classmethod
+    def validate_apogee_number(cls, apogee_number):
+        """Validate Numéro d'Apogée format (6-7 digits)"""
+        if not apogee_number:
+            return False, "Le numéro d'Apogée est requis"
+        
+        # Remove any whitespace
+        apogee_number = str(apogee_number).strip()
+        
+        # Check if it's numeric
+        if not apogee_number.isdigit():
+            return False, "Le numéro d'Apogée ne doit contenir que des chiffres"
+        
+        # Check length (6-7 digits)
+        if len(apogee_number) < 6 or len(apogee_number) > 7:
+            return False, "Le numéro d'Apogée doit contenir entre 6 et 7 chiffres"
+        
+        return True, apogee_number
+    
+    def __repr__(self):
+        return f'<Student {self.student_code}: {self.name}>'
 
 class TeacherAccess(db.Model):
     id = db.Column(db.Integer, primary_key=True)

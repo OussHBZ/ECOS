@@ -3425,3 +3425,407 @@ button:disabled {
     }
 }
 
+
+
+/* CSS styles for Numéro d'Apogée support */
+
+/* Student Code Input Styling */
+.student-code-input {
+    font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
+    font-size: 16px;
+    letter-spacing: 1px;
+    padding: 12px 15px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 220px;
+    text-align: center;
+    background-color: #fff;
+    transition: all 0.3s ease;
+}
+
+.student-code-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    background-color: #f8f9fa;
+}
+
+.student-code-input::placeholder {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    letter-spacing: normal;
+    text-align: left;
+    color: #6c757d;
+}
+
+/* Validation States */
+.student-code-input.valid {
+    border-color: #28a745;
+    background-color: #f8fff8;
+}
+
+.student-code-input.invalid {
+    border-color: #dc3545;
+    background-color: #fff5f5;
+}
+
+/* Apogée Number Display */
+.apogee-number {
+    font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
+    font-weight: 600;
+    color: #007bff;
+    font-size: 14px;
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+
+.apogee-number-large {
+    font-size: 18px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+    color: #1565c0;
+    border: 1px solid #2196f3;
+}
+
+.code-type-label {
+    font-size: 9px;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+}
+
+.apogee-badge {
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+    color: #1565c0;
+    padding: 3px 10px;
+    border-radius: 15px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid #90caf9;
+    display: inline-block;
+    margin-left: 8px;
+}
+
+/* Student List Items */
+.student-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.student-name {
+    font-weight: 500;
+    color: #212529;
+    line-height: 1.2;
+}
+
+.apogee-number-small {
+    font-family: 'Courier New', Monaco, 'Lucida Console', monospace;
+    font-size: 11px;
+    color: #6c757d;
+    margin-top: 2px;
+    background: #f8f9fa;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+/* Enhanced Selection Items */
+.selection-item {
+    padding: 10px;
+    margin-bottom: 8px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.selection-item:hover {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.selection-item input[type="checkbox"] {
+    margin-right: 12px;
+    transform: scale(1.2);
+    accent-color: #007bff;
+}
+
+.selection-item input[type="checkbox"]:checked + label {
+    color: #007bff;
+    font-weight: 500;
+}
+
+.selection-item input[type="checkbox"]:checked + label .student-name {
+    color: #007bff;
+}
+
+.selection-item input[type="checkbox"]:checked + label .apogee-number-small {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.selection-item label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    cursor: pointer;
+    width: 100%;
+    margin: 0;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+/* Form Enhancements */
+.form-group label {
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.field-help {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 6px;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.4;
+    background: #f8f9fa;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border-left: 3px solid #007bff;
+}
+
+.help-icon {
+    color: #007bff;
+    font-size: 14px;
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+
+/* Login Help Section */
+.login-help {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #dee2e6;
+}
+
+.help-section {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    padding: 15px;
+    border-radius: 8px;
+    margin: 12px 0;
+    border-left: 4px solid #007bff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.help-section h4 {
+    margin: 0 0 10px 0;
+    color: #007bff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.help-section p, .help-section ul {
+    margin: 0;
+    font-size: 13px;
+    color: #495057;
+    line-height: 1.4;
+}
+
+.help-section ul {
+    padding-left: 18px;
+    margin-top: 6px;
+}
+
+.help-section li {
+    margin: 4px 0;
+    position: relative;
+}
+
+.help-section li::marker {
+    color: #007bff;
+}
+
+/* Table Enhancements for Student Code Display */
+.admin-students-table td:first-child {
+    min-width: 120px;
+    text-align: center;
+}
+
+.students-table td:first-child {
+    min-width: 120px;
+    text-align: center;
+}
+
+/* Validation Messages */
+.validation-message {
+    font-size: 12px;
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.validation-message.success {
+    color: #155724;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+.validation-message.success::before {
+    content: "✓";
+    font-weight: bold;
+    color: #28a745;
+}
+
+.validation-message.error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+}
+
+.validation-message.error::before {
+    content: "⚠";
+    font-weight: bold;
+    color: #dc3545;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .student-code-input {
+        font-size: 14px;
+        max-width: 180px;
+        padding: 10px 12px;
+    }
+    
+    .apogee-number {
+        font-size: 12px;
+        padding: 3px 6px;
+    }
+    
+    .apogee-number-large {
+        font-size: 14px;
+        padding: 6px 10px;
+    }
+    
+    .apogee-badge {
+        font-size: 10px;
+        padding: 2px 8px;
+        margin-left: 5px;
+    }
+    
+    .help-section {
+        padding: 12px;
+    }
+    
+    .help-section h4 {
+        font-size: 13px;
+    }
+    
+    .help-section p, .help-section ul {
+        font-size: 12px;
+    }
+    
+    .selection-item {
+        padding: 8px;
+    }
+    
+    .field-help {
+        font-size: 11px;
+        padding: 6px 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .student-code-input {
+        max-width: 100%;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .apogee-number-small {
+        font-size: 10px;
+    }
+    
+    .student-info {
+        font-size: 14px;
+    }
+}
+
+/* Dark mode support (if implemented) */
+@media (prefers-color-scheme: dark) {
+    .student-code-input {
+        background-color: #2d3748;
+        border-color: #4a5568;
+        color: #e2e8f0;
+    }
+    
+    .student-code-input:focus {
+        border-color: #4299e1;
+        background-color: #2d3748;
+    }
+    
+    .apogee-number {
+        background: #2d3748;
+        color: #4299e1;
+        border-color: #4a5568;
+    }
+    
+    .help-section {
+        background: linear-gradient(135deg, #2d3748, #1a202c);
+        color: #e2e8f0;
+        border-left-color: #4299e1;
+    }
+    
+    .help-section h4 {
+        color: #4299e1;
+    }
+}
+
+/* Animation for successful validation */
+@keyframes validationSuccess {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+.student-code-input.valid {
+    animation: validationSuccess 0.3s ease;
+}
+
+/* Focus ring for accessibility */
+.student-code-input:focus-visible {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+    .apogee-number,
+    .apogee-number-large {
+        background: transparent !important;
+        color: #000 !important;
+        border: 1px solid #000 !important;
+    }
+    
+    .help-section {
+        background: transparent !important;
+        border: 1px solid #000 !important;
+    }
+    
+    .validation-message {
+        background: transparent !important;
+        border: 1px solid #000 !important;
+    }
+}

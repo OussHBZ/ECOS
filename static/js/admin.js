@@ -1289,7 +1289,10 @@ async function loadAdminStudents(searchQuery = '') {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${student.student_code}</td>
+                    <td>
+                        <span class="apogee-number">${student.student_code}</span>
+                        <div class="code-type-label">N° Apogée</div>
+                    </td>
                     <td>${student.name}</td>
                     <td>${student.created_at}</td>
                     <td>${student.last_login || 'Jamais'}</td>
@@ -1437,8 +1440,14 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
         
         const data = await response.json();
         
-        // Update modal header
-        document.getElementById('student-details-name').textContent = `${studentName} (${studentCode})`;
+        // Update modal header with Numéro d'Apogée
+        const headerElement = document.getElementById('student-details-name');
+        if (headerElement) {
+            headerElement.innerHTML = `
+                ${studentName} 
+                <span class="apogee-badge">N° Apogée: ${studentCode}</span>
+            `;
+        }
         
         // Update stats
         document.getElementById('student-total-consultations').textContent = data.total_consultations;
@@ -1612,18 +1621,190 @@ function updateAvailableStudentsList() {
     availableStudents
         .filter(student => 
             student.name.toLowerCase().includes(searchTerm) || 
-            student.student_code.includes(searchTerm)
+            student.student_code.includes(searchTerm)  // Now supports 6-7 digits
         )
         .forEach(student => {
             const item = document.createElement('div');
             item.className = 'selection-item';
             item.innerHTML = `
                 <input type="checkbox" id="student-${student.id}" value="${student.id}">
-                <label for="student-${student.id}">${student.name} (${student.student_code})</label>
+                <label for="student-${student.id}">
+                    <span class="student-name">${student.name}</span>
+                    <span class="apogee-number-small">N° ${student.student_code}</span>
+                </label>
             `;
             container.appendChild(item);
         });
 }
+
+const apogeeStyles = `
+/* Styles for Numéro d'Apogée display */
+.apogee-number {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: #007bff;
+    font-size: 14px;
+}
+
+.code-type-label {
+    font-size: 10px;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: normal;
+    margin-top: 2px;
+}
+
+.apogee-badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: normal;
+    margin-left: 10px;
+}
+
+.apogee-number-small {
+    display: block;
+    font-size: 11px;
+    color: #6c757d;
+    font-family: 'Courier New', monospace;
+    margin-top: 2px;
+}
+
+.student-name {
+    display: block;
+    font-weight: 500;
+}
+
+.selection-item label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.selection-item label:hover {
+    background-color: #f8f9fa;
+}
+
+.selection-item input[type="checkbox"]:checked + label {
+    background-color: #e3f2fd;
+    border-left: 3px solid #2196F3;
+}
+
+/* Table cell styling for better Apogée number display */
+.admin-students-table td:first-child {
+    font-family: 'Courier New', monospace;
+    min-width: 100px;
+}
+
+/* Search improvements for longer codes */
+.search-input {
+    min-width: 200px;
+}
+
+@media (max-width: 768px) {
+    .apogee-number {
+        font-size: 12px;
+    }
+    
+    .code-type-label {
+        font-size: 9px;
+    }
+    
+    .apogee-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+    }
+    
+    .search-input {
+        min-width: 150px;
+    }
+}
+
+/* Enhanced validation styles for forms */
+.student-code-input {
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+    padding: 10px 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 16px;
+    width: 100%;
+    max-width: 200px;
+}
+
+.student-code-input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.student-code-input.valid {
+    border-color: #28a745;
+    background-color: #f8fff8;
+}
+
+.student-code-input.invalid {
+    border-color: #dc3545;
+    background-color: #fff8f8;
+}
+
+.validation-message {
+    font-size: 12px;
+    margin-top: 5px;
+    padding: 5px 8px;
+    border-radius: 4px;
+}
+
+.validation-message.success {
+    color: #155724;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+.validation-message.error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+}
+`;
+
+function updateRecentActivity(activities) {
+    const activityBody = document.getElementById('recent-activity-body');
+    activityBody.innerHTML = '';
+    
+    if (activities.length === 0) {
+        activityBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Aucune activité récente</td></tr>';
+    } else {
+        activities.forEach(activity => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${activity.date}</td>
+                <td>
+                    <div class="student-info">
+                        <span class="student-name">${activity.student_name}</span>
+                        <span class="apogee-number-small">N° ${activity.student_code}</span>
+                    </div>
+                </td>
+                <td>${activity.case_number}</td>
+                <td><span class="score-badge score-${getScoreClass(activity.score)}">${activity.score}%</span></td>
+                <td><span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}">${activity.status}</span></td>
+            `;
+            activityBody.appendChild(row);
+        });
+    }
+}
+
+console.log('Admin interface updated for Numéro d\'Apogée support');
+
+// Add the Apogée styles to the document
+const apogeeStyleSheet = document.createElement('style');
+apogeeStyleSheet.textContent = apogeeStyles;
+document.head.appendChild(apogeeStyleSheet);
 
 // Update available stations list
 function updateAvailableStationsList() {

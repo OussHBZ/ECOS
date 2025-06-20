@@ -1550,34 +1550,49 @@ function displayAvailableCompetitions(competitions) {
     let html = '<div class="competitions-grid">';
     
     competitions.forEach(competition => {
-        const canJoin = competition.can_join && competition.student_status === 'registered';
-        const canContinue = competition.can_continue && ['logged_in', 'active', 'between_stations'].includes(competition.student_status);
-        const canViewResults = competition.status === 'completed' && competition.student_status === 'completed';
+        const canJoin = competition.can_join;
+        const canContinue = competition.can_continue;
+        const isCompleted = competition.status === 'completed';
+        
+        let statusClass = `status-${competition.status}`;
+        let actionButtons = '';
+        
+        if (canJoin) {
+            actionButtons = `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>`;
+        } else if (canContinue) {
+            actionButtons = `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>`;
+        } else if (isCompleted) {
+            actionButtons = `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>`;
+        }
+        
+        // Additional status info
+        let statusInfo = '';
+        if (competition.status === 'scheduled') {
+            statusInfo = `<p><strong>Participants connectés:</strong> ${competition.logged_in_count}/${competition.participant_count}</p>`;
+        } else if (competition.status === 'active' && competition.progress > 0) {
+            statusInfo = `<p><strong>Progrès:</strong> ${competition.progress}% (Station ${competition.current_station}/${competition.stations_per_session})</p>`;
+        }
         
         html += `
-            <div class="competition-card ${competition.status}">
+            <div class="competition-card ${statusClass}">
                 <div class="competition-header">
                     <h3>${competition.name}</h3>
-                    <span class="competition-status-badge status-${competition.status}">${competition.status_display}</span>
+                    <span class="competition-status-badge ${statusClass}">${competition.status_display}</span>
                 </div>
                 
                 <div class="competition-info">
                     <p><strong>Début:</strong> ${competition.start_time}</p>
                     <p><strong>Fin:</strong> ${competition.end_time}</p>
                     <p><strong>Stations:</strong> ${competition.stations_per_session} stations de ${competition.time_per_station} min</p>
-                    <p><strong>Participants:</strong> ${competition.logged_in_count}/${competition.participant_count} connectés</p>
+                    ${statusInfo}
                 </div>
 
                 <div class="student-progress">
                     <p><strong>Mon statut:</strong> ${getStudentStatusDisplay(competition.student_status)}</p>
-                    ${competition.progress > 0 ? `<p><strong>Progrès:</strong> ${competition.progress}%</p>` : ''}
                 </div>
 
                 <div class="competition-actions">
-                    ${canJoin ? `<button onclick="joinCompetition(${competition.id})" class="submit-button">Rejoindre</button>` : ''}
-                    ${canContinue ? `<button onclick="continueCompetition(${competition.id})" class="submit-button">Continuer</button>` : ''}
-                    ${canViewResults ? `<button onclick="viewCompetitionResults(${competition.id})" class="secondary-button">Voir Résultats</button>` : ''}
-                    ${canViewResults ? `<button onclick="downloadCompetitionReport(${competition.id})" class="secondary-button">Télécharger Rapport</button>` : ''}
+                    ${actionButtons}
                 </div>
             </div>
         `;
@@ -2037,18 +2052,65 @@ function displayFinalLeaderboard(leaderboard) {
     if (!container) return;
     
     let html = '<table class="leaderboard-table"><thead><tr>';
-    html += '<th>Rang</th><th>Étudiant</th><th>Score Moyen</th></tr></thead><tbody>';
+    html += '<th>Rang</th><th>Étudiant</th><th>N° Apogée</th><th>Score Moyen</th></tr></thead><tbody>';
     
     leaderboard.forEach(entry => {
         html += `<tr>
             <td>${entry.rank}</td>
             <td>${entry.student_name}</td>
+            <td><span class="apogee-number">${entry.student_code}</span></td>
             <td>${entry.average_score}%</td>
         </tr>`;
     });
     
     html += '</tbody></table>';
     container.innerHTML = html;
+}
+
+function updateDetailedMonitoringView(data) {
+    const participantsList = document.getElementById('monitoring-participants-list');
+    if (!participantsList) return;
+    
+    let html = '<div class="participants-monitoring-grid">';
+    
+    data.participants.forEach(participant => {
+        const statusClass = getParticipantStatusClass(participant.status);
+        const progressWidth = participant.progress_percentage || 0;
+        
+        html += `
+            <div class="participant-card ${statusClass}">
+                <div class="participant-header">
+                    <h4>${participant.student_name}</h4>
+                    <span class="apogee-number-small">N° ${participant.student_code}</span>
+                </div>
+                <div class="participant-status">
+                    <span class="status-indicator ${participant.status}">${getStudentStatusDisplay(participant.status)}</span>
+                </div>
+                <div class="participant-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressWidth}%"></div>
+                    </div>
+                    <span class="progress-text">${participant.completed_stations}/${data.session_status === 'active' ? '?' : participant.completed_stations} stations (${progressWidth}%)</span>
+                </div>
+                <div class="participant-details">
+                    <p><strong>Station actuelle:</strong> ${participant.current_station_order || 'Aucune'}</p>
+                    ${participant.current_station_case ? `<p><strong>Cas:</strong> ${participant.current_station_case}</p>` : ''}
+                    ${participant.station_started_at ? `<p><strong>Démarré:</strong> ${new Date(participant.station_started_at).toLocaleTimeString()}</p>` : ''}
+                </div>
+                <div class="participant-actions">
+                    ${participant.status !== 'completed' ? `
+                        <button onclick="resetStudentProgress(${data.session_id}, ${participant.student_id})" 
+                                class="reset-button" title="Réinitialiser">
+                            🔄
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    participantsList.innerHTML = html;
 }
 
 // Helper functions
@@ -2268,6 +2330,171 @@ async function loadStudentStats() {
         console.error('Error loading student stats:', error);
     }
 }
+
+const studentApogeeStyles = `
+/* Student interface specific styles for Numéro d'Apogée */
+.participant-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.participant-header h4 {
+    margin: 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.apogee-number-small {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 11px;
+    color: #6c757d;
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+
+.leaderboard-table .apogee-number {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 12px;
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.competition-card .student-info {
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.student-identifier {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.student-name-display {
+    font-weight: 600;
+    color: #212529;
+}
+
+.apogee-display {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 12px;
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 3px 8px;
+    border-radius: 12px;
+    border: 1px solid #90caf9;
+}
+
+/* Responsive adjustments for student interface */
+@media (max-width: 768px) {
+    .participant-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+    
+    .apogee-number-small {
+        font-size: 10px;
+        padding: 1px 4px;
+    }
+    
+    .leaderboard-table .apogee-number {
+        font-size: 10px;
+        padding: 1px 4px;
+    }
+    
+    .student-identifier {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+}
+
+/* Enhanced competition results display */
+.final-results-container .student-info {
+    text-align: center;
+    margin: 20px 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 12px;
+    border: 2px solid #dee2e6;
+}
+
+.final-results-container .apogee-display {
+    font-size: 14px;
+    padding: 6px 12px;
+    margin: 10px 0;
+    display: inline-block;
+}
+
+/* Competition monitoring specific styles */
+.participants-monitoring-grid .apogee-number-small {
+    font-weight: 500;
+    color: #495057;
+    background: #fff;
+    border: 1px solid #dee2e6;
+}
+
+.participant-card.status-active .apogee-number-small {
+    background: #e8f5e8;
+    color: #2e7d32;
+    border-color: #4caf50;
+}
+
+.participant-card.status-completed .apogee-number-small {
+    background: #e3f2fd;
+    color: #1565c0;
+    border-color: #2196f3;
+}
+
+/* Accessibility improvements */
+.apogee-number, .apogee-number-small, .apogee-display {
+    transition: all 0.2s ease;
+}
+
+.apogee-number:hover, .apogee-number-small:hover, .apogee-display:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .apogee-number, .apogee-number-small, .apogee-display {
+        border-width: 2px;
+        font-weight: bold;
+    }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    .apogee-number, .apogee-number-small, .apogee-display {
+        transition: none;
+    }
+    
+    .apogee-number:hover, .apogee-number-small:hover, .apogee-display:hover {
+        transform: none;
+    }
+}
+`;
+
+// Add the student-specific Apogée styles to the document
+const studentApogeeStyleSheet = document.createElement('style');
+studentApogeeStyleSheet.textContent = studentApogeeStyles;
+document.head.appendChild(studentApogeeStyleSheet);
+
+console.log('Student interface updated for Numéro d\'Apogée support');
 
 function getScoreClass(score) {
     if (score >= 90) return 'excellent';
