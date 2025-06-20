@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
     
-    console.log('Case number validation set up for teacher interface');
+    console.log('Teacher interface ready with Numéro d\'Apogée support');
 });
 
 // Set up tab switching between file upload and manual entry
@@ -3028,14 +3028,18 @@ async function loadStudentPerformance(searchQuery = '') {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${student.student_code}</td>
-                    <td>${student.name}</td>
+                    <td>
+                        <div class="student-identifier">
+                            <span class="student-name">${student.name}</span>
+                            <span class="student-code-display">N° ${student.student_code}</span>
+                        </div>
+                    </td>
                     <td><span class="workout-badge">${student.total_workouts}</span></td>
                     <td><span class="station-badge">${student.unique_stations}</span></td>
                     <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
                     <td>${student.last_login}</td>
                     <td>
-                        <button class="detail-button" data-student-id="${student.student_id}" data-student-name="${student.name}">
+                        <button class="detail-button" data-student-id="${student.student_id}" data-student-name="${student.name}" data-student-code="${student.student_code}">
                             Voir Détails
                         </button>
                     </td>
@@ -3048,7 +3052,8 @@ async function loadStudentPerformance(searchQuery = '') {
                 btn.addEventListener('click', (e) => {
                     const studentId = e.target.getAttribute('data-student-id');
                     const studentName = e.target.getAttribute('data-student-name');
-                    openStudentDetailModal(studentId, studentName);
+                    const studentCode = e.target.getAttribute('data-student-code');
+                    openStudentDetailModal(studentId, studentName, studentCode);
                 });
             });
         }
@@ -3071,8 +3076,19 @@ async function openStudentDetailModal(studentId, studentName) {
         const data = await response.json();
         
         // Update modal header
-        document.getElementById('student-detail-name').textContent = studentName;
-        
+        const headerElement = document.getElementById('student-detail-name');
+        if (headerElement) {
+            // Create enhanced header with student name and Numéro d'Apogée
+            const headerContainer = headerElement.parentElement;
+            headerContainer.innerHTML = `
+                <div class="student-detail-header">
+                    <div class="student-detail-info">
+                        <div class="student-detail-name">${studentName}</div>
+                        <div class="student-detail-apogee">N° Apogée: ${studentCode}</div>
+                    </div>
+                </div>
+            `;
+        }        
         // Update student stats
         document.getElementById('detail-total-workouts').textContent = data.student.total_workouts;
         document.getElementById('detail-unique-stations').textContent = data.student.unique_stations;
@@ -3137,6 +3153,8 @@ function searchTeacherStations() {
 
 function searchStudents() {
     const searchQuery = document.getElementById('student-search').value.trim();
+    
+    // Enhanced search that works with longer student codes
     loadStudentPerformance(searchQuery);
 }
 
@@ -3346,3 +3364,161 @@ async function validateCaseNumberBeforeSubmit(caseNumber, inputElement, isEdit =
     
     return isCurrentCaseNumberValid;
 }
+
+const teacherApogeeStyles = `
+/* Teacher interface specific styles for Numéro d'Apogée */
+.apogee-number {
+    font-family: 'Courier New', Monaco, monospace;
+    font-weight: bold;
+    color: #007bff;
+    font-size: 14px;
+}
+
+.code-type-label {
+    font-size: 10px;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: normal;
+    margin-top: 2px;
+}
+
+.apogee-badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: normal;
+    margin-left: 10px;
+}
+
+.apogee-number-small {
+    display: block;
+    font-size: 11px;
+    color: #6c757d;
+    font-family: 'Courier New', monospace;
+    margin-top: 2px;
+}
+
+.student-name {
+    display: block;
+    font-weight: 500;
+}
+
+/* Student performance table specific styles */
+.students-performance-table td:first-child {
+    font-family: 'Courier New', monospace;
+    min-width: 100px;
+}
+
+.student-identifier {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.student-code-display {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 12px;
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    margin-top: 3px;
+}
+
+/* Modal styles for student details */
+.student-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #eee;
+}
+
+.student-detail-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.student-detail-name {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}
+
+.student-detail-apogee {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 14px;
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 600;
+    margin-top: 5px;
+    align-self: flex-start;
+}
+
+/* Performance table improvements */
+.detailed-performance-table .student-code-col {
+    font-family: 'Courier New', Monaco, monospace;
+    font-weight: 600;
+}
+
+/* Responsive adjustments for teacher interface */
+@media (max-width: 768px) {
+    .apogee-number {
+        font-size: 12px;
+    }
+    
+    .code-type-label {
+        font-size: 9px;
+    }
+    
+    .apogee-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+    }
+    
+    .student-detail-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .student-detail-name {
+        font-size: 20px;
+    }
+    
+    .student-detail-apogee {
+        font-size: 12px;
+    }
+    
+    .students-performance-table td:first-child {
+        min-width: 80px;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .apogee-number, .student-code-display, .student-detail-apogee {
+        border: 2px solid currentColor;
+        font-weight: bold;
+    }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    .apogee-number, .student-code-display {
+        transition: none;
+    }
+}
+`;
+
+const teacherApogeeStyleSheet = document.createElement('style');
+teacherApogeeStyleSheet.textContent = teacherApogeeStyles;
+document.head.appendChild(teacherApogeeStyleSheet);
+
+console.log('Teacher interface updated for Numéro d\'Apogée support');

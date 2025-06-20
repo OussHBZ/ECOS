@@ -52,24 +52,18 @@
                 <input type="hidden" name="login_type" value="student">
                 
                 <div class="form-group">
-                    <label for="student_code">Numéro d'Apogée (6-7 chiffres) :</label>
+                    <label for="student_code">Numéro d'Apogée:</label>
                     <input type="text" id="student_code" name="student_code" 
                            pattern="[0-9]{6,7}" minlength="6" maxlength="7"
                            placeholder="Ex: 123456 ou 1234567" required>
-                    <div class="field-help">
-                        <span class="help-icon">ℹ️</span>
-                        Votre numéro d'Apogée est un identifiant unique de 6 ou 7 chiffres attribué par l'université.
-                    </div>
+  
                 </div>
                 
                 <div class="form-group">
                     <label for="student_name">Nom complet :</label>
                     <input type="text" id="student_name" name="student_name" 
                            placeholder="Ex: Jean Dupont" required>
-                    <div class="field-help">
-                        <span class="help-icon">ℹ️</span>
-                        Entrez votre nom tel qu'il apparaît dans votre dossier universitaire.
-                    </div>
+
                 </div>
                 
                 <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
@@ -78,15 +72,6 @@
                     <div class="help-section">
                         <h4>Nouvel étudiant ?</h4>
                         <p>Votre compte sera créé automatiquement lors de votre première connexion.</p>
-                    </div>
-                    <div class="help-section">
-                        <h4>Où trouver votre numéro d'Apogée ?</h4>
-                        <ul>
-                            <li>Sur votre carte d'étudiant</li>
-                            <li>Dans vos relevés de notes</li>
-                            <li>Sur votre certificat de scolarité</li>
-                            <li>Dans votre espace étudiant en ligne</li>
-                        </ul>
                     </div>
                 </div>
             </form>
