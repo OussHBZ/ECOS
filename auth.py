@@ -13,7 +13,7 @@ auth_bp = Blueprint('auth', __name__)
 # Access codes - you can change these or load from environment
 TEACHER_ACCESS_CODE = os.getenv('TEACHER_CODE', 'TEACHER123')
 ADMIN_ACCESS_CODE = os.getenv('ADMIN_CODE', 'ADMIN123')
-
+# Function to check if the request is an AJAX request
 def is_ajax_request():
     """Check if the request is an AJAX request"""
     return (
