@@ -625,7 +625,6 @@ def teacher_student_detailed_performance(student_id):
                 'score': perf.percentage_score,
                 'points_earned': perf.points_earned or 0,
                 'points_total': perf.points_total or 0,
-                'grade': perf.get_performance_grade(),
                 'status': perf.get_performance_status(),
                 'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
                 'consultation_duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A"

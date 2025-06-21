@@ -3029,10 +3029,10 @@ async function loadStudentPerformance(searchQuery = '') {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
-                        <div class="student-identifier">
-                            <span class="student-name">${student.name}</span>
-                            <span class="student-code-display">N° ${student.student_code}</span>
-                        </div>
+                        <span class="student-code-display">N° ${student.student_code}</span>
+                    </td>
+                    <td>
+                        <span class="student-name">${student.name}</span>
                     </td>
                     <td><span class="workout-badge">${student.total_workouts}</span></td>
                     <td><span class="station-badge">${student.unique_stations}</span></td>
@@ -3109,7 +3109,6 @@ async function openStudentDetailModal(studentId, studentName) {
                     <td>${perf.specialty}</td>
                     <td>${perf.score}%</td>
                     <td>${perf.points_earned}/${perf.points_total}</td>
-                    <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
                     <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
                     <td>${perf.consultation_duration}</td>
                     <td>

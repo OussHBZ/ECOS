@@ -841,36 +841,6 @@ a:hover {
   color: var(--white);
 }
 
-.grade-badge {
-  font-weight: 700;
-  box-shadow: var(--shadow-light);
-}
-
-.grade-A { 
-  background: linear-gradient(135deg, var(--success-color), #1b5e20); 
-  color: var(--white); 
-}
-.grade-B { 
-  background: linear-gradient(135deg, #689f38, #33691e); 
-  color: var(--white); 
-}
-.grade-C { 
-  background: linear-gradient(135deg, var(--warning-color), #e65100); 
-  color: var(--white); 
-}
-.grade-D { 
-  background: linear-gradient(135deg, #ff6f00, #e65100); 
-  color: var(--white); 
-}
-.grade-F { 
-  background: linear-gradient(135deg, var(--error-color), #b71c1c); 
-  color: var(--white); 
-}
-.grade-none { 
-  background: #757575; 
-  color: var(--white); 
-}
-
 .status-badge {
   border: 1px solid currentColor;
 }
@@ -1286,7 +1256,7 @@ a:hover {
 }
 
 .evaluation-header {
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
   color: var(--white);
   padding: 25px 30px;
   display: flex;

@@ -494,7 +494,6 @@ def student_stats():
                 'case_number': perf.case_number,
                 'specialty': case.specialty if case else 'Unknown',
                 'score': perf.percentage_score,
-                'grade': perf.get_performance_grade(),
                 'status': perf.get_performance_status(),
                 'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
                 'duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A"

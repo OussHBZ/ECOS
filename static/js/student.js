@@ -2315,7 +2315,6 @@ async function loadStudentStats() {
                             <td>${perf.case_number}</td>
                             <td>${perf.specialty}</td>
                             <td><span class="score-badge score-${getScoreClass(perf.score)}">${perf.score}%</span></td>
-                            <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
                             <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
                             <td>${perf.duration}</td>
                         `;

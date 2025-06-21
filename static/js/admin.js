@@ -1468,7 +1468,6 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
                     <td>${perf.case_number}</td>
                     <td>${perf.specialty}</td>
                     <td>${perf.score}%</td>
-                    <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
                     <td>${perf.duration}</td>
                     <td>
                         <button class="view-evaluation-btn" onclick="downloadStudentReport(${perf.id})">

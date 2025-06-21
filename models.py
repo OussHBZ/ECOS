@@ -611,18 +611,6 @@ class StudentPerformance(db.Model):
         """Set conversation transcript as JSON"""
         self.conversation_transcript_json = json.dumps(conversation_list, ensure_ascii=False)
     
-    def get_performance_grade(self):
-        """Get letter grade based on percentage score"""
-        if self.percentage_score >= 90:
-            return 'A'
-        elif self.percentage_score >= 80:
-            return 'B'
-        elif self.percentage_score >= 70:
-            return 'C'
-        elif self.percentage_score >= 60:
-            return 'D'
-        else:
-            return 'F'
     
     def get_performance_status(self):
         """Get performance status in French"""
