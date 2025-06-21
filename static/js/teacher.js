@@ -63,6 +63,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         setupCaseNumberValidation(manualEntryCaseNumber, false);
     }
     
+    setupStudentDetailModalHandlers();
+    
     // IMPORTANT: Set manual entry as default active tab
     // This ensures the correct form is visible on page load
     if (manualTabBtn && fileTabBtn) {
@@ -81,6 +83,27 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     console.log('Teacher interface ready with Numéro d\'Apogée support');
 });
+
+function setupStudentDetailModalHandlers() {
+    // Close student detail modal
+    const studentDetailModal = document.getElementById('student-detail-modal');
+    const studentDetailClose = document.querySelector('.student-detail-close');
+    
+    if (studentDetailClose && studentDetailModal) {
+        studentDetailClose.addEventListener('click', () => {
+            studentDetailModal.classList.remove('visible');
+            studentDetailModal.classList.add('hidden');
+        });
+        
+        // Close when clicking outside of content
+        window.addEventListener('click', (e) => {
+            if (e.target === studentDetailModal) {
+                studentDetailModal.classList.remove('visible');
+                studentDetailModal.classList.add('hidden');
+            }
+        });
+    }
+}
 
 // Set up tab switching between file upload and manual entry
 function setupTabSwitching() {
@@ -3028,18 +3051,17 @@ async function loadStudentPerformance(searchQuery = '') {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>
-                        <span class="student-code-display">N° ${student.student_code}</span>
-                    </td>
-                    <td>
-                        <span class="student-name">${student.name}</span>
-                    </td>
+                    <td>${student.student_code}</td>
+                    <td>${student.name}</td>
                     <td><span class="workout-badge">${student.total_workouts}</span></td>
                     <td><span class="station-badge">${student.unique_stations}</span></td>
                     <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
                     <td>${student.last_login}</td>
                     <td>
-                        <button class="detail-button" data-student-id="${student.student_id}" data-student-name="${student.name}" data-student-code="${student.student_code}">
+                        <button class="detail-button" 
+                                data-student-id="${student.student_id}" 
+                                data-student-name="${student.name}" 
+                                data-student-code="${student.student_code}">
                             Voir Détails
                         </button>
                     </td>
@@ -3052,8 +3074,10 @@ async function loadStudentPerformance(searchQuery = '') {
                 btn.addEventListener('click', (e) => {
                     const studentId = e.target.getAttribute('data-student-id');
                     const studentName = e.target.getAttribute('data-student-name');
-                    const studentCode = e.target.getAttribute('data-student-code');
-                    openStudentDetailModal(studentId, studentName, studentCode);
+                    const studentCode = e.target.getAttribute('data-student-code'); // Add this line
+                    
+                    // Call the modal function with the correct parameters
+                    openStudentDetailModal(studentId, studentName);
                 });
             });
         }
@@ -3076,19 +3100,8 @@ async function openStudentDetailModal(studentId, studentName) {
         const data = await response.json();
         
         // Update modal header
-        const headerElement = document.getElementById('student-detail-name');
-        if (headerElement) {
-            // Create enhanced header with student name and Numéro d'Apogée
-            const headerContainer = headerElement.parentElement;
-            headerContainer.innerHTML = `
-                <div class="student-detail-header">
-                    <div class="student-detail-info">
-                        <div class="student-detail-name">${studentName}</div>
-                        <div class="student-detail-apogee">N° Apogée: ${studentCode}</div>
-                    </div>
-                </div>
-            `;
-        }        
+        document.getElementById('student-detail-name').textContent = studentName;
+        
         // Update student stats
         document.getElementById('detail-total-workouts').textContent = data.student.total_workouts;
         document.getElementById('detail-unique-stations').textContent = data.student.unique_stations;
@@ -3109,6 +3122,7 @@ async function openStudentDetailModal(studentId, studentName) {
                     <td>${perf.specialty}</td>
                     <td>${perf.score}%</td>
                     <td>${perf.points_earned}/${perf.points_total}</td>
+                    <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
                     <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
                     <td>${perf.consultation_duration}</td>
                     <td>
