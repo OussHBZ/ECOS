@@ -68,12 +68,7 @@ CRITÈRE À ÉVALUER: {criterion_description}
 CONVERSATION:
 {conversation_text}
 
-Évaluez si le médecin a correctement exploré ce point d'anamnèse. Vérifiez:
-- Les questions sur les symptômes principaux
-- L'exploration des antécédents
-- Les questions sur les facteurs déclenchants
-- L'histoire de la maladie actuelle
-- Les questions sur le mode de vie
+Évaluez si le médecin a correctement exploré ce point d'anamnèse. 
 
 Répondez UNIQUEMENT par:
 - "OUI" si le critère est clairement satisfait
