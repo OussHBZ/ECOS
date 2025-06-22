@@ -10,7 +10,7 @@ from datetime import datetime
 import shutil
 from werkzeug.utils import secure_filename
 from document_processor import DocumentExtractionAgent
-from evaluation_agent import EvaluationAgent
+from enhanced_evaluation_agent import EnhancedEvaluationAgent
 from simple_pdf_generator import create_simple_consultation_pdf
 from flask_login import LoginManager, login_required, current_user
 from models import db, Student, AdminAccess, OSCESession, SessionParticipant, SessionStationAssignment
@@ -441,13 +441,22 @@ def create_app():
     document_agent = DocumentExtractionAgent(llm_client=client)
     
     # Initialize evaluation agent 
-    evaluation_agent = EvaluationAgent(llm_client=client)
+    evaluation_agent = EnhancedEvaluationAgent(llm_client=client)
+
+
+    EVALUATION_CONFIG = {
+        'min_conversation_length': 3,  # Minimum messages for LLM evaluation
+        'max_tokens_per_evaluation': 150,  # Tokens per criterion evaluation
+        'evaluation_temperature': 0.1,  # Low temperature for consistent results
+        'cache_enabled': True,  # Enable caching for repeated evaluations
+        'fallback_to_patterns': True  # Use pattern matching as fallback
+    }
 
     # Store instances in app config for access by other modules
     app.config['DOCUMENT_AGENT'] = document_agent
     app.config['EVALUATION_AGENT'] = evaluation_agent
     app.config['GROQ_CLIENT'] = client
-        
+    app.config['EVALUATION_CONFIG'] = EVALUATION_CONFIG
 
     def load_patient_case(case_number):
         """Load patient case data from the database"""
