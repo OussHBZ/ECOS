@@ -100,51 +100,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 
 // Utility function for authenticated AJAX requests
-async function authenticatedFetch(url, options = {}) {
-    const defaultOptions = {
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-            ...options.headers
-        },
-        credentials: 'same-origin' // Important for session cookies
-    };
-    
-    // FIXED: Merge options properly without recursion
-    const finalOptions = { ...options, ...defaultOptions };
-    if (options.headers) {
-        finalOptions.headers = { ...defaultOptions.headers, ...options.headers };
-    }
-    
-    try {
-        // FIXED: Use native fetch instead of calling authenticatedFetch recursively
-        const response = await fetch(url, finalOptions);
-        
-        // Handle authentication errors
-        if (response.status === 401) {
-            try {
-                const data = await response.json();
-                if (data.auth_required || data.redirect) {
-                    console.error('Session expired or unauthorized access');
-                    alert('Session expirée. Veuillez vous reconnecter.');
-                    window.location.href = data.redirect || '/login';
-                    return null;
-                }
-            } catch (e) {
-                // If response is not JSON, still handle as auth error
-                console.error('Authentication error:', e);
-                alert('Erreur d\'authentification. Veuillez vous reconnecter.');
-                window.location.href = '/login';
-                return null;
-            }
-        }
-        
-        return response;
-    } catch (error) {
-        console.error('Network error:', error);
-        throw error;
-    }
-}
+// authenticatedFetch is provided by auth-utils.js (loaded before this file)
 
 
 // Tab navigation for admin interface

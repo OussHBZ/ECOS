@@ -422,52 +422,7 @@ async function viewCurrentCaseImages() {
 
 
 // Utility function for authenticated AJAX requests
-async function authenticatedFetch(url, options = {}) {
-    const defaultOptions = {
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-            ...options.headers
-        },
-        credentials: 'same-origin' // Important for session cookies
-    };
-    
-    // Merge options properly
-    const finalOptions = {
-        ...defaultOptions,
-        ...options,
-        headers: {
-            ...defaultOptions.headers,
-            ...options.headers
-        }
-    };
-    
-    try {
-        const response = await fetch(url, finalOptions);
-        
-        // Handle authentication errors
-        if (response.status === 401) {
-            try {
-                const data = await response.json();
-                if (data.redirect) {
-                    alert('Session expirée. Veuillez vous reconnecter.');
-                    window.location.href = data.redirect;
-                    return null;
-                }
-            } catch (e) {
-                // If JSON parsing fails, still redirect
-                alert('Session expirée. Veuillez vous reconnecter.');
-                window.location.href = '/auth/login';
-                return null;
-            }
-        }
-        
-        return response;
-    } catch (error) {
-        console.error('Network error in authenticatedFetch:', error);
-        throw error;
-    }
-}
+// authenticatedFetch is provided by auth-utils.js (loaded before this file)
 
 // Filter cases based on selection and search
 function filterCases() {
