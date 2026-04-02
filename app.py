@@ -135,10 +135,23 @@ setup_enhanced_logging()
 logger = logging.getLogger(__name__)
 
 def create_app():
-    app = Flask(__name__, 
+    app = Flask(__name__,
                 static_folder='static',
                 template_folder='templates')
-    
+
+    # Reverse proxy prefix: nginx serves the app under /ecos/
+    # This middleware sets SCRIPT_NAME so url_for() generates /ecos/... URLs
+    class ReverseProxied:
+        def __init__(self, wsgi_app, script_name='/ecos'):
+            self.wsgi_app = wsgi_app
+            self.script_name = script_name
+
+        def __call__(self, environ, start_response):
+            environ['SCRIPT_NAME'] = self.script_name
+            return self.wsgi_app(environ, start_response)
+
+    app.wsgi_app = ReverseProxied(app.wsgi_app)
+
     # Session configuration
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ecos-fmpm-secret-key-2026')
     app.config['SESSION_TYPE'] = 'filesystem'
@@ -147,6 +160,7 @@ def create_app():
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_NAME'] = 'ecos_session'
+    app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
     
