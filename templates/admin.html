@@ -547,64 +547,76 @@
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
     <script>
-    // ── Generic modal helpers ──────────────────────────────────────────────
+    // ── Modal helpers ──────────────────────────────────────────────────────
+    function openModal(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('hidden');
+        el.classList.add('visible');
+    }
     function closeModal(id) {
-        const el = document.getElementById(id);
+        var el = document.getElementById(id);
+        if (!el) return;
         el.classList.remove('visible');
         el.classList.add('hidden');
     }
 
-    function openModal(id) {
-        const el = document.getElementById(id);
-        el.classList.remove('hidden');
-        el.classList.add('visible');
-    }
+    // ── Teacher list (stores data for event delegation) ───────────────────
+    var _teacherMap = {};
 
-    // ── Teachers tab ──────────────────────────────────────────────────────
     function loadAdminTeachers(search) {
-        const url = (search && search.length > 0)
-            ? `/ecos/admin/teachers?search=${encodeURIComponent(search)}`
-            : '/ecos/admin/teachers';
-        fetch(url)
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('total-teachers').textContent = data.total ?? '-';
-                const tbody = document.getElementById('admin-teachers-table-body');
+        var url = '/admin/teachers';
+        if (search && search.length > 0) url += '?search=' + encodeURIComponent(search);
+        authenticatedFetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) throw new Error(data.error);
+                document.getElementById('total-teachers').textContent = data.total || '-';
+                var tbody = document.getElementById('admin-teachers-table-body');
+                _teacherMap = {};
                 if (!data.teachers || data.teachers.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">Aucun enseignant trouvé</td></tr>';
                     return;
                 }
-                tbody.innerHTML = data.teachers.map(t => `
-                    <tr>
-                        <td>${t.login}</td>
-                        <td>${t.name}</td>
-                        <td>${t.created_at}</td>
-                        <td>${t.last_login}</td>
-                        <td>
-                            <button onclick="openResetTeacherPasswordModal(${t.id},'${t.name.replace(/'/g,"\\'")})" class="btn btn-secondary" style="font-size:12px;padding:4px 8px;">Réinit. MdP</button>
-                            <button onclick="deleteTeacher(${t.id},'${t.name.replace(/'/g,"\\'")})" class="btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;">Supprimer</button>
-                        </td>
-                    </tr>`).join('');
+                var html = '';
+                data.teachers.forEach(function(t) {
+                    _teacherMap[t.id] = t;
+                    html += '<tr>' +
+                        '<td>' + escHtml(t.login) + '</td>' +
+                        '<td>' + escHtml(t.name) + '</td>' +
+                        '<td>' + t.created_at + '</td>' +
+                        '<td>' + t.last_login + '</td>' +
+                        '<td>' +
+                          '<button class="btn btn-secondary teacher-btn" style="font-size:12px;padding:4px 8px;" data-action="reset" data-id="' + t.id + '">Réinit. MdP</button> ' +
+                          '<button class="btn teacher-btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;" data-action="delete" data-id="' + t.id + '">Supprimer</button>' +
+                        '</td>' +
+                        '</tr>';
+                });
+                tbody.innerHTML = html;
+                tbody.querySelectorAll('.teacher-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var id = this.getAttribute('data-id');
+                        var action = this.getAttribute('data-action');
+                        var teacher = _teacherMap[id];
+                        if (!teacher) return;
+                        if (action === 'reset') openResetTeacherPasswordModal(id, teacher.name);
+                        if (action === 'delete') confirmDeleteTeacher(id, teacher.name);
+                    });
+                });
             })
-            .catch(() => {
+            .catch(function() {
                 document.getElementById('admin-teachers-table-body').innerHTML =
                     '<tr><td colspan="5" style="text-align:center;color:#dc3545;">Erreur de chargement</td></tr>';
             });
     }
 
+    function escHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
     function searchAdminTeachers() {
         loadAdminTeachers(document.getElementById('admin-teachers-search').value.trim());
     }
-
-    // Load teachers when tab becomes active
-    const _origShowAdminTab = typeof showAdminTab === 'function' ? showAdminTab : null;
-    document.querySelectorAll('.nav-tab').forEach(btn => {
-        btn.addEventListener('click', function() {
-            if (this.getAttribute('onclick') && this.getAttribute('onclick').includes('teachers-tab')) {
-                loadAdminTeachers();
-            }
-        });
-    });
 
     // ── Add Student ────────────────────────────────────────────────────────
     function openAddStudentModal() {
@@ -615,23 +627,22 @@
 
     function submitAddStudent(e) {
         e.preventDefault();
-        const errEl = document.getElementById('add-student-error');
+        var errEl = document.getElementById('add-student-error');
         errEl.style.display = 'none';
-        const payload = {
+        var payload = {
             student_code: document.getElementById('new-student-code').value.trim(),
             name: document.getElementById('new-student-name').value.trim(),
-            password: document.getElementById('new-student-password').value,
+            password: document.getElementById('new-student-password').value
         };
-        fetch('/ecos/admin/add-student', {
+        authenticatedFetch('/admin/add-student', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         })
-        .then(r => r.json())
-        .then(data => {
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
             if (data.success) {
                 closeModal('add-student-modal');
-                loadAdminStudents();
+                if (typeof loadAdminStudents === 'function') loadAdminStudents();
                 alert(data.message);
             } else {
                 errEl.textContent = data.error;
@@ -641,7 +652,7 @@
     }
 
     // ── Reset Student Password ─────────────────────────────────────────────
-    let _resetStudentId = null;
+    var _resetStudentId = null;
     function openResetStudentPasswordModal(id, name) {
         _resetStudentId = id;
         document.getElementById('reset-student-name-label').textContent = 'Étudiant : ' + name;
@@ -651,16 +662,15 @@
     }
 
     function submitResetStudentPassword() {
-        const errEl = document.getElementById('reset-student-error');
+        var errEl = document.getElementById('reset-student-error');
         errEl.style.display = 'none';
-        const password = document.getElementById('reset-student-password-input').value;
-        fetch(`/ecos/admin/students/${_resetStudentId}/reset-password`, {
+        var password = document.getElementById('reset-student-password-input').value;
+        authenticatedFetch('/admin/students/' + _resetStudentId + '/reset-password', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({password})
+            body: JSON.stringify({password: password})
         })
-        .then(r => r.json())
-        .then(data => {
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
             if (data.success) {
                 closeModal('reset-student-password-modal');
                 alert(data.message);
@@ -673,11 +683,11 @@
 
     // ── Delete Student ─────────────────────────────────────────────────────
     function deleteStudent(id, name) {
-        if (!confirm(`Supprimer l'étudiant "${name}" ? Cette action est irréversible.`)) return;
-        fetch(`/ecos/admin/students/${id}/delete`, {method: 'DELETE'})
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) { loadAdminStudents(); }
+        if (!confirm('Supprimer l\'étudiant "' + name + '" ? Cette action est irréversible.')) return;
+        authenticatedFetch('/admin/students/' + id + '/delete', {method: 'DELETE'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) { if (typeof loadAdminStudents === 'function') loadAdminStudents(); }
                 else { alert('Erreur : ' + data.error); }
             });
     }
@@ -691,20 +701,19 @@
 
     function submitAddTeacher(e) {
         e.preventDefault();
-        const errEl = document.getElementById('add-teacher-error');
+        var errEl = document.getElementById('add-teacher-error');
         errEl.style.display = 'none';
-        const payload = {
+        var payload = {
             login: document.getElementById('new-teacher-login').value.trim(),
             name: document.getElementById('new-teacher-name').value.trim(),
-            password: document.getElementById('new-teacher-password').value,
+            password: document.getElementById('new-teacher-password').value
         };
-        fetch('/ecos/admin/add-teacher', {
+        authenticatedFetch('/admin/add-teacher', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         })
-        .then(r => r.json())
-        .then(data => {
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
             if (data.success) {
                 closeModal('add-teacher-modal');
                 loadAdminTeachers();
@@ -717,7 +726,7 @@
     }
 
     // ── Reset Teacher Password ─────────────────────────────────────────────
-    let _resetTeacherId = null;
+    var _resetTeacherId = null;
     function openResetTeacherPasswordModal(id, name) {
         _resetTeacherId = id;
         document.getElementById('reset-teacher-name-label').textContent = 'Enseignant : ' + name;
@@ -727,16 +736,15 @@
     }
 
     function submitResetTeacherPassword() {
-        const errEl = document.getElementById('reset-teacher-error');
+        var errEl = document.getElementById('reset-teacher-error');
         errEl.style.display = 'none';
-        const password = document.getElementById('reset-teacher-password-input').value;
-        fetch(`/ecos/admin/teachers/${_resetTeacherId}/reset-password`, {
+        var password = document.getElementById('reset-teacher-password-input').value;
+        authenticatedFetch('/admin/teachers/' + _resetTeacherId + '/reset-password', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({password})
+            body: JSON.stringify({password: password})
         })
-        .then(r => r.json())
-        .then(data => {
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
             if (data.success) {
                 closeModal('reset-teacher-password-modal');
                 alert(data.message);
@@ -748,11 +756,11 @@
     }
 
     // ── Delete Teacher ─────────────────────────────────────────────────────
-    function deleteTeacher(id, name) {
-        if (!confirm(`Supprimer l'enseignant "${name}" ? Cette action est irréversible.`)) return;
-        fetch(`/ecos/admin/teachers/${id}/delete`, {method: 'DELETE'})
-            .then(r => r.json())
-            .then(data => {
+    function confirmDeleteTeacher(id, name) {
+        if (!confirm('Supprimer l\'enseignant "' + name + '" ? Cette action est irréversible.')) return;
+        authenticatedFetch('/admin/teachers/' + id + '/delete', {method: 'DELETE'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
                 if (data.success) { loadAdminTeachers(); }
                 else { alert('Erreur : ' + data.error); }
             });
@@ -763,7 +771,7 @@
         document.getElementById('import-user-type').value = userType;
         document.getElementById('import-file-input').value = '';
         document.getElementById('import-result').style.display = 'none';
-        const isStudent = userType === 'student';
+        var isStudent = userType === 'student';
         document.getElementById('import-modal-title').textContent =
             isStudent ? 'Importer des Étudiants' : 'Importer des Enseignants';
         document.getElementById('import-format-hint').innerHTML = isStudent
@@ -773,28 +781,26 @@
     }
 
     function submitImportUsers() {
-        const file = document.getElementById('import-file-input').files[0];
-        const resultEl = document.getElementById('import-result');
+        var file = document.getElementById('import-file-input').files[0];
+        var resultEl = document.getElementById('import-result');
         if (!file) { alert('Veuillez sélectionner un fichier.'); return; }
-
-        const formData = new FormData();
+        var formData = new FormData();
         formData.append('file', file);
         formData.append('user_type', document.getElementById('import-user-type').value);
-
-        fetch('/ecos/admin/import-users', {method: 'POST', body: formData})
-            .then(r => r.json())
-            .then(data => {
+        authenticatedFetch('/admin/import-users', {method: 'POST', body: formData})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
                 resultEl.style.display = 'block';
                 if (data.success) {
-                    let html = `<strong style="color:#28a745">${data.message}</strong>`;
+                    var html = '<strong style="color:#28a745">' + data.message + '</strong>';
                     if (data.skipped_details && data.skipped_details.length)
                         html += '<br><small>' + data.skipped_details.join('<br>') + '</small>';
                     if (data.errors && data.errors.length)
                         html += '<br><span style="color:#dc3545"><small>' + data.errors.join('<br>') + '</small></span>';
                     resultEl.style.background = '#d4edda';
                     resultEl.innerHTML = html;
-                    const type = document.getElementById('import-user-type').value;
-                    if (type === 'student') loadAdminStudents();
+                    var type = document.getElementById('import-user-type').value;
+                    if (type === 'student') { if (typeof loadAdminStudents === 'function') loadAdminStudents(); }
                     else loadAdminTeachers();
                 } else {
                     resultEl.style.background = '#f8d7da';
@@ -803,14 +809,11 @@
             });
     }
 
-    // Load teachers when the teachers tab is first shown
-    window.addEventListener('load', function() {
-        document.querySelectorAll('.nav-tab').forEach(btn => {
-            const onclick = btn.getAttribute('onclick') || '';
-            if (onclick.includes('teachers-tab')) {
-                btn.addEventListener('click', () => loadAdminTeachers());
-            }
-        });
+    // ── Load teachers when tab is clicked ─────────────────────────────────
+    document.querySelectorAll('.nav-tab').forEach(function(btn) {
+        if ((btn.getAttribute('onclick') || '').indexOf('teachers-tab') !== -1) {
+            btn.addEventListener('click', function() { loadAdminTeachers(); });
+        }
     });
     </script>
 </body>
