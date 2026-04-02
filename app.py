@@ -389,51 +389,52 @@ def create_app():
             system_template = load_system_template()
             
             # Create enhanced system message for realistic patient simulation
-            enhanced_system_message = (
-                f"{system_template['content']}\n\n"
-                f"=== DONNÉES DU PATIENT (CONFIDENTIELLES) ===\n"
-                f"Vous incarnez ce patient. Utilisez ces informations UNIQUEMENT pour répondre aux questions spécifiques :\n\n"
-            )
-            
-            # Format patient information more clearly
+            enhanced_system_message = f"{system_template['content']}\n\n"
+
+            # Build patient identity card
             patient_info = patient_data.get('patient_info', {})
+            enhanced_system_message += "=== VOTRE IDENTITÉ (informations internes — ne les révélez que si on vous les demande) ===\n"
+
             if patient_info:
-                enhanced_system_message += "INFORMATIONS PERSONNELLES :\n"
-                for key, value in patient_info.items():
-                    if key == 'name':
-                        enhanced_system_message += f"- Nom : {value}\n"
-                    elif key == 'age':
-                        enhanced_system_message += f"- Âge : {value} ans\n"
-                    elif key == 'gender':
-                        enhanced_system_message += f"- Sexe : {value}\n"
-                    elif key == 'occupation':
-                        enhanced_system_message += f"- Profession : {value}\n"
-                    elif key == 'medical_history':
-                        enhanced_system_message += f"- Antécédents médicaux : {', '.join(value) if isinstance(value, list) else value}\n"
-            
-            # Add symptoms information
+                name = patient_info.get('name', 'Non précisé')
+                age = patient_info.get('age', '')
+                gender = patient_info.get('gender', '')
+                occupation = patient_info.get('occupation', '')
+                medical_history = patient_info.get('medical_history', [])
+
+                enhanced_system_message += f"- Vous vous appelez : {name}\n"
+                if age:
+                    enhanced_system_message += f"- Vous avez {age} ans\n"
+                if gender:
+                    enhanced_system_message += f"- Sexe : {gender}\n"
+                if occupation:
+                    enhanced_system_message += f"- Vous travaillez comme : {occupation}\n"
+                if medical_history:
+                    history_str = ', '.join(medical_history) if isinstance(medical_history, list) else medical_history
+                    enhanced_system_message += f"- Vos antécédents médicaux (à mentionner SEULEMENT si l'étudiant vous interroge dessus) : {history_str}\n"
+
+            # Add symptoms with OSCE-appropriate disclosure rules
             symptoms = patient_data.get('symptoms', [])
             if symptoms:
-                enhanced_system_message += "\nSYMPTÔMES ACTUELS :\n"
-                for symptom in symptoms:
-                    enhanced_system_message += f"- {symptom}\n"
-            
-            # Add diagnosis (for AI reference only)
+                enhanced_system_message += (
+                    "\n=== VOS SYMPTÔMES (ce que vous ressentez) ===\n"
+                    "Révélez chaque symptôme UNIQUEMENT quand l'étudiant pose la question correspondante.\n"
+                    "Le motif de consultation (premier symptôme) peut être mentionné si on vous demande pourquoi vous consultez.\n"
+                )
+                for i, symptom in enumerate(symptoms):
+                    if i == 0:
+                        enhanced_system_message += f"- MOTIF PRINCIPAL : {symptom}\n"
+                    else:
+                        enhanced_system_message += f"- {symptom}\n"
+
+            # Add diagnosis — strictly hidden from student
             diagnosis = patient_data.get('diagnosis', '')
             if diagnosis:
-                enhanced_system_message += f"\nDIAGNOSTIC (pour référence IA uniquement) : {diagnosis}\n"
-            
-            # Add behavior instructions
-            enhanced_system_message += (
-                "\n=== INSTRUCTIONS DE COMPORTEMENT ===\n"
-                "- Répondez UNIQUEMENT aux questions posées\n"
-                "- Soyez concis (1-2 phrases maximum par réponse)\n"
-                "- Exprimez les émotions appropriées (inquiétude, douleur, etc.)\n"
-                "- Utilisez un langage simple et naturel\n"
-                "- Ne révélez des informations que si elles sont demandées explicitement\n"
-                "- Si vous ne savez pas quelque chose, dites-le simplement\n"
-                "\nDÉBUTEZ la consultation en attendant que l'étudiant vous pose la première question."
-            )
+                enhanced_system_message += (
+                    f"\n=== DIAGNOSTIC RÉEL (STRICTEMENT CONFIDENTIEL) ===\n"
+                    f"{diagnosis}\n"
+                    f"⚠ Ne mentionnez JAMAIS ce diagnostic. Vous êtes un patient, vous ne connaissez pas votre diagnostic.\n"
+                )
             
             # Create conversation with enhanced system message
             conversation = [SystemMessage(content=enhanced_system_message)]
@@ -721,37 +722,42 @@ def create_app():
             return jsonify({'error': str(e)}), 500
 
     def validate_patient_response(ai_reply, user_message):
-        """Validate and potentially modify the AI response to ensure it follows patient simulation rules"""
-        
-        # Remove common AI assistant phrases that break patient immersion
-        unwanted_phrases = [
-            "En tant qu'IA", "Je suis une intelligence artificielle", 
-            "Comme assistant", "En tant qu'assistant virtuel",
-            "Je ne peux pas", "Je ne suis pas un vrai patient",
-            "Consultez un médecin", "Je vous recommande de",
-            "Il serait préférable de", "Vous devriez"
+        """Validate and modify the AI response to ensure realistic patient simulation"""
+
+        # Phrases that break patient immersion
+        immersion_breaking = [
+            "en tant qu'ia", "je suis une intelligence artificielle",
+            "comme assistant", "en tant qu'assistant", "en tant que modèle",
+            "je ne suis pas un vrai patient", "je suis un simulateur",
+            "je suis programmé", "mon rôle est de", "dans le cadre de cet exercice",
+            "en tant que patient simulé"
         ]
-        
-        for phrase in unwanted_phrases:
-            if phrase.lower() in ai_reply.lower():
-                # If the response contains AI-like language, provide a generic patient response
-                logger.warning(f"AI response contained unwanted phrase: {phrase}")
-                return "Je ne sais pas vraiment, docteur. Que pensez-vous?"
-        
-        # Ensure response is not too long (patient-like brevity)
-        sentences = ai_reply.split('.')
+
+        # Phrases where AI gives medical advice (patient should never do this)
+        medical_advice = [
+            "consultez un médecin", "je vous recommande de", "vous devriez",
+            "il serait préférable de", "je vous conseille", "il faut que vous",
+            "le traitement serait", "le diagnostic est", "vous avez probablement"
+        ]
+
+        reply_lower = ai_reply.lower()
+
+        for phrase in immersion_breaking:
+            if phrase in reply_lower:
+                logger.warning(f"AI broke immersion with: {phrase}")
+                return "Pardon docteur, je n'ai pas bien compris votre question."
+
+        for phrase in medical_advice:
+            if phrase in reply_lower:
+                logger.warning(f"AI gave medical advice: {phrase}")
+                return "Je ne sais pas trop, docteur. C'est vous le spécialiste."
+
+        # Enforce brevity — max 3 sentences for patient realism
+        sentences = [s.strip() for s in ai_reply.split('.') if s.strip()]
         if len(sentences) > 3:
-            # Keep only first 2 sentences for conciseness
-            ai_reply = '. '.join(sentences[:2]) + '.'
+            ai_reply = '. '.join(sentences[:3]) + '.'
             logger.info("Truncated long response for patient simulation")
-        
-        # Add "docteur" occasionally for realism if not present and appropriate
-        if len(ai_reply) > 20 and "docteur" not in ai_reply.lower() and "merci" not in ai_reply.lower():
-            if ai_reply.endswith('.'):
-                ai_reply = ai_reply[:-1] + ", docteur."
-            else:
-                ai_reply += ", docteur."
-        
+
         return ai_reply
 
     @app.route('/end_chat', methods=['POST'])
