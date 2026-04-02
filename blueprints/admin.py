@@ -1431,10 +1431,17 @@ def reset_student_password(student_id):
 @admin_bp.route('/students/<int:student_id>/delete', methods=['DELETE'])
 @admin_required
 def delete_student(student_id):
-    """Delete a student account"""
+    """Delete a student account and all related records"""
     try:
         student = Student.query.get_or_404(student_id)
         name = student.name
+
+        # Manually delete records that lack cascade on the Student side
+        CompetitionParticipant.query.filter_by(student_id=student_id).delete()
+        for scs in StudentCompetitionSession.query.filter_by(student_id=student_id).all():
+            StudentStationAssignment.query.filter_by(student_session_id=scs.id).delete()
+        StudentCompetitionSession.query.filter_by(student_id=student_id).delete()
+
         db.session.delete(student)
         db.session.commit()
         return jsonify({'success': True, 'message': f'Étudiant {name} supprimé.'})

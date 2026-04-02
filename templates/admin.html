@@ -549,7 +549,15 @@
     <script>
     // ── Generic modal helpers ──────────────────────────────────────────────
     function closeModal(id) {
-        document.getElementById(id).classList.add('hidden');
+        const el = document.getElementById(id);
+        el.classList.remove('visible');
+        el.classList.add('hidden');
+    }
+
+    function openModal(id) {
+        const el = document.getElementById(id);
+        el.classList.remove('hidden');
+        el.classList.add('visible');
     }
 
     // ── Teachers tab ──────────────────────────────────────────────────────
@@ -602,7 +610,7 @@
     function openAddStudentModal() {
         document.getElementById('add-student-form').reset();
         document.getElementById('add-student-error').style.display = 'none';
-        document.getElementById('add-student-modal').classList.remove('hidden');
+        openModal('add-student-modal');
     }
 
     function submitAddStudent(e) {
@@ -639,7 +647,7 @@
         document.getElementById('reset-student-name-label').textContent = 'Étudiant : ' + name;
         document.getElementById('reset-student-password-input').value = '';
         document.getElementById('reset-student-error').style.display = 'none';
-        document.getElementById('reset-student-password-modal').classList.remove('hidden');
+        openModal('reset-student-password-modal');
     }
 
     function submitResetStudentPassword() {
@@ -678,7 +686,7 @@
     function openAddTeacherModal() {
         document.getElementById('add-teacher-form').reset();
         document.getElementById('add-teacher-error').style.display = 'none';
-        document.getElementById('add-teacher-modal').classList.remove('hidden');
+        openModal('add-teacher-modal');
     }
 
     function submitAddTeacher(e) {
@@ -715,7 +723,7 @@
         document.getElementById('reset-teacher-name-label').textContent = 'Enseignant : ' + name;
         document.getElementById('reset-teacher-password-input').value = '';
         document.getElementById('reset-teacher-error').style.display = 'none';
-        document.getElementById('reset-teacher-password-modal').classList.remove('hidden');
+        openModal('reset-teacher-password-modal');
     }
 
     function submitResetTeacherPassword() {
@@ -761,7 +769,7 @@
         document.getElementById('import-format-hint').innerHTML = isStudent
             ? 'Colonnes : <strong>apogee</strong>, <strong>name</strong>, <strong>password</strong>'
             : 'Colonnes : <strong>login</strong>, <strong>name</strong>, <strong>password</strong>';
-        document.getElementById('import-users-modal').classList.remove('hidden');
+        openModal('import-users-modal');
     }
 
     function submitImportUsers() {
