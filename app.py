@@ -140,7 +140,7 @@ def create_app():
                 template_folder='templates')
     
     # Session configuration
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32)
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ecos-fmpm-secret-key-2026')
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = True
     app.config['SESSION_USE_SIGNER'] = True
@@ -148,7 +148,7 @@ def create_app():
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_NAME'] = 'ecos_session'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
-    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+    app.config['SESSION_COOKIE_SECURE'] = False
     
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
