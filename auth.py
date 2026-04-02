@@ -19,8 +19,7 @@ def is_ajax_request():
     return (
         request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
         request.headers.get('Content-Type') == 'application/json' or
-        request.accept_mimetypes.best == 'application/json' or
-        request.path.startswith(('/admin/', '/teacher/', '/student/'))
+        request.accept_mimetypes.best == 'application/json'
     )
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
