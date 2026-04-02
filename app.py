@@ -139,20 +139,8 @@ def create_app():
                 static_folder='static',
                 template_folder='templates')
 
-    # Reverse proxy prefix: nginx serves the app under /ecos/
-    # This middleware sets SCRIPT_NAME so url_for() generates /ecos/... URLs
-    class ReverseProxied:
-        def __init__(self, wsgi_app, script_name='/ecos'):
-            self.wsgi_app = wsgi_app
-            self.script_name = script_name
-
-        def __call__(self, environ, start_response):
-            environ['SCRIPT_NAME'] = self.script_name
-            return self.wsgi_app(environ, start_response)
-
-    app.wsgi_app = ReverseProxied(app.wsgi_app)
-
     # Session configuration
+    # Note: nginx handles /ecos/ prefix via sub_filter and proxy_redirect
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ecos-fmpm-secret-key-2026')
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = True
