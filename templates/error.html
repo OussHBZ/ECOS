@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }} - ECOS</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+            background-color: #f8f9fa;
+        }
+        .error-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 30px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .error-code {
+            font-size: 72px;
+            color: {{ color }};
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .error-message {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .error-description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .back-link {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px;
+            transition: background-color 0.3s;
+        }
+        .back-link:hover { background: #0056b3; }
+        .refresh-link { background: #28a745; }
+        .refresh-link:hover { background: #1e7e34; }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-code">{{ code }}</div>
+        <div class="error-message">{{ message }}</div>
+        <div class="error-description">{{ description }}</div>
+        <a href="/" class="back-link">Go to Homepage</a>
+        {% if code == 401 %}
+        <a href="/login" class="back-link">Login</a>
+        {% elif code == 500 %}
+        <a href="javascript:location.reload()" class="back-link refresh-link">Refresh Page</a>
+        {% endif %}
+    </div>
+</body>
+</html>

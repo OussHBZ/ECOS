@@ -1,45 +1,30 @@
-from flask import Flask, render_template, request, jsonify, session, send_from_directory, url_for, redirect
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-import os, re
+import os
 import json
 import logging
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+import time
 import tempfile
-from datetime import datetime
-import shutil
-from werkzeug.utils import secure_filename
+
+from datetime import datetime, timedelta
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, url_for, redirect
+from flask_login import LoginManager, current_user
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from httpx import Client
+
 from document_processor import DocumentExtractionAgent
 from enhanced_evaluation_agent import EnhancedEvaluationAgent
 from simple_pdf_generator import create_simple_consultation_pdf
-from flask_login import LoginManager, login_required, current_user
-from models import db, Student, AdminAccess, OSCESession, SessionParticipant, SessionStationAssignment
-from auth import auth_bp
 from models import (
     db, Student, TeacherAccess, AdminAccess, PatientCase, StudentPerformance, CaseImage,
-    CompetitionSession, CompetitionParticipant, CompetitionStationBank, 
+    OSCESession, SessionParticipant, SessionStationAssignment,
+    CompetitionSession, CompetitionParticipant, CompetitionStationBank,
     StudentCompetitionSession, StudentStationAssignment
 )
-from datetime import datetime, timedelta
-
-# Import blueprints
+from auth import auth_bp
 from blueprints.admin import admin_bp
 from blueprints.student import student_bp
 from blueprints.teacher import teacher_bp
-
-import time
-import concurrent.futures
-
-# Import reporting modules
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT
-from reportlab.pdfgen import canvas
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Frame, BaseDocTemplate, PageTemplate
-
-# Import HTTP client
-from httpx import Client
 
 # Model Configuration
 LLAMA_MODELS = {
@@ -95,10 +80,8 @@ def create_groq_client(api_key, http_client):
 
 def setup_enhanced_logging():
     """Set up enhanced logging with filtering for reduced noise"""
-    import logging
     from logging.handlers import RotatingFileHandler
-    import os
-    
+
     # Create logs directory if it doesn't exist
     if not os.path.exists('logs'):
         os.mkdir('logs')
@@ -148,11 +131,6 @@ def setup_enhanced_logging():
     werkzeug_logger.setLevel(logging.WARNING)
     werkzeug_logger.addFilter(RequestFilter())
 
-# Setup logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 setup_enhanced_logging()
 logger = logging.getLogger(__name__)
 
@@ -161,18 +139,16 @@ def create_app():
                 static_folder='static',
                 template_folder='templates')
     
-    # Enhanced session configuration for better AJAX support
+    # Session configuration
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32)
     app.config['SESSION_TYPE'] = 'filesystem'
-    app.config['SESSION_PERMANENT'] = False
+    app.config['SESSION_PERMANENT'] = True
     app.config['SESSION_USE_SIGNER'] = True
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_NAME'] = 'ecos_session'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
-    
-    # Add CORS headers for AJAX requests (if needed)
-    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
     
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
@@ -188,155 +164,41 @@ def create_app():
     login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
     login_manager.session_protection = 'basic'
     
-    # Enhanced error handlers for AJAX and competition routes
+    # Error handlers - return JSON for AJAX, HTML template otherwise
+    def _is_ajax():
+        return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     @app.errorhandler(404)
     def not_found_error(error):
-        """Handle 404 errors with a simple response instead of template"""
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Page Not Found - ECOS</title>
-            <style>
-                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-                .error-container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .error-code { font-size: 72px; color: #ff6b6b; margin-bottom: 20px; }
-                .error-message { font-size: 24px; margin-bottom: 20px; }
-                .back-link { display: inline-block; background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
-            </style>
-        </head>
-        <body>
-            <div class="error-container">
-                <div class="error-code">404</div>
-                <div class="error-message">Page Not Found</div>
-                <p>The page you're looking for doesn't exist.</p>
-                <a href="/" class="back-link">Go to Homepage</a>
-            </div>
-        </body>
-        </html>
-        ''', 404
-    
+        if _is_ajax():
+            return jsonify({'error': 'Not found'}), 404
+        return render_template('error.html',
+            code=404, color='#ff6b6b', title='Page Not Found',
+            message='Page Not Found',
+            description="The page you're looking for doesn't exist."
+        ), 404
+
     @app.errorhandler(401)
     def unauthorized_error(error):
-        """Handle 401 Unauthorized errors"""
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({
-                'error': 'Authentication required',
-                'redirect': url_for('auth.login'),
-                'auth_required': True
-            }), 401
-        
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Unauthorized - ECOS</title>
-            <style>
-                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f8f9fa; }
-                .error-container { max-width: 600px; margin: 0 auto; padding: 30px; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-                .error-code { font-size: 72px; color: #dc3545; margin-bottom: 20px; font-weight: bold; }
-                .error-message { font-size: 24px; margin-bottom: 20px; color: #333; }
-                .back-link { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px; }
-            </style>
-        </head>
-        <body>
-            <div class="error-container">
-                <div class="error-code">401</div>
-                <div class="error-message">Unauthorized</div>
-                <p>You need to be logged in to access this page.</p>
-                <a href="/login" class="back-link">Login</a>
-                <a href="/" class="back-link">Go to Homepage</a>
-            </div>
-        </body>
-        </html>
-        ''', 401
-    
+        if _is_ajax():
+            return jsonify({'error': 'Authentication required', 'redirect': url_for('auth.login'), 'auth_required': True}), 401
+        return render_template('error.html',
+            code=401, color='#dc3545', title='Unauthorized',
+            message='Unauthorized',
+            description='You need to be logged in to access this page.'
+        ), 401
+
     @app.errorhandler(500)
     def internal_error(error):
-        """Handle 500 errors with proper rollback and response"""
         db.session.rollback()
-        logger.error(f"Internal server error: {str(error)}")
-        
-        # For AJAX requests, return JSON
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({
-                'error': 'Internal server error',
-                'message': 'An unexpected error occurred'
-            }), 500
-        
-        # For regular requests, return HTML without template dependency
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Internal Server Error - ECOS</title>
-            <style>
-                body { 
-                    font-family: Arial, sans-serif; 
-                    text-align: center; 
-                    margin-top: 50px; 
-                    background-color: #f8f9fa; 
-                }
-                .error-container { 
-                    max-width: 600px; 
-                    margin: 0 auto; 
-                    padding: 30px; 
-                    background: white; 
-                    border-radius: 10px; 
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-                }
-                .error-code { 
-                    font-size: 72px; 
-                    color: #dc3545; 
-                    margin-bottom: 20px; 
-                    font-weight: bold; 
-                }
-                .error-message { 
-                    font-size: 24px; 
-                    margin-bottom: 20px; 
-                    color: #333; 
-                }
-                .error-description { 
-                    color: #666; 
-                    margin-bottom: 30px; 
-                    line-height: 1.6; 
-                }
-                .back-link { 
-                    display: inline-block; 
-                    background: #007bff; 
-                    color: white; 
-                    padding: 12px 24px; 
-                    text-decoration: none; 
-                    border-radius: 5px; 
-                    margin: 10px; 
-                    transition: background-color 0.3s; 
-                }
-                .back-link:hover { 
-                    background: #0056b3; 
-                }
-                .refresh-link { 
-                    background: #28a745; 
-                }
-                .refresh-link:hover { 
-                    background: #1e7e34; 
-                }
-            </style>
-        </head>
-        <body>
-            <div class="error-container">
-                <div class="error-code">500</div>
-                <div class="error-message">Internal Server Error</div>
-                <div class="error-description">
-                    Something went wrong on our end. We're working to fix this issue.
-                    <br><br>
-                    If this problem persists, please try refreshing the page or contact support.
-                </div>
-                <a href="/" class="back-link">Go to Homepage</a>
-                <a href="javascript:location.reload()" class="back-link refresh-link">Refresh Page</a>
-            </div>
-        </body>
-        </html>
-        ''', 500
+        logger.error(f"Internal server error: {error}")
+        if _is_ajax():
+            return jsonify({'error': 'Internal server error'}), 500
+        return render_template('error.html',
+            code=500, color='#dc3545', title='Internal Server Error',
+            message='Internal Server Error',
+            description='Something went wrong on our end. Please try refreshing the page.'
+        ), 500
     
     @login_manager.user_loader
     def load_user(user_id):
@@ -631,8 +493,8 @@ def create_app():
                     # Try to convert to dict
                     try:
                         formatted_conversation.append({'role': 'system', 'content': str(msg)})
-                    except:
-                        logger.warning(f"Could not format message: {msg}")
+                    except Exception:
+                        logger.warning(f"Could not format message: {type(msg)}")
                         continue
             
             # Check if we have an empty conversation (just started)
@@ -897,11 +759,6 @@ def create_app():
             conversation = session.get('current_conversation', [])
             case_number = session.get('current_case')
             
-            logger.info(f"=== ENDING CHAT DEBUG INFO ===")
-            logger.info(f"Case number: {case_number}")
-            logger.info(f"Conversation length: {len(conversation) if conversation else 0}")
-            logger.info(f"Session keys: {list(session.keys())}")
-            
             if not case_number:
                 logger.error("No case number found in session")
                 return jsonify({'error': 'No active case session'}), 400
@@ -910,32 +767,15 @@ def create_app():
                 logger.warning("Empty conversation found")
                 conversation = [{'role': 'system', 'content': 'No conversation recorded'}]
             
-            # Evaluate conversation
-            logger.info("Starting conversation evaluation...")
             evaluation_results = evaluate_conversation(conversation, case_number)
-            logger.info(f"Evaluation completed: {evaluation_results.get('percentage', 0)}%")
             
             # Generate PDF report with detailed logging
             pdf_filename = None
             pdf_url = None
             
             try:
-                logger.info("=== STARTING PDF GENERATION ===")
-                
-                # Check if simple_pdf_generator function exists
-                if 'create_simple_consultation_pdf' not in globals():
-                    logger.error("create_simple_consultation_pdf function not found!")
-                    raise ImportError("PDF generation function not available")
-                
-                # Check temp directory
-                import tempfile
                 temp_dir = tempfile.gettempdir()
-                logger.info(f"Temp directory: {temp_dir}")
-                logger.info(f"Temp directory exists: {os.path.exists(temp_dir)}")
-                logger.info(f"Temp directory writable: {os.access(temp_dir, os.W_OK)}")
                 
-                # Generate PDF
-                logger.info("Calling create_simple_consultation_pdf...")
                 pdf_filename = create_simple_consultation_pdf(
                     conversation,
                     case_number,
@@ -943,36 +783,19 @@ def create_app():
                     evaluation_results.get('recommendations', [])
                 )
                 
-                logger.info(f"PDF generation returned: {pdf_filename}")
-                
                 if pdf_filename:
-                    # Check if file actually exists
                     pdf_path = os.path.join(temp_dir, pdf_filename)
-                    logger.info(f"Checking PDF file at: {pdf_path}")
-                    
-                    if os.path.exists(pdf_path):
-                        file_size = os.path.getsize(pdf_path)
-                        logger.info(f"PDF file exists, size: {file_size} bytes")
-                        
-                        if file_size > 0:
-                            pdf_url = f'/download_pdf/{pdf_filename}'
-                            session['last_pdf'] = pdf_filename
-                            logger.info(f"PDF URL created: {pdf_url}")
-                        else:
-                            logger.error("PDF file is empty (0 bytes)")
-                            pdf_filename = None
+                    if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0:
+                        pdf_url = f'/download_pdf/{pdf_filename}'
+                        session['last_pdf'] = pdf_filename
                     else:
-                        logger.error(f"PDF file does not exist at expected path: {pdf_path}")
+                        logger.error(f"PDF file missing or empty: {pdf_path}")
                         pdf_filename = None
                 else:
                     logger.error("PDF generation returned None")
                     
             except Exception as e:
-                logger.error(f"=== PDF GENERATION ERROR ===")
-                logger.error(f"Error type: {type(e).__name__}")
-                logger.error(f"Error message: {str(e)}")
-                import traceback
-                logger.error(f"Full traceback:\n{traceback.format_exc()}")
+                logger.error(f"PDF generation error: {e}", exc_info=True)
                 pdf_filename = None
                 pdf_url = None
             
@@ -999,81 +822,45 @@ def create_app():
             session.pop('current_conversation', None)
             session.pop('current_case', None)
             
-            response_data = {
+            return jsonify({
                 'success': True,
                 'evaluation': evaluation_results,
                 'recommendations': evaluation_results.get('recommendations', []),
                 'pdf_url': pdf_url,
-                'pdf_available': pdf_filename is not None,
-                'debug_info': {  # Add debug info to response
-                    'pdf_filename': pdf_filename,
-                    'conversation_length': len(conversation),
-                    'case_number': case_number
-                }
-            }
-            
-            logger.info(f"=== FINAL RESPONSE ===")
-            logger.info(f"PDF URL: {pdf_url}")
-            logger.info(f"PDF Available: {pdf_filename is not None}")
-            logger.info(f"Response keys: {list(response_data.keys())}")
-            
-            return jsonify(response_data)
+                'pdf_available': pdf_filename is not None
+            })
             
         except Exception as e:
-            logger.error(f"=== FATAL ERROR IN END_CHAT ===")
-            logger.error(f"Error: {str(e)}")
-            import traceback
-            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            logger.error(f"Error in end_chat: {e}", exc_info=True)
             return jsonify({'error': str(e)}), 500
 
 
 
     @app.route('/download_pdf/<filename>')
     def download_pdf(filename):
-        """Download generated PDF with comprehensive error handling"""
+        """Download generated PDF"""
         try:
-            import tempfile
+            # Security: prevent path traversal
+            if '..' in filename or '/' in filename or '\\' in filename:
+                return jsonify({'error': 'Invalid filename'}), 400
+
             temp_dir = tempfile.gettempdir()
             file_path = os.path.join(temp_dir, filename)
-            
-            logger.info(f"=== PDF DOWNLOAD DEBUG ===")
-            logger.info(f"Requested filename: {filename}")
-            logger.info(f"Full file path: {file_path}")
-            logger.info(f"File exists: {os.path.exists(file_path)}")
-            
-            if os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
-                logger.info(f"File size: {file_size} bytes")
-                
-                if file_size == 0:
-                    logger.error("PDF file is empty")
-                    return jsonify({'error': 'PDF file is empty'}), 404
-            else:
-                logger.error(f"PDF file not found at: {file_path}")
-                
-                # List all files in temp directory for debugging
-                try:
-                    temp_files = os.listdir(temp_dir)
-                    pdf_files = [f for f in temp_files if f.endswith('.pdf')]
-                    logger.info(f"Available PDF files in temp dir: {pdf_files}")
-                except Exception as list_error:
-                    logger.error(f"Could not list temp directory: {list_error}")
-                
+
+            if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
                 return jsonify({'error': 'PDF file not found'}), 404
-            
+
             return send_from_directory(
-                temp_dir, 
-                filename, 
+                temp_dir,
+                filename,
                 as_attachment=True,
                 download_name=f'consultation_evaluation_{filename}',
                 mimetype='application/pdf'
             )
-            
+
         except Exception as e:
-            logger.error(f"Error in download_pdf: {str(e)}")
-            import traceback
-            logger.error(f"Download traceback:\n{traceback.format_exc()}")
-            return jsonify({'error': f'Error downloading PDF: {str(e)}'}), 500
+            logger.error(f"Error downloading PDF: {e}", exc_info=True)
+            return jsonify({'error': 'Error downloading PDF'}), 500
         
     @app.route('/check_pdf_status')
     def check_pdf_status():
@@ -1082,8 +869,7 @@ def create_app():
             pdf_filename = session.get('last_pdf')
             if not pdf_filename:
                 return jsonify({'pdf_ready': False})
-            
-            import tempfile
+
             temp_dir = tempfile.gettempdir()
             file_path = os.path.join(temp_dir, pdf_filename)
             
@@ -1132,9 +918,6 @@ def create_app():
     @app.route('/check_session')
     def check_session():
         """Check if user is authenticated and return session info"""
-        from flask import jsonify, session
-        from flask_login import current_user
-        
         if current_user.is_authenticated:
             return jsonify({
                 'authenticated': True,

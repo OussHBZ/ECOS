@@ -10,21 +10,21 @@ logger = logging.getLogger(__name__)
 db = SQLAlchemy()
 
 class SessionMixin:
+    """Shared methods for session models (OSCESession, CompetitionSession)"""
+
     def get_participant_count(self):
-        """Get number of participants in this session"""
         return len(self.participants)
-    
+
     def get_assigned_stations_count(self):
-        """Get number of stations assigned to this session"""
         return len(self.station_assignments)
-    
+
     def get_status_display(self):
-        """Get display-friendly status"""
         status_map = {
-            'scheduled': 'Programmé',
+            'scheduled': 'Programmé(e)',
             'active': 'En cours',
-            'completed': 'Terminé',
-            'cancelled': 'Annulé'
+            'completed': 'Terminé(e)',
+            'cancelled': 'Annulé(e)',
+            'paused': 'En pause'
         }
         return status_map.get(self.status, self.status)
 
@@ -160,30 +160,12 @@ class OSCESession(db.Model, SessionMixin):
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    created_by = db.Column(db.String(50))  # Who created the session
-    status = db.Column(db.String(20), default='scheduled')  # scheduled, active, completed, cancelled
-    
+    created_by = db.Column(db.String(50))
+    status = db.Column(db.String(20), default='scheduled')
+
     # Relationships
     participants = db.relationship('SessionParticipant', backref='session', lazy=True, cascade='all, delete-orphan')
     station_assignments = db.relationship('SessionStationAssignment', backref='session', lazy=True, cascade='all, delete-orphan')
-    
-    def get_participant_count(self):
-        """Get number of participants in this session"""
-        return len(self.participants)
-    
-    def get_assigned_stations_count(self):
-        """Get number of stations assigned to this session"""
-        return len(self.station_assignments)
-    
-    def get_status_display(self):
-        """Get display-friendly status"""
-        status_map = {
-            'scheduled': 'Programmé',
-            'active': 'En cours',
-            'completed': 'Terminé',
-            'cancelled': 'Annulé'
-        }
-        return status_map.get(self.status, self.status)
 
 class SessionParticipant(db.Model):
     """Model for tracking which students are in which sessions"""
@@ -249,7 +231,7 @@ class PatientCase(db.Model):
         if self.patient_info_json:
             try:
                 return json.loads(self.patient_info_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return {}
         return {}
     
@@ -265,7 +247,7 @@ class PatientCase(db.Model):
         if self.symptoms_json:
             try:
                 return json.loads(self.symptoms_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return []
         return []
     
@@ -281,7 +263,7 @@ class PatientCase(db.Model):
         if self.evaluation_checklist_json:
             try:
                 return json.loads(self.evaluation_checklist_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return []
         return []
     
@@ -297,7 +279,7 @@ class PatientCase(db.Model):
         if self.differential_diagnosis_json:
             try:
                 return json.loads(self.differential_diagnosis_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return []
         return []
     
@@ -320,7 +302,7 @@ class PatientCase(db.Model):
         if self.custom_sections_json:
             try:
                 return json.loads(self.custom_sections_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return []
         return []
     
@@ -424,7 +406,7 @@ class PatientCase(db.Model):
             if self.differential_diagnosis_json:
                 try:
                     differential_diagnosis = json.loads(self.differential_diagnosis_json)
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     differential_diagnosis = self.differential_diagnosis_json
             
             # Add lab results to patient info if available
@@ -475,37 +457,6 @@ class PatientCase(db.Model):
                 'custom_sections': [],
                 'images': []
             }
-    def get_completion_count(self):
-        """Get the number of times this case has been completed"""
-        from models import StudentPerformance
-        return StudentPerformance.query.filter_by(case_number=self.case_number).count()
-
-    def get_average_score(self):
-        """Get the average score for this case"""
-        from models import StudentPerformance
-        performances = StudentPerformance.query.filter_by(case_number=self.case_number).all()
-        if not performances:
-            return 0
-        return round(sum(perf.percentage_score for perf in performances) / len(performances))
-
-    # Add to Student class:
-    def get_total_workouts(self):
-        """Get total number of consultations for this student"""
-        from models import StudentPerformance
-        return StudentPerformance.query.filter_by(student_id=self.id).count()
-
-    def get_unique_stations_played(self):
-        """Get number of unique stations this student has played"""
-        from models import StudentPerformance, db
-        return db.session.query(StudentPerformance.case_number).filter_by(student_id=self.id).distinct().count()
-
-    def get_average_score(self):
-        """Get average score for this student"""
-        from models import StudentPerformance
-        performances = StudentPerformance.query.filter_by(student_id=self.id).all()
-        if not performances:
-            return 0
-        return round(sum(perf.percentage_score for perf in performances) / len(performances))
     def get_competition_usage_stats(self):
         """Get usage statistics for this case in competitions"""
         # Count how many times this case was used in competitions
@@ -574,7 +525,7 @@ class StudentPerformance(db.Model):
         if self.evaluation_results_json:
             try:
                 return json.loads(self.evaluation_results_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return {}
         return {}
     
@@ -588,7 +539,7 @@ class StudentPerformance(db.Model):
         if self.recommendations_json:
             try:
                 return json.loads(self.recommendations_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return []
         return []
 
@@ -602,7 +553,7 @@ class StudentPerformance(db.Model):
         if self.conversation_transcript_json:
             try:
                 return json.loads(self.conversation_transcript_json)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return []
         return []
 
@@ -644,7 +595,7 @@ class StudentPerformance(db.Model):
         
         return performance
 
-class CompetitionSession(db.Model):
+class CompetitionSession(db.Model, SessionMixin):
     """Model for OSCE competition sessions"""
     __tablename__ = 'competition_sessions'
     
@@ -667,14 +618,6 @@ class CompetitionSession(db.Model):
     participants = db.relationship('CompetitionParticipant', backref='session', lazy=True, cascade='all, delete-orphan')
     station_assignments = db.relationship('CompetitionStationBank', backref='session', lazy=True, cascade='all, delete-orphan')
     student_sessions = db.relationship('StudentCompetitionSession', backref='session', lazy=True, cascade='all, delete-orphan')
-    
-    def get_participant_count(self):
-        """Get number of participants in this session"""
-        return len(self.participants)
-    
-    def get_assigned_stations_count(self):
-        """Get number of stations in the station bank"""
-        return len(self.station_assignments)
     
     def get_logged_in_count(self):
         """Get number of students currently logged into the session"""
@@ -741,8 +684,7 @@ class CompetitionSession(db.Model):
             for student_session in logged_in_students:
                 # Randomly select stations for this student
                 if self.randomize_stations:
-                    import random
-                    selected_stations = random.sample(available_stations, 
+                    selected_stations = random.sample(available_stations,
                                                     min(self.stations_per_session, len(available_stations)))
                 else:
                     selected_stations = available_stations[:self.stations_per_session]
@@ -951,16 +893,6 @@ class CompetitionSession(db.Model):
             
         return leaderboard
             
-    def get_status_display(self):
-        """Get display-friendly status"""
-        status_map = {
-            'scheduled': 'Programmée',
-            'active': 'En cours',
-            'completed': 'Terminée',
-            'cancelled': 'Annulée'
-        }
-        return status_map.get(self.status, self.status)
-    
     def check_and_complete_competition(self):
         """Check if all students are done and mark competition as completed"""
         try:
@@ -1079,9 +1011,9 @@ class CompetitionStationBank(db.Model):
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Unique constraint to prevent duplicate stations
-    __table_args__ = (db.UniqueConstraint('session_id', 'case_number', name='unique_session_station'),)
+    __table_args__ = (db.UniqueConstraint('session_id', 'case_number', name='unique_competition_session_station'),)
+
     def __repr__(self):
-        """String representation"""
         return f'<CompetitionStationBank: Case {self.case_number} in Session {self.session_id}>'
 
 class StudentCompetitionSession(db.Model):
@@ -1129,13 +1061,6 @@ class StudentCompetitionSession(db.Model):
         self.status = 'logged_in'
         self.logged_in_at = datetime.utcnow()
         db.session.commit()
-    
-    def get_current_station(self):
-        """Get the current station assignment"""
-        return StudentStationAssignment.query.filter_by(
-            student_session_id=self.id,
-            station_order=self.current_station_order
-        ).first()
     
     def complete_current_station(self, evaluation_results, conversation_transcript=None):
         """Complete the current station and move to next"""
@@ -1282,7 +1207,7 @@ class StudentCompetitionSession(db.Model):
                     try:
                         perf_data = json.loads(assignment.performance_data)
                         station_info['score'] = perf_data.get('percentage_score', 0)
-                    except:
+                    except (json.JSONDecodeError, TypeError, ValueError):
                         station_info['score'] = 0
                 completed_stations.append(station_info)
             else:
@@ -1355,7 +1280,7 @@ class StudentStationAssignment(db.Model):
         if self.performance_data:
             try:
                 return json.loads(self.performance_data)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 pass
         return None
     def get_duration_minutes(self):
@@ -1392,7 +1317,7 @@ class StudentStationAssignment(db.Model):
                 data = self.performance_data
             
             return data.get('percentage_score', 0)
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return 0
     
     def __repr__(self):
