@@ -1244,6 +1244,7 @@ async function loadAdminStudents(searchQuery = '') {
         } else {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
+                const safeName = student.name.replace(/'/g, "\\'");
                 row.innerHTML = `
                     <td>
                         <span class="apogee-number">${student.student_code}</span>
@@ -1255,7 +1256,9 @@ async function loadAdminStudents(searchQuery = '') {
                     <td><span class="workout-badge">${student.total_consultations}</span></td>
                     <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
                     <td>
-                        <button class="detail-button" onclick="viewStudentDetails(${student.id}, '${student.name}', '${student.student_code}')">Détails</button>
+                        <button class="detail-button" onclick="viewStudentDetails(${student.id}, '${safeName}', '${student.student_code}')">Détails</button>
+                        <button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;margin-left:4px;" onclick="openResetStudentPasswordModal(${student.id},'${safeName}')">Réinit. MdP</button>
+                        <button class="btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;margin-left:4px;" onclick="deleteStudent(${student.id},'${safeName}')">Supprimer</button>
                     </td>
                 `;
                 tableBody.appendChild(row);

@@ -50,46 +50,47 @@
             <!-- Student Login Form -->
             <form method="POST" id="student-form" class="login-form active">
                 <input type="hidden" name="login_type" value="student">
-                
+
                 <div class="form-group">
-                    <label for="student_code">Numéro d'Apogée:</label>
-                    <input type="text" id="student_code" name="student_code" 
+                    <label for="student_code">Numéro d'Apogée :</label>
+                    <input type="text" id="student_code" name="student_code"
                            pattern="[0-9]{6,7}" minlength="6" maxlength="7"
                            placeholder="Ex: 123456 ou 1234567" required>
-  
                 </div>
-                
-                <div class="form-group">
-                    <label for="student_name">Nom complet :</label>
-                    <input type="text" id="student_name" name="student_name" 
-                           placeholder="Ex: Jean Dupont" required>
 
+                <div class="form-group">
+                    <label for="student_password">Mot de passe :</label>
+                    <input type="password" id="student_password" name="password"
+                           placeholder="Entrez votre mot de passe" required>
                 </div>
-                
+
                 <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                
-                <div class="login-help">
-                    <div class="help-section">
-                        <h4>Nouvel étudiant ?</h4>
-                        <p>Votre compte sera créé automatiquement lors de votre première connexion.</p>
-                    </div>
-                </div>
+
+                <p class="field-help" style="margin-top: 15px; text-align: center;">
+                    Votre compte doit être créé par l'administrateur.
+                </p>
             </form>
-            
+
             <!-- Teacher Login Form -->
             <form method="POST" id="teacher-form" class="login-form">
                 <input type="hidden" name="login_type" value="teacher">
-                
+
                 <div class="form-group">
-                    <label for="teacher_access_code">Code d'accès enseignant :</label>
-                    <input type="password" id="teacher_access_code" name="access_code" 
-                           placeholder="Entrez le code d'accès" required>
+                    <label for="teacher_login">Identifiant :</label>
+                    <input type="text" id="teacher_login" name="teacher_login"
+                           placeholder="Entrez votre identifiant" required>
                 </div>
-                
+
+                <div class="form-group">
+                    <label for="teacher_password">Mot de passe :</label>
+                    <input type="password" id="teacher_password" name="password"
+                           placeholder="Entrez votre mot de passe" required>
+                </div>
+
                 <button type="submit" class="btn btn-primary submit-button">Se connecter</button>
-                
+
                 <p class="field-help" style="margin-top: 15px; text-align: center;">
-                    Demandez le code d'accès à votre coordinateur.
+                    Votre compte doit être créé par l'administrateur.
                 </p>
             </form>
             
@@ -139,13 +140,7 @@
         
         // Enhanced validation for Numéro d'Apogée
         document.getElementById('student_code').addEventListener('input', function(e) {
-            const value = e.target.value;
-            const isValid = /^[0-9]{6,7}$/.test(value);
-            
-            // Remove any non-digit characters
-            e.target.value = value.replace(/\D/g, '').slice(0, 7);
-            
-            // Visual feedback
+            e.target.value = e.target.value.replace(/\D/g, '').slice(0, 7);
             if (e.target.value.length > 0) {
                 if (e.target.value.length >= 6 && e.target.value.length <= 7) {
                     e.target.style.borderColor = '#28a745';
@@ -159,23 +154,23 @@
                 e.target.style.backgroundColor = '';
             }
         });
-        
+
         // Form submission validation
         document.getElementById('student-form').addEventListener('submit', function(e) {
             const codeInput = document.getElementById('student_code');
-            const nameInput = document.getElementById('student_name');
-            
+            const passwordInput = document.getElementById('student_password');
+
             if (!codeInput.value || codeInput.value.length < 6 || codeInput.value.length > 7) {
                 e.preventDefault();
                 alert('Le numéro d\'Apogée doit contenir entre 6 et 7 chiffres.');
                 codeInput.focus();
                 return false;
             }
-            
-            if (!nameInput.value.trim()) {
+
+            if (!passwordInput.value.trim()) {
                 e.preventDefault();
-                alert('Le nom est obligatoire.');
-                nameInput.focus();
+                alert('Le mot de passe est obligatoire.');
+                passwordInput.focus();
                 return false;
             }
         });

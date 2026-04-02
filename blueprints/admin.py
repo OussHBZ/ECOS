@@ -5,11 +5,12 @@ import logging
 from datetime import datetime
 import tempfile
 import json
+import io
 from simple_pdf_generator import create_simple_consultation_pdf
 from models import (
-    db, Student, AdminAccess, OSCESession, SessionParticipant, 
-    SessionStationAssignment, PatientCase, StudentPerformance, 
-    CompetitionSession, CompetitionParticipant, CompetitionStationBank, 
+    db, Student, Teacher, AdminAccess, OSCESession, SessionParticipant,
+    SessionStationAssignment, PatientCase, StudentPerformance,
+    CompetitionSession, CompetitionParticipant, CompetitionStationBank,
     StudentCompetitionSession, StudentStationAssignment
 )
 
@@ -1368,3 +1369,280 @@ def get_session_deletion_info(session_id):
     except Exception as e:
         logger.error(f"Error getting deletion info for session {session_id}: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+# ──────────────────────────────────────────────
+#  Student management
+# ──────────────────────────────────────────────
+
+@admin_bp.route('/add-student', methods=['POST'])
+@admin_required
+def add_student():
+    """Create a new student account"""
+    try:
+        data = request.get_json()
+        student_code = (data.get('student_code') or '').strip()
+        name = (data.get('name') or '').strip()
+        password = (data.get('password') or '').strip()
+
+        is_valid, result = Student.validate_apogee_number(student_code)
+        if not is_valid:
+            return jsonify({'success': False, 'error': result}), 400
+        if not name:
+            return jsonify({'success': False, 'error': 'Le nom est obligatoire.'}), 400
+        if len(password) < 4:
+            return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
+
+        if Student.query.filter_by(student_code=result).first():
+            return jsonify({'success': False, 'error': 'Ce numéro d\'Apogée est déjà utilisé.'}), 400
+
+        student = Student(student_code=result, name=name)
+        student.set_password(password)
+        db.session.add(student)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': f'Étudiant {name} créé avec succès.', 'id': student.id})
+    except Exception as e:
+        logger.error(f"Error adding student: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/students/<int:student_id>/reset-password', methods=['POST'])
+@admin_required
+def reset_student_password(student_id):
+    """Reset a student's password"""
+    try:
+        data = request.get_json()
+        new_password = (data.get('password') or '').strip()
+        if len(new_password) < 4:
+            return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
+
+        student = Student.query.get_or_404(student_id)
+        student.set_password(new_password)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Mot de passe mis à jour.'})
+    except Exception as e:
+        logger.error(f"Error resetting student password: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/students/<int:student_id>/delete', methods=['DELETE'])
+@admin_required
+def delete_student(student_id):
+    """Delete a student account"""
+    try:
+        student = Student.query.get_or_404(student_id)
+        name = student.name
+        db.session.delete(student)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Étudiant {name} supprimé.'})
+    except Exception as e:
+        logger.error(f"Error deleting student {student_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ──────────────────────────────────────────────
+#  Teacher management
+# ──────────────────────────────────────────────
+
+@admin_bp.route('/teachers')
+@admin_required
+def admin_teachers():
+    """Get all teachers"""
+    try:
+        search = request.args.get('search', '').strip()
+        query = Teacher.query
+        if search:
+            query = query.filter(
+                db.or_(Teacher.name.ilike(f'%{search}%'), Teacher.login.ilike(f'%{search}%'))
+            )
+        teachers = query.order_by(Teacher.name).all()
+        teacher_data = []
+        for t in teachers:
+            teacher_data.append({
+                'id': t.id,
+                'login': t.login,
+                'name': t.name,
+                'created_at': t.created_at.strftime('%d/%m/%Y') if t.created_at else '-',
+                'last_login': t.last_login.strftime('%d/%m/%Y %H:%M') if t.last_login else 'Jamais',
+            })
+        return jsonify({'teachers': teacher_data, 'total': len(teacher_data)})
+    except Exception as e:
+        logger.error(f"Error getting teachers: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/add-teacher', methods=['POST'])
+@admin_required
+def add_teacher():
+    """Create a new teacher account"""
+    try:
+        data = request.get_json()
+        login = (data.get('login') or '').strip()
+        name = (data.get('name') or '').strip()
+        password = (data.get('password') or '').strip()
+
+        if not login:
+            return jsonify({'success': False, 'error': 'L\'identifiant est obligatoire.'}), 400
+        if not name:
+            return jsonify({'success': False, 'error': 'Le nom est obligatoire.'}), 400
+        if len(password) < 4:
+            return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
+        if Teacher.query.filter_by(login=login).first():
+            return jsonify({'success': False, 'error': 'Cet identifiant est déjà utilisé.'}), 400
+
+        teacher = Teacher(login=login, name=name)
+        teacher.set_password(password)
+        db.session.add(teacher)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': f'Enseignant {name} créé avec succès.', 'id': teacher.id})
+    except Exception as e:
+        logger.error(f"Error adding teacher: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/teachers/<int:teacher_id>/reset-password', methods=['POST'])
+@admin_required
+def reset_teacher_password(teacher_id):
+    """Reset a teacher's password"""
+    try:
+        data = request.get_json()
+        new_password = (data.get('password') or '').strip()
+        if len(new_password) < 4:
+            return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
+
+        teacher = Teacher.query.get_or_404(teacher_id)
+        teacher.set_password(new_password)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Mot de passe mis à jour.'})
+    except Exception as e:
+        logger.error(f"Error resetting teacher password: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/teachers/<int:teacher_id>/delete', methods=['DELETE'])
+@admin_required
+def delete_teacher(teacher_id):
+    """Delete a teacher account"""
+    try:
+        teacher = Teacher.query.get_or_404(teacher_id)
+        name = teacher.name
+        db.session.delete(teacher)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Enseignant {name} supprimé.'})
+    except Exception as e:
+        logger.error(f"Error deleting teacher {teacher_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ──────────────────────────────────────────────
+#  Bulk import via CSV / Excel
+# ──────────────────────────────────────────────
+
+@admin_bp.route('/import-users', methods=['POST'])
+@admin_required
+def import_users():
+    """Import students or teachers from a CSV or Excel file.
+
+    Expected columns for students : apogee, name, password
+    Expected columns for teachers : login, name, password
+    The 'type' form field must be 'student' or 'teacher'.
+    """
+    try:
+        import csv
+        user_type = request.form.get('user_type', 'student')
+        file = request.files.get('file')
+
+        if not file or file.filename == '':
+            return jsonify({'success': False, 'error': 'Aucun fichier fourni.'}), 400
+
+        filename = file.filename.lower()
+
+        # Read rows into a list of dicts
+        rows = []
+        if filename.endswith('.csv'):
+            content = file.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(content))
+            rows = list(reader)
+        elif filename.endswith(('.xlsx', '.xls')):
+            try:
+                import openpyxl
+            except ImportError:
+                return jsonify({'success': False, 'error': 'openpyxl est requis pour les fichiers Excel. Installez-le avec: pip install openpyxl'}), 500
+
+            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+            ws = wb.active
+            headers = [str(cell.value).strip().lower() if cell.value else '' for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                rows.append({headers[i]: (str(v).strip() if v is not None else '') for i, v in enumerate(row)})
+        else:
+            return jsonify({'success': False, 'error': 'Format non supporté. Utilisez CSV ou Excel (.xlsx).'}), 400
+
+        created, skipped, errors = [], [], []
+
+        if user_type == 'student':
+            for i, row in enumerate(rows, start=2):
+                # Accept flexible column names
+                apogee = (row.get('apogee') or row.get('apogée') or row.get('student_code') or row.get('code') or '').strip()
+                name = (row.get('name') or row.get('nom') or row.get('prenom') or '').strip()
+                password = (row.get('password') or row.get('mot de passe') or row.get('mdp') or '').strip()
+
+                if not apogee or not name or not password:
+                    errors.append(f'Ligne {i}: données incomplètes (apogee, name, password requis).')
+                    continue
+
+                is_valid, result = Student.validate_apogee_number(apogee)
+                if not is_valid:
+                    errors.append(f'Ligne {i}: {result}')
+                    continue
+
+                if Student.query.filter_by(student_code=result).first():
+                    skipped.append(f'Ligne {i}: Apogée {result} déjà existant.')
+                    continue
+
+                student = Student(student_code=result, name=name)
+                student.set_password(password)
+                db.session.add(student)
+                created.append(name)
+
+        elif user_type == 'teacher':
+            for i, row in enumerate(rows, start=2):
+                login = (row.get('login') or row.get('identifiant') or '').strip()
+                name = (row.get('name') or row.get('nom') or '').strip()
+                password = (row.get('password') or row.get('mot de passe') or row.get('mdp') or '').strip()
+
+                if not login or not name or not password:
+                    errors.append(f'Ligne {i}: données incomplètes (login, name, password requis).')
+                    continue
+
+                if Teacher.query.filter_by(login=login).first():
+                    skipped.append(f'Ligne {i}: Identifiant {login} déjà existant.')
+                    continue
+
+                teacher = Teacher(login=login, name=name)
+                teacher.set_password(password)
+                db.session.add(teacher)
+                created.append(name)
+
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'created': len(created),
+            'skipped': len(skipped),
+            'errors': errors,
+            'skipped_details': skipped,
+            'message': f'{len(created)} compte(s) créé(s), {len(skipped)} ignoré(s).'
+        })
+
+    except Exception as e:
+        logger.error(f"Error importing users: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500

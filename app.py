@@ -16,7 +16,7 @@ from document_processor import DocumentExtractionAgent
 from enhanced_evaluation_agent import EnhancedEvaluationAgent
 from simple_pdf_generator import create_simple_consultation_pdf
 from models import (
-    db, Student, TeacherAccess, AdminAccess, PatientCase, StudentPerformance, CaseImage,
+    db, Student, Teacher, AdminAccess, PatientCase, StudentPerformance, CaseImage,
     OSCESession, SessionParticipant, SessionStationAssignment,
     CompetitionSession, CompetitionParticipant, CompetitionStationBank,
     StudentCompetitionSession, StudentStationAssignment
@@ -210,6 +210,12 @@ def create_app():
                 return Student.query.get(student_id)
             except (ValueError, AttributeError):
                 return None
+        if user_id and user_id.startswith('teacher_'):
+            try:
+                teacher_id = int(user_id.replace('teacher_', ''))
+                return Teacher.query.get(teacher_id)
+            except (ValueError, AttributeError):
+                return None
         return None
     
     # Add request logging for debugging competition issues
@@ -273,7 +279,20 @@ def create_app():
                     logger.info("All competition tables created successfully")
             else:
                 logger.info("All competition tables already exist")
-                
+
+            # Add password_hash column to student table if missing (migration)
+            try:
+                from sqlalchemy import text
+                inspector2 = db.inspect(db.engine)
+                student_columns = [c['name'] for c in inspector2.get_columns('student')]
+                if 'password_hash' not in student_columns:
+                    with db.engine.connect() as conn:
+                        conn.execute(text('ALTER TABLE student ADD COLUMN password_hash VARCHAR(255)'))
+                        conn.commit()
+                    logger.info("Added password_hash column to student table")
+            except Exception as migration_err:
+                logger.warning(f"Migration note for student.password_hash: {migration_err}")
+
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")
 

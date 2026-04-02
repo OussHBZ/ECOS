@@ -37,6 +37,7 @@
                 <button class="nav-tab active" onclick="showAdminTab('overview-tab')">Vue d'ensemble</button>
                 <button class="nav-tab" onclick="showAdminTab('stations-tab')">Stations</button>
                 <button class="nav-tab" onclick="showAdminTab('students-tab')">Étudiants</button>
+                <button class="nav-tab" onclick="showAdminTab('teachers-tab')">Enseignants</button>
                 <button class="nav-tab" onclick="showAdminTab('competition-sessions-tab')">Sessions Compétition</button>
             </div>
         </div>
@@ -136,9 +137,13 @@
         <div id="students-tab" class="admin-tab-content">
             <div class="section-header">
                 <h2>Gestion des Étudiants</h2>
-                <div class="search-container">
-                    <input type="text" id="admin-students-search" placeholder="Rechercher étudiants..." class="search-input">
-                    <button onclick="searchAdminStudents()" class="btn btn-primary search-btn">Rechercher</button>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <div class="search-container">
+                        <input type="text" id="admin-students-search" placeholder="Rechercher étudiants..." class="search-input">
+                        <button onclick="searchAdminStudents()" class="btn btn-primary search-btn">Rechercher</button>
+                    </div>
+                    <button onclick="openAddStudentModal()" class="btn btn-primary">+ Ajouter un étudiant</button>
+                    <button onclick="openImportModal('student')" class="btn btn-secondary">↑ Importer CSV/Excel</button>
                 </div>
             </div>
 
@@ -172,6 +177,44 @@
                     </thead>
                     <tbody id="admin-students-table-body">
                         <!-- Student data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Teachers Tab -->
+        <div id="teachers-tab" class="admin-tab-content">
+            <div class="section-header">
+                <h2>Gestion des Enseignants</h2>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <div class="search-container">
+                        <input type="text" id="admin-teachers-search" placeholder="Rechercher enseignants..." class="search-input">
+                        <button onclick="searchAdminTeachers()" class="btn btn-primary search-btn">Rechercher</button>
+                    </div>
+                    <button onclick="openAddTeacherModal()" class="btn btn-primary">+ Ajouter un enseignant</button>
+                    <button onclick="openImportModal('teacher')" class="btn btn-secondary">↑ Importer CSV/Excel</button>
+                </div>
+            </div>
+
+            <div class="students-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-teachers">-</div>
+                    <div class="stat-label">Total Enseignants</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="students-table" id="admin-teachers-table">
+                    <thead>
+                        <tr>
+                            <th>Identifiant</th>
+                            <th>Nom</th>
+                            <th>Créé le</th>
+                            <th>Dernière Connexion</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-teachers-table-body">
                     </tbody>
                 </table>
             </div>
@@ -220,6 +263,118 @@
                         <!-- Competition session data will be loaded here -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Student Modal -->
+    <div id="add-student-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:480px;">
+            <span class="close-modal" onclick="closeModal('add-student-modal')">&times;</span>
+            <h3>Ajouter un Étudiant</h3>
+            <form id="add-student-form" onsubmit="submitAddStudent(event)">
+                <div class="form-group">
+                    <label>Numéro d'Apogée :</label>
+                    <input type="text" id="new-student-code" pattern="[0-9]{6,7}" minlength="6" maxlength="7" placeholder="Ex: 123456" required>
+                </div>
+                <div class="form-group">
+                    <label>Nom complet :</label>
+                    <input type="text" id="new-student-name" placeholder="Ex: Jean Dupont" required>
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe :</label>
+                    <input type="password" id="new-student-password" placeholder="Min. 4 caractères" required>
+                </div>
+                <div id="add-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Créer</button>
+                    <button type="button" onclick="closeModal('add-student-modal')" class="btn btn-secondary">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reset Student Password Modal -->
+    <div id="reset-student-password-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:400px;">
+            <span class="close-modal" onclick="closeModal('reset-student-password-modal')">&times;</span>
+            <h3>Réinitialiser le mot de passe</h3>
+            <p id="reset-student-name-label" style="color:#555;margin-bottom:15px;"></p>
+            <div class="form-group">
+                <label>Nouveau mot de passe :</label>
+                <input type="password" id="reset-student-password-input" placeholder="Min. 4 caractères" required>
+            </div>
+            <div id="reset-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+            <div class="form-actions">
+                <button onclick="submitResetStudentPassword()" class="btn btn-primary">Enregistrer</button>
+                <button onclick="closeModal('reset-student-password-modal')" class="btn btn-secondary">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Teacher Modal -->
+    <div id="add-teacher-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:480px;">
+            <span class="close-modal" onclick="closeModal('add-teacher-modal')">&times;</span>
+            <h3>Ajouter un Enseignant</h3>
+            <form id="add-teacher-form" onsubmit="submitAddTeacher(event)">
+                <div class="form-group">
+                    <label>Identifiant :</label>
+                    <input type="text" id="new-teacher-login" placeholder="Ex: prof.martin" required>
+                </div>
+                <div class="form-group">
+                    <label>Nom complet :</label>
+                    <input type="text" id="new-teacher-name" placeholder="Ex: Dr. Martin" required>
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe :</label>
+                    <input type="password" id="new-teacher-password" placeholder="Min. 4 caractères" required>
+                </div>
+                <div id="add-teacher-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Créer</button>
+                    <button type="button" onclick="closeModal('add-teacher-modal')" class="btn btn-secondary">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reset Teacher Password Modal -->
+    <div id="reset-teacher-password-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:400px;">
+            <span class="close-modal" onclick="closeModal('reset-teacher-password-modal')">&times;</span>
+            <h3>Réinitialiser le mot de passe</h3>
+            <p id="reset-teacher-name-label" style="color:#555;margin-bottom:15px;"></p>
+            <div class="form-group">
+                <label>Nouveau mot de passe :</label>
+                <input type="password" id="reset-teacher-password-input" placeholder="Min. 4 caractères" required>
+            </div>
+            <div id="reset-teacher-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+            <div class="form-actions">
+                <button onclick="submitResetTeacherPassword()" class="btn btn-primary">Enregistrer</button>
+                <button onclick="closeModal('reset-teacher-password-modal')" class="btn btn-secondary">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Users Modal -->
+    <div id="import-users-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:520px;">
+            <span class="close-modal" onclick="closeModal('import-users-modal')">&times;</span>
+            <h3 id="import-modal-title">Importer des utilisateurs</h3>
+            <input type="hidden" id="import-user-type" value="student">
+            <div style="background:#f8f9fa;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;color:#555;">
+                <strong>Format CSV/Excel attendu :</strong><br>
+                <span id="import-format-hint"></span>
+            </div>
+            <div class="form-group">
+                <label>Fichier (.csv ou .xlsx) :</label>
+                <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls">
+            </div>
+            <div id="import-result" style="display:none;margin-bottom:10px;padding:10px;border-radius:6px;font-size:13px;"></div>
+            <div class="form-actions">
+                <button onclick="submitImportUsers()" class="btn btn-primary">Importer</button>
+                <button onclick="closeModal('import-users-modal')" class="btn btn-secondary">Fermer</button>
             </div>
         </div>
     </div>
@@ -391,5 +546,264 @@
 
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <script>
+    // ── Generic modal helpers ──────────────────────────────────────────────
+    function closeModal(id) {
+        document.getElementById(id).classList.add('hidden');
+    }
+
+    // ── Teachers tab ──────────────────────────────────────────────────────
+    function loadAdminTeachers(search) {
+        const url = (search && search.length > 0)
+            ? `/ecos/admin/teachers?search=${encodeURIComponent(search)}`
+            : '/ecos/admin/teachers';
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('total-teachers').textContent = data.total ?? '-';
+                const tbody = document.getElementById('admin-teachers-table-body');
+                if (!data.teachers || data.teachers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">Aucun enseignant trouvé</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.teachers.map(t => `
+                    <tr>
+                        <td>${t.login}</td>
+                        <td>${t.name}</td>
+                        <td>${t.created_at}</td>
+                        <td>${t.last_login}</td>
+                        <td>
+                            <button onclick="openResetTeacherPasswordModal(${t.id},'${t.name.replace(/'/g,"\\'")})" class="btn btn-secondary" style="font-size:12px;padding:4px 8px;">Réinit. MdP</button>
+                            <button onclick="deleteTeacher(${t.id},'${t.name.replace(/'/g,"\\'")})" class="btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;">Supprimer</button>
+                        </td>
+                    </tr>`).join('');
+            })
+            .catch(() => {
+                document.getElementById('admin-teachers-table-body').innerHTML =
+                    '<tr><td colspan="5" style="text-align:center;color:#dc3545;">Erreur de chargement</td></tr>';
+            });
+    }
+
+    function searchAdminTeachers() {
+        loadAdminTeachers(document.getElementById('admin-teachers-search').value.trim());
+    }
+
+    // Load teachers when tab becomes active
+    const _origShowAdminTab = typeof showAdminTab === 'function' ? showAdminTab : null;
+    document.querySelectorAll('.nav-tab').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (this.getAttribute('onclick') && this.getAttribute('onclick').includes('teachers-tab')) {
+                loadAdminTeachers();
+            }
+        });
+    });
+
+    // ── Add Student ────────────────────────────────────────────────────────
+    function openAddStudentModal() {
+        document.getElementById('add-student-form').reset();
+        document.getElementById('add-student-error').style.display = 'none';
+        document.getElementById('add-student-modal').classList.remove('hidden');
+    }
+
+    function submitAddStudent(e) {
+        e.preventDefault();
+        const errEl = document.getElementById('add-student-error');
+        errEl.style.display = 'none';
+        const payload = {
+            student_code: document.getElementById('new-student-code').value.trim(),
+            name: document.getElementById('new-student-name').value.trim(),
+            password: document.getElementById('new-student-password').value,
+        };
+        fetch('/ecos/admin/add-student', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeModal('add-student-modal');
+                loadAdminStudents();
+                alert(data.message);
+            } else {
+                errEl.textContent = data.error;
+                errEl.style.display = 'block';
+            }
+        });
+    }
+
+    // ── Reset Student Password ─────────────────────────────────────────────
+    let _resetStudentId = null;
+    function openResetStudentPasswordModal(id, name) {
+        _resetStudentId = id;
+        document.getElementById('reset-student-name-label').textContent = 'Étudiant : ' + name;
+        document.getElementById('reset-student-password-input').value = '';
+        document.getElementById('reset-student-error').style.display = 'none';
+        document.getElementById('reset-student-password-modal').classList.remove('hidden');
+    }
+
+    function submitResetStudentPassword() {
+        const errEl = document.getElementById('reset-student-error');
+        errEl.style.display = 'none';
+        const password = document.getElementById('reset-student-password-input').value;
+        fetch(`/ecos/admin/students/${_resetStudentId}/reset-password`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeModal('reset-student-password-modal');
+                alert(data.message);
+            } else {
+                errEl.textContent = data.error;
+                errEl.style.display = 'block';
+            }
+        });
+    }
+
+    // ── Delete Student ─────────────────────────────────────────────────────
+    function deleteStudent(id, name) {
+        if (!confirm(`Supprimer l'étudiant "${name}" ? Cette action est irréversible.`)) return;
+        fetch(`/ecos/admin/students/${id}/delete`, {method: 'DELETE'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) { loadAdminStudents(); }
+                else { alert('Erreur : ' + data.error); }
+            });
+    }
+
+    // ── Add Teacher ────────────────────────────────────────────────────────
+    function openAddTeacherModal() {
+        document.getElementById('add-teacher-form').reset();
+        document.getElementById('add-teacher-error').style.display = 'none';
+        document.getElementById('add-teacher-modal').classList.remove('hidden');
+    }
+
+    function submitAddTeacher(e) {
+        e.preventDefault();
+        const errEl = document.getElementById('add-teacher-error');
+        errEl.style.display = 'none';
+        const payload = {
+            login: document.getElementById('new-teacher-login').value.trim(),
+            name: document.getElementById('new-teacher-name').value.trim(),
+            password: document.getElementById('new-teacher-password').value,
+        };
+        fetch('/ecos/admin/add-teacher', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeModal('add-teacher-modal');
+                loadAdminTeachers();
+                alert(data.message);
+            } else {
+                errEl.textContent = data.error;
+                errEl.style.display = 'block';
+            }
+        });
+    }
+
+    // ── Reset Teacher Password ─────────────────────────────────────────────
+    let _resetTeacherId = null;
+    function openResetTeacherPasswordModal(id, name) {
+        _resetTeacherId = id;
+        document.getElementById('reset-teacher-name-label').textContent = 'Enseignant : ' + name;
+        document.getElementById('reset-teacher-password-input').value = '';
+        document.getElementById('reset-teacher-error').style.display = 'none';
+        document.getElementById('reset-teacher-password-modal').classList.remove('hidden');
+    }
+
+    function submitResetTeacherPassword() {
+        const errEl = document.getElementById('reset-teacher-error');
+        errEl.style.display = 'none';
+        const password = document.getElementById('reset-teacher-password-input').value;
+        fetch(`/ecos/admin/teachers/${_resetTeacherId}/reset-password`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeModal('reset-teacher-password-modal');
+                alert(data.message);
+            } else {
+                errEl.textContent = data.error;
+                errEl.style.display = 'block';
+            }
+        });
+    }
+
+    // ── Delete Teacher ─────────────────────────────────────────────────────
+    function deleteTeacher(id, name) {
+        if (!confirm(`Supprimer l'enseignant "${name}" ? Cette action est irréversible.`)) return;
+        fetch(`/ecos/admin/teachers/${id}/delete`, {method: 'DELETE'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) { loadAdminTeachers(); }
+                else { alert('Erreur : ' + data.error); }
+            });
+    }
+
+    // ── Import CSV/Excel ───────────────────────────────────────────────────
+    function openImportModal(userType) {
+        document.getElementById('import-user-type').value = userType;
+        document.getElementById('import-file-input').value = '';
+        document.getElementById('import-result').style.display = 'none';
+        const isStudent = userType === 'student';
+        document.getElementById('import-modal-title').textContent =
+            isStudent ? 'Importer des Étudiants' : 'Importer des Enseignants';
+        document.getElementById('import-format-hint').innerHTML = isStudent
+            ? 'Colonnes : <strong>apogee</strong>, <strong>name</strong>, <strong>password</strong>'
+            : 'Colonnes : <strong>login</strong>, <strong>name</strong>, <strong>password</strong>';
+        document.getElementById('import-users-modal').classList.remove('hidden');
+    }
+
+    function submitImportUsers() {
+        const file = document.getElementById('import-file-input').files[0];
+        const resultEl = document.getElementById('import-result');
+        if (!file) { alert('Veuillez sélectionner un fichier.'); return; }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('user_type', document.getElementById('import-user-type').value);
+
+        fetch('/ecos/admin/import-users', {method: 'POST', body: formData})
+            .then(r => r.json())
+            .then(data => {
+                resultEl.style.display = 'block';
+                if (data.success) {
+                    let html = `<strong style="color:#28a745">${data.message}</strong>`;
+                    if (data.skipped_details && data.skipped_details.length)
+                        html += '<br><small>' + data.skipped_details.join('<br>') + '</small>';
+                    if (data.errors && data.errors.length)
+                        html += '<br><span style="color:#dc3545"><small>' + data.errors.join('<br>') + '</small></span>';
+                    resultEl.style.background = '#d4edda';
+                    resultEl.innerHTML = html;
+                    const type = document.getElementById('import-user-type').value;
+                    if (type === 'student') loadAdminStudents();
+                    else loadAdminTeachers();
+                } else {
+                    resultEl.style.background = '#f8d7da';
+                    resultEl.innerHTML = '<strong style="color:#dc3545">Erreur : ' + data.error + '</strong>';
+                }
+            });
+    }
+
+    // Load teachers when the teachers tab is first shown
+    window.addEventListener('load', function() {
+        document.querySelectorAll('.nav-tab').forEach(btn => {
+            const onclick = btn.getAttribute('onclick') || '';
+            if (onclick.includes('teachers-tab')) {
+                btn.addEventListener('click', () => loadAdminTeachers());
+            }
+        });
+    });
+    </script>
 </body>
 </html>

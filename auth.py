@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
-from models import db, Student, TeacherAccess, AdminAccess
+from models import db, Student, Teacher, AdminAccess
 from datetime import datetime
 import re, os
 from functools import wraps
@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
 
-# Access codes - you can change these or load from environment
-TEACHER_ACCESS_CODE = os.getenv('TEACHER_CODE', 'TEACHER123')
+# Admin access code - loaded from environment
 ADMIN_ACCESS_CODE = os.getenv('ADMIN_CODE', 'ADMIN123')
 # Function to check if the request is an AJAX request
 def is_ajax_request():
@@ -27,88 +26,61 @@ def login():
     """Unified login page for students, teachers, and administrators"""
     if request.method == 'POST':
         login_type = request.form.get('login_type')
-        
+
         if login_type == 'student':
             student_code = request.form.get('student_code', '').strip()
-            student_name = request.form.get('student_name', '').strip()
-            
-            # Updated validation for Numéro d'Apogée (6-7 digits)
-            if not re.match(r'^\d{6,7}$', student_code):
-                flash('Le numéro d\'Apogée doit contenir entre 6 et 7 chiffres.', 'error')
-                return redirect(url_for('auth.login'))
-            
-            if not student_name:
-                flash('Le nom est obligatoire.', 'error')
-                return redirect(url_for('auth.login'))
-            
-            # Validate using the new validation method
+            password = request.form.get('password', '').strip()
+
             is_valid, result = Student.validate_apogee_number(student_code)
             if not is_valid:
-                flash(result, 'error')  # result contains the error message
+                flash(result, 'error')
                 return redirect(url_for('auth.login'))
-            
-            validated_code = result  # result contains the validated code
-            
-            # Check if student exists
-            student = Student.query.filter_by(student_code=validated_code).first()
-            
-            if student:
-                # Existing student - verify name
-                if student.name.lower() == student_name.lower():
-                    student.last_login = datetime.utcnow()
-                    db.session.commit()
-                    login_user(student)
-                    session['user_type'] = 'student'
-                    flash(f'Connexion réussie avec le numéro d\'Apogée {validated_code}', 'success')
-                    return redirect(url_for('student.student_interface'))
-                else:
-                    flash('Numéro d\'Apogée ou nom incorrect.', 'error')
-                    return redirect(url_for('auth.login'))
+
+            if not password:
+                flash('Le mot de passe est obligatoire.', 'error')
+                return redirect(url_for('auth.login'))
+
+            student = Student.query.filter_by(student_code=result).first()
+
+            if student and student.check_password(password):
+                student.last_login = datetime.utcnow()
+                db.session.commit()
+                login_user(student)
+                session['user_type'] = 'student'
+                return redirect(url_for('student.student_interface'))
             else:
-                # New student - create account
-                try:
-                    student = Student(
-                        student_code=validated_code,
-                        name=student_name
-                    )
-                    db.session.add(student)
-                    db.session.commit()
-                    login_user(student)
-                    session['user_type'] = 'student'
-                    flash(f'Compte créé avec succès avec le numéro d\'Apogée {validated_code}!', 'success')
-                    return redirect(url_for('student.student_interface'))
-                except Exception as e:
-                    logger.error(f"Error creating student account: {str(e)}")
-                    flash('Erreur lors de la création du compte. Le numéro d\'Apogée pourrait déjà être utilisé.', 'error')
-                    return redirect(url_for('auth.login'))
-                
+                flash('Numéro d\'Apogée ou mot de passe incorrect.', 'error')
+                return redirect(url_for('auth.login'))
+
         elif login_type == 'teacher':
-            access_code = request.form.get('access_code', '').strip()
-            
-            if access_code == TEACHER_ACCESS_CODE:
+            teacher_login = request.form.get('teacher_login', '').strip()
+            password = request.form.get('password', '').strip()
+
+            if not teacher_login or not password:
+                flash('Identifiant et mot de passe obligatoires.', 'error')
+                return redirect(url_for('auth.login'))
+
+            teacher = Teacher.query.filter_by(login=teacher_login).first()
+
+            if teacher and teacher.check_password(password):
+                teacher.last_login = datetime.utcnow()
+                db.session.commit()
                 session['user_type'] = 'teacher'
                 session['teacher_authenticated'] = True
-                
-                # Log teacher access
-                teacher_access = TeacherAccess.query.filter_by(access_code=access_code).first()
-                if not teacher_access:
-                    teacher_access = TeacherAccess(access_code=access_code)
-                    db.session.add(teacher_access)
-                teacher_access.last_used = datetime.utcnow()
-                db.session.commit()
-                
+                session['teacher_id'] = teacher.id
+                session['teacher_name'] = teacher.name
                 return redirect(url_for('teacher.teacher_interface'))
             else:
-                flash('Code d\'accès incorrect.', 'error')
+                flash('Identifiant ou mot de passe incorrect.', 'error')
                 return redirect(url_for('auth.login'))
-                
+
         elif login_type == 'admin':
             access_code = request.form.get('access_code', '').strip()
-            
+
             if access_code == ADMIN_ACCESS_CODE:
                 session['user_type'] = 'admin'
                 session['admin_authenticated'] = True
-                
+
                 # Log admin access
                 admin_access = AdminAccess.query.filter_by(access_code=access_code).first()
                 if not admin_access:
@@ -116,12 +88,12 @@ def login():
                     db.session.add(admin_access)
                 admin_access.last_used = datetime.utcnow()
                 db.session.commit()
-                
+
                 return redirect(url_for('admin.admin_interface'))
             else:
                 flash('Code d\'accès administrateur incorrect.', 'error')
                 return redirect(url_for('auth.login'))
-    
+
     return render_template('login.html')
 
 @auth_bp.route('/logout')
