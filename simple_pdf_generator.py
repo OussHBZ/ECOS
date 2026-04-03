@@ -36,7 +36,7 @@ class SimpleConsultationPDF(BaseDocTemplate):
             
             # Header
             canvas.setFont('Helvetica-Bold', 12)
-            header_text = f"Consultation OSCE - Rapport d'Évaluation"
+            header_text = f"Consultation ECOS - Rapport d'Évaluation"
             canvas.drawString(doc.leftMargin, doc.pagesize[1] - doc.topMargin + 40, header_text)
             
             # Date in header
@@ -221,7 +221,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         elements = []
         
         # Add title
-        elements.append(Paragraph(f"Consultation OSCE - Cas {case_number}", title_style))
+        elements.append(Paragraph(f"Consultation ECOS - Cas {case_number}", title_style))
         elements.append(Spacer(1, 20))
         
         # Add date
@@ -568,7 +568,7 @@ def create_competition_report_pdf(report_data):
     elements = []
     
     # Title
-    elements.append(Paragraph("Rapport de Compétition OSCE", title_style))
+    elements.append(Paragraph("Rapport de Compétition ECOS", title_style))
     elements.append(Spacer(1, 20))
     
     # Student info
@@ -681,7 +681,7 @@ def create_competition_report_pdf(report_data):
     
     # Footer
     elements.append(Spacer(1, 30))
-    footer_text = f"Rapport généré automatiquement par le système OSCE - {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+    footer_text = f"Rapport généré automatiquement par le système ECOS - {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
     elements.append(Paragraph(footer_text, normal_style))
     
     # Build PDF
@@ -728,7 +728,7 @@ def create_competition_pdf_report(competition_summary, conversations_data):
         )
         
         # Title
-        story.append(Paragraph("RAPPORT DE COMPÉTITION OSCE", title_style))
+        story.append(Paragraph("RAPPORT DE COMPÉTITION ECOS", title_style))
         story.append(Spacer(1, 20))
         
         # Competition information
@@ -871,7 +871,7 @@ def create_competition_pdf_report(competition_summary, conversations_data):
         )
         
         generation_time = datetime.now().strftime('%d/%m/%Y à %H:%M')
-        story.append(Paragraph(f"Rapport généré le {generation_time} - Simulateur OSCE", footer_style))
+        story.append(Paragraph(f"Rapport généré le {generation_time} - Simulateur ECOS", footer_style))
         
         # Build PDF
         doc.build(story)

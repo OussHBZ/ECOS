@@ -1169,7 +1169,7 @@ async function editSession(sessionId) {
         
         // Change modal title
         const modalTitle = document.querySelector('#create-session-modal h3');
-        modalTitle.textContent = 'Modifier la Session OSCE';
+        modalTitle.textContent = 'Modifier la Session ECOS';
         
         // Change submit button text
         const submitButton = document.querySelector('#create-session-form button[type="submit"]');
@@ -1486,7 +1486,7 @@ function closeCreateSessionModal() {
     
     // Reset modal title
     const modalTitle = document.querySelector('#create-session-modal h3');
-    modalTitle.textContent = 'Créer une Nouvelle Session OSCE';
+    modalTitle.textContent = 'Créer une Nouvelle Session ECOS';
     
     // Reset submit button text
     const submitButton = document.querySelector('#create-session-form button[type="submit"]');
