@@ -650,8 +650,8 @@ function updateCompetitionInterface(status) {
                 break;
             case 'completed':
                 if (status.session_status === 'completed') {
-                    showFinalResults(status);
                     stopCompetitionPolling();
+                    loadFinalResults();
                 } else {
                     showWaitingForOthers();
                 }
@@ -1020,17 +1020,12 @@ function startCountdownTimer(seconds) {
     countdownDuration = seconds * 1000; // Convert to milliseconds
     
     const countdownElement = document.getElementById('countdown-timer');
-    const startButton = document.getElementById('start-next-station');
-    
-    if (!countdownElement || !startButton) {
-        console.error('Countdown elements not found');
+
+    if (!countdownElement) {
+        console.error('Countdown element not found');
         isCountdownActive = false;
         return;
     }
-    
-    // Disable the button initially
-    startButton.disabled = true;
-    startButton.textContent = 'Prochaine station dans...';
     
     // Start the countdown interval
     countdownTimer = setInterval(() => {
