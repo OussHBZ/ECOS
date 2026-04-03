@@ -5,4 +5,15 @@ __pycache__/
 node_modules/
 *.log
 .DS_Store
+
+# Database — keep only on server, never version-controlled
 instance/*.db
+
+# Runtime-uploaded case images — added via web UI, must never be overwritten by git pull
+static/images/cases/
+
+# Temporary upload processing folder
+uploads/
+
+# Flask session files
+flask_session/
