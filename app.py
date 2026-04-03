@@ -33,7 +33,7 @@ LLAMA_MODELS = {
     'config': {
         'temperature': 0.1,  # Low for consistent patient responses
         'max_tokens': 150,   # Concise patient responses
-        'timeout': 60        # Increased for larger model
+        'timeout': 30        # Increased for larger model
     }
 }
 
