@@ -590,11 +590,12 @@ class StudentPerformance(db.Model):
     
     def get_performance_status(self):
         """Get performance status in French"""
-        if self.percentage_score >= 85:
+        score = self.percentage_score or 0
+        if score >= 85:
             return 'Excellent'
-        elif self.percentage_score >= 75:
+        elif score >= 75:
             return 'Bon'
-        elif self.percentage_score >= 65:
+        elif score >= 65:
             return 'Satisfaisant'
         else:
             return 'À améliorer'
@@ -1295,7 +1296,9 @@ class StudentStationAssignment(db.Model):
     case = db.relationship('PatientCase', backref='competition_assignments')
     
     def start_station(self):
-        """Start this station"""
+        """Start this station — idempotent: won't reset started_at if already active"""
+        if self.status == 'active' and self.started_at:
+            return  # Already started; don't overwrite timestamp on reconnect
         self.status = 'active'
         self.started_at = datetime.utcnow()
         db.session.commit()

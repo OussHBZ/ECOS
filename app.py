@@ -151,7 +151,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260403d'
+    app.config['APP_VERSION'] = '20260403e'
 
     @app.context_processor
     def inject_version():
@@ -788,6 +788,10 @@ def create_app():
     def end_chat():
         """End chat session and evaluate"""
         try:
+            req_data = request.get_json(silent=True) or {}
+            time_elapsed_seconds = req_data.get('time_elapsed_seconds')
+            consultation_duration = int(time_elapsed_seconds) if time_elapsed_seconds is not None else None
+
             conversation = session.get('current_conversation', [])
             case_number = session.get('current_case')
             
@@ -815,7 +819,8 @@ def create_app():
                         percentage_score=evaluation_results.get('percentage', 0),
                         points_earned=evaluation_results.get('points_earned', 0),
                         points_total=evaluation_results.get('points_total', 0),
-                        recommendations=evaluation_results.get('recommendations', [])
+                        recommendations=evaluation_results.get('recommendations', []),
+                        consultation_duration=consultation_duration
                     )
                     db.session.add(performance)
                     db.session.commit()

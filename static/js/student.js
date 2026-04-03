@@ -41,6 +41,7 @@ let currentCase = null;
 let selectedCaseCard = null;
 let timerInterval = null;
 let remainingTime = 600; // 10 minutes in seconds
+let consultationStartSeconds = 600; // Track configured duration for elapsed time calc
 let currentDirectives = null; // Store directives for the current case
 let directivesViewed = false; // Track if student has viewed directives
 
@@ -454,6 +455,7 @@ function updateTimer() {
 // Start the timer
 function startTimer(minutes = 10) {
     remainingTime = minutes * 60; // Convert minutes to seconds
+    consultationStartSeconds = remainingTime; // Track configured duration
     updateTimer();
     
     clearInterval(timerInterval); // Clear any existing interval
@@ -478,11 +480,13 @@ async function endConsultation() {
             endChatButton.textContent = 'Traitement...';
         }
         
+        const timeElapsed = Math.max(0, consultationStartSeconds - remainingTime);
         const response = await authenticatedFetch('/end_chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ time_elapsed_seconds: timeElapsed })
         });
 
         if (!response) {
@@ -820,51 +824,6 @@ function startStationTimer(seconds) {
     updateTimer();
     stationTimer = setInterval(updateTimer, 1000);
     console.log('Station timer started with', seconds, 'seconds');
-}
-
-// Initialize competition station chat
-async function initializeCompetitionStationChat(caseNumber) {
-    try {
-        console.log('Initializing station chat for case:', caseNumber);
-        
-        const response = await authenticatedFetch(`/student/competition/${currentCompetitionId}/start-station`, {
-            method: 'POST'
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log('Station initialized:', data);
-            
-            // Display directives
-            const directivesElement = document.getElementById('station-directives');
-            if (data.directives && directivesElement) {
-                directivesElement.innerHTML = 
-                    `<p><strong>Instructions:</strong> ${data.directives.replace(/\n/g, '<br>')}</p>`;
-            }
-            
-            // Clear chat messages
-            const chatMessages = document.getElementById('competition-chat-messages');
-            if (chatMessages) {
-                chatMessages.innerHTML = '';
-            }
-            
-            // Handle images
-            if (data.images && data.images.length > 0) {
-                const viewImagesBtn = document.getElementById('view-competition-images');
-                if (viewImagesBtn) {
-                    viewImagesBtn.style.display = 'inline-block';
-                    // Store images for viewing
-                    window.currentStationImages = data.images;
-                }
-            }
-            
-        } else {
-            throw new Error('Failed to start station');
-        }
-    } catch (error) {
-        console.error('Error initializing station:', error);
-        showError('Erreur lors de l\'initialisation de la station');
-    }
 }
 
 // Send competition message
