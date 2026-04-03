@@ -566,8 +566,8 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/auth-utils.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth-utils.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v={{ app_version }}"></script>
     <script>
     // ── Modal helpers ──────────────────────────────────────────────────────
     function openModal(id) {

@@ -151,7 +151,12 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    
+    app.config['APP_VERSION'] = '20260403'
+
+    @app.context_processor
+    def inject_version():
+        return {'app_version': app.config['APP_VERSION']}
+
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
