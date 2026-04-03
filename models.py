@@ -698,12 +698,12 @@ class CompetitionSession(db.Model, SessionMixin):
                 logger.error(f"Not enough stations in bank: {len(available_stations)} < {self.stations_per_session}")
                 return False
             
-            # Get all logged-in students
-            logged_in_students = StudentCompetitionSession.query.filter_by(
-                session_id=self.id,
-                status='logged_in'
+            # Get all students who have joined (logged_in) or are registered
+            logged_in_students = StudentCompetitionSession.query.filter(
+                StudentCompetitionSession.session_id == self.id,
+                StudentCompetitionSession.status.in_(['logged_in', 'registered'])
             ).all()
-            
+
             logger.info(f"Starting competition for {len(logged_in_students)} students")
             
             for student_session in logged_in_students:
@@ -909,8 +909,8 @@ class CompetitionSession(db.Model, SessionMixin):
                 'completion_time': student_session.completed_at
             })
         
-        # Sort by average score (descending), then by completion time (ascending)
-        leaderboard.sort(key=lambda x: (-x['average_score'], x['completion_time'] or datetime.utcnow()))
+        # Sort by average score (descending), then by completion time (ascending, None last)
+        leaderboard.sort(key=lambda x: (-x['average_score'], x['completion_time'] if x['completion_time'] else datetime.max))
         
         # Add rankings
         for i, entry in enumerate(leaderboard, 1):

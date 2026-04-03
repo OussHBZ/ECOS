@@ -1969,8 +1969,8 @@ function showFinalResults(result) {
         totalCompetitors.textContent = result.total_participants || 0;
     }
     
-    if (result.total_stations !== undefined && totalStationsCompleted) {
-        totalStationsCompleted.textContent = result.total_stations;
+    if (result.completed_stations !== undefined && totalStationsCompleted) {
+        totalStationsCompleted.textContent = result.completed_stations;
     }
     
     if (result.total_score !== undefined && totalScoreEarned) {

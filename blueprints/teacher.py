@@ -150,7 +150,10 @@ def process_manual_case():
         if request.form.get('patient_name'):
             patient_info['name'] = request.form.get('patient_name')
         if request.form.get('patient_age'):
-            patient_info['age'] = int(request.form.get('patient_age'))
+            try:
+                patient_info['age'] = int(request.form.get('patient_age'))
+            except ValueError:
+                return jsonify({"error": "L'âge du patient doit être un nombre entier"}), 400
         if request.form.get('patient_gender'):
             patient_info['gender'] = request.form.get('patient_gender')
         if request.form.get('patient_occupation'):
