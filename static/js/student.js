@@ -627,8 +627,8 @@ function updateCompetitionInterface(status) {
         progressText.textContent = `${status.completed_stations}/${status.total_stations} stations`;
     }
 
-    // Create a state key to detect state changes
-    const stateKey = `${status.student_status}_${status.current_station_order}_${status.completed_stations}`;
+    // Create a state key to detect state changes (include session_status so we catch when admin closes competition)
+    const stateKey = `${status.student_status}_${status.current_station_order}_${status.completed_stations}_${status.session_status}`;
     
     // Only update interface if state has actually changed
     if (currentCompetitionState !== stateKey) {
@@ -649,8 +649,12 @@ function updateCompetitionInterface(status) {
                 showBetweenStations(status.time_between_stations);
                 break;
             case 'completed':
-                showFinalResults(status);
-                stopCompetitionPolling();
+                if (status.session_status === 'completed') {
+                    showFinalResults(status);
+                    stopCompetitionPolling();
+                } else {
+                    showWaitingForOthers();
+                }
                 break;
             default:
                 console.log('Unknown student status:', status.student_status);
@@ -985,18 +989,13 @@ function showBetweenStations(timeBetween) {
         // Just update the display
         updateCountdownDisplay();
     } else {
-        console.log('No waiting time or countdown already finished');
-        // If no waiting time, enable button immediately
-        const startButton = document.getElementById('start-next-station');
-        if (startButton) {
-            startButton.disabled = false;
-            startButton.textContent = 'Démarrer la prochaine station';
-        }
-        
+        console.log('No waiting time — auto-advancing to next station');
         const countdownElement = document.getElementById('countdown-timer');
         if (countdownElement) {
             countdownElement.textContent = '0';
         }
+        // Auto-advance immediately (brief delay so student sees their score)
+        setTimeout(() => startNextStation(), 2000);
     }
 }
 // Countdown timer with proper cleanup
@@ -1062,26 +1061,23 @@ function updateCountdownDisplay() {
     }
     
     if (secondsLeft <= 0) {
-        // Countdown finished
+        // Countdown finished — auto-advance to next station
         isCountdownActive = false;
         countdownStartTime = null;
         countdownDuration = 0;
-        
+
         if (countdownTimer) {
             clearInterval(countdownTimer);
             countdownTimer = null;
         }
-        
-        if (startButton) {
-            startButton.disabled = false;
-            startButton.textContent = 'Démarrer la prochaine station';
-        }
-        
+
         if (countdownElement) {
             countdownElement.textContent = '0';
         }
-        
-        console.log('Countdown finished');
+
+        // Auto-advance without requiring a button click
+        startNextStation();
+        return;
     }
 }
 
@@ -1309,15 +1305,24 @@ function showStationFeedback(result) {
         feedbackDetails.innerHTML = feedbackHTML;
     }
     
-    // If not finished, start countdown for next station
+    // If not finished, start countdown for next station (auto-advance)
     if (!result.is_finished) {
-        startCountdownTimer(result.next_station_delay || 120);
+        const delay = result.next_station_delay > 0 ? result.next_station_delay : 120;
+        startCountdownTimer(delay);
     } else {
-        // Show final results after a short delay
-        setTimeout(() => {
-            loadFinalResults();
-        }, 3000);
+        // All stations done — show waiting screen, results come from polling when session closes
+        setTimeout(() => showWaitingForOthers(), 2000);
     }
+}
+
+// Show waiting-for-others screen (student done, waiting for session to officially close)
+function showWaitingForOthers() {
+    hideAllCompetitionScreens();
+    const el = document.getElementById('waiting-for-others');
+    if (el) {
+        el.classList.remove('hidden');
+    }
+    // Keep polling — when admin closes session (session_status = 'completed'), results will show
 }
 
 // Stop competition polling with proper cleanup
@@ -1629,9 +1634,10 @@ function startCompetitionSession(sessionId) {
 // Hide all competition screens
 function hideAllCompetitionScreens() {
     const screens = [
-        'waiting-room', 
-        'station-interface', 
-        'between-stations', 
+        'waiting-room',
+        'station-interface',
+        'between-stations',
+        'waiting-for-others',
         'final-results'
     ];
     

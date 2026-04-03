@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interface Étudiant - ECOS FMPM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 </head>
 <body>
     <!-- FMPM Header -->
@@ -217,7 +218,7 @@
                     <div id="between-stations" class="competition-screen hidden">
                         <div class="between-stations-container">
                             <h3>Station <span id="completed-station-number">1</span> Terminée</h3>
-                            
+
                             <div class="station-results">
                                 <h4>Votre Score</h4>
                                 <div class="evaluation-score">
@@ -230,16 +231,27 @@
                             </div>
 
                             <div class="next-station-info">
-                                <p>Prochaine station dans:</p>
+                                <p>Passage à la prochaine station dans:</p>
                                 <div class="countdown-display">
-                                    <span id="countdown-timer" class="countdown-timer">120</span>
+                                    <span id="countdown-timer" class="countdown-timer">--</span>
                                     <span class="countdown-label">secondes</span>
                                 </div>
-                                <button id="start-next-station" onclick="startNextStation()" 
-                                        class="btn btn-primary" disabled>
-                                    Attendre...
-                                </button>
+                                <p id="auto-advance-msg" style="color:#666;font-style:italic;margin-top:8px;">
+                                    Le passage est automatique — aucune action requise.
+                                </p>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Waiting for other students -->
+                    <div id="waiting-for-others" class="competition-screen hidden">
+                        <div class="between-stations-container" style="text-align:center;">
+                            <h2>🎉 Toutes vos stations sont terminées !</h2>
+                            <p style="font-size:1.1em;margin:20px 0;">
+                                Veuillez patienter pendant que les autres étudiants terminent leurs stations.
+                            </p>
+                            <div class="loading-spinner" style="margin:20px auto;width:40px;height:40px;border:4px solid #ccc;border-top-color:#4a7c59;border-radius:50%;animation:spin 1s linear infinite;"></div>
+                            <p style="color:#666;">Les résultats seront affichés une fois la compétition terminée.</p>
                         </div>
                     </div>
 
