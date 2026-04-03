@@ -795,38 +795,11 @@ def create_app():
                 conversation = [{'role': 'system', 'content': 'No conversation recorded'}]
             
             evaluation_results = evaluate_conversation(conversation, case_number)
-            
-            # Generate PDF report with detailed logging
-            pdf_filename = None
+
             pdf_url = None
-            
-            try:
-                temp_dir = tempfile.gettempdir()
-                
-                pdf_filename = create_simple_consultation_pdf(
-                    conversation,
-                    case_number,
-                    evaluation_results,
-                    evaluation_results.get('recommendations', [])
-                )
-                
-                if pdf_filename:
-                    pdf_path = os.path.join(temp_dir, pdf_filename)
-                    if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0:
-                        pdf_url = f'/download_pdf/{pdf_filename}'
-                        session['last_pdf'] = pdf_filename
-                    else:
-                        logger.error(f"PDF file missing or empty: {pdf_path}")
-                        pdf_filename = None
-                else:
-                    logger.error("PDF generation returned None")
-                    
-            except Exception as e:
-                logger.error(f"PDF generation error: {e}", exc_info=True)
-                pdf_filename = None
-                pdf_url = None
-            
-            # Save performance if user is logged in
+            performance_id = None
+
+            # Save performance first (if authenticated) so we can build a stable PDF URL
             if current_user.is_authenticated:
                 try:
                     performance = StudentPerformance(
@@ -841,20 +814,22 @@ def create_app():
                     )
                     db.session.add(performance)
                     db.session.commit()
-                    logger.info(f"Saved performance for student {current_user.id}")
+                    performance_id = performance.id
+                    pdf_url = f'/student/download_report/{performance_id}'
+                    logger.info(f"Saved performance {performance_id} for student {current_user.id}")
                 except Exception as e:
                     logger.error(f"Error saving performance: {str(e)}")
-            
+
             # Clear session
             session.pop('current_conversation', None)
             session.pop('current_case', None)
-            
+
             return jsonify({
                 'success': True,
                 'evaluation': evaluation_results,
                 'recommendations': evaluation_results.get('recommendations', []),
                 'pdf_url': pdf_url,
-                'pdf_available': pdf_filename is not None
+                'pdf_available': pdf_url is not None
             })
             
         except Exception as e:

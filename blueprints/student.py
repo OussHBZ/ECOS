@@ -7,7 +7,7 @@ from datetime import datetime
 import time
 import random
 import json, tempfile
-from simple_pdf_generator import create_competition_pdf_report
+from simple_pdf_generator import create_competition_pdf_report, create_simple_consultation_pdf
 
 student_bp = Blueprint('student', __name__)
 logger = logging.getLogger(__name__)
@@ -728,7 +728,52 @@ def debug_competition_status():
             })
         
         return jsonify(debug_info)
-        
+
     except Exception as e:
         logger.error(f"Error in debug endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@student_bp.route('/download_report/<int:performance_id>')
+@student_required
+def student_download_report(performance_id):
+    """Download consultation PDF report for a specific performance record (regenerated on demand)"""
+    try:
+        performance = db.session.get(StudentPerformance, performance_id)
+
+        if not performance:
+            return jsonify({"error": "Rapport non trouvé"}), 404
+
+        # Security: students can only download their own reports
+        if performance.student_id != current_user.id:
+            return jsonify({"error": "Accès non autorisé"}), 403
+
+        conversation_for_pdf = performance.conversation_transcript
+        if not conversation_for_pdf:
+            return jsonify({"error": "Aucun historique de conversation trouvé"}), 404
+
+        case_number = performance.case_number
+        evaluation_results = performance.evaluation_results
+        recommendations = performance.recommendations
+
+        pdf_filename = create_simple_consultation_pdf(
+            conversation_for_pdf,
+            case_number,
+            evaluation_results,
+            recommendations
+        )
+
+        if not pdf_filename:
+            return jsonify({"error": "Erreur lors de la génération du PDF"}), 500
+
+        temp_dir = tempfile.gettempdir()
+        return send_from_directory(
+            temp_dir,
+            pdf_filename,
+            as_attachment=True,
+            download_name=f"evaluation_cas_{case_number}_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating student report PDF for performance {performance_id}: {str(e)}", exc_info=True)
+        return jsonify({"error": "Erreur lors de la génération du rapport"}), 500

@@ -670,7 +670,10 @@ def teacher_download_student_report(performance_id):
             evaluation_results,
             recommendations
         )
-        
+
+        if not pdf_filename:
+            return jsonify({"error": "Erreur lors de la génération du PDF"}), 500
+
         temp_dir = tempfile.gettempdir()
         return send_from_directory(
             temp_dir,

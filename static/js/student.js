@@ -191,70 +191,59 @@ document.addEventListener('DOMContentLoaded', async function() {
                 this.classList.add('loading');
                 this.disabled = true;
                 this.textContent = 'Téléchargement...';
-                
+
                 console.log('Attempting to download PDF from:', pdfUrl);
-                
-                // First, verify the PDF exists by making a HEAD request
-                const checkResponse = await fetch(pdfUrl, { 
-                    method: 'HEAD',
-                    credentials: 'same-origin'
-                });
-                
-                console.log('PDF check response status:', checkResponse.status);
-                console.log('PDF check response headers:', [...checkResponse.headers.entries()]);
-                
-                if (!checkResponse.ok) {
-                    throw new Error(`PDF not available (HTTP ${checkResponse.status})`);
+
+                // Fetch the PDF as a blob (single request — no stale temp-file issue)
+                const response = await authenticatedFetch(pdfUrl);
+
+                if (!response || !response.ok) {
+                    const status = response ? response.status : 0;
+                    throw new Error(`PDF not available (HTTP ${status})`);
                 }
-                
-                // Create a temporary link to trigger download
+
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+
                 const link = document.createElement('a');
-                link.href = pdfUrl;
+                link.href = blobUrl;
                 link.download = `consultation_evaluation_${new Date().getTime()}.pdf`;
                 link.style.display = 'none';
-                
-                // Add to DOM, click, and remove
                 document.body.appendChild(link);
-                console.log('Triggering download...');
                 link.click();
                 document.body.removeChild(link);
-                
+                URL.revokeObjectURL(blobUrl);
+
                 // Show success state
                 this.classList.remove('loading');
                 this.classList.add('success');
                 this.disabled = false;
                 this.textContent = 'Téléchargé ✓';
-                
+
                 console.log('✅ PDF download initiated successfully');
-                
-                // Reset to original state after 3 seconds
+
                 setTimeout(() => {
                     this.classList.remove('success');
                     this.textContent = 'Télécharger le rapport PDF';
                 }, 3000);
-                
+
             } catch (error) {
                 console.error('❌ PDF download error:', error);
-                
-                // Show error state
+
                 this.classList.remove('loading');
                 this.classList.add('error');
                 this.disabled = false;
                 this.textContent = 'Erreur ✗';
-                
-                // Show detailed error to user
+
                 let errorMessage = 'Erreur lors du téléchargement du PDF.';
-                if (error.message.includes('404')) {
-                    errorMessage = 'Le fichier PDF n\'a pas été trouvé. Il a peut-être expiré.';
-                } else if (error.message.includes('403')) {
-                    errorMessage = 'Accès au fichier PDF refusé. Veuillez vous reconnecter.';
+                if (error.message.includes('403')) {
+                    errorMessage = 'Accès refusé. Veuillez vous reconnecter.';
                 } else if (error.message.includes('500')) {
                     errorMessage = 'Erreur serveur lors de la génération du PDF.';
                 }
-                
+
                 alert(errorMessage + ' Veuillez réessayer ou contacter l\'administrateur.');
-                
-                // Reset to original state after 3 seconds
+
                 setTimeout(() => {
                     this.classList.remove('error');
                     this.textContent = 'Télécharger le rapport PDF';
