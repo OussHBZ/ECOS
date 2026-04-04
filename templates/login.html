@@ -125,18 +125,31 @@
             document.querySelectorAll('.login-form').forEach(form => {
                 form.classList.remove('active');
             });
-            
+
             // Remove active class from all tabs
             document.querySelectorAll('.login-tab').forEach(tab => {
                 tab.classList.remove('active');
             });
-            
+
             // Show selected form
             document.getElementById(type + '-form').classList.add('active');
-            
-            // Add active class to clicked tab
-            event.target.classList.add('active');
+
+            // Activate the matching tab button
+            document.querySelectorAll('.login-tab').forEach(tab => {
+                if (tab.getAttribute('onclick') === "showLoginForm('" + type + "')") {
+                    tab.classList.add('active');
+                }
+            });
         }
+
+        // Auto-select tab from ?role= query parameter
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const role = params.get('role');
+            if (role === 'teacher' || role === 'admin' || role === 'student') {
+                showLoginForm(role);
+            }
+        })();
         
         // Enhanced validation for Numéro d'Apogée
         document.getElementById('student_code').addEventListener('input', function(e) {

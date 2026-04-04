@@ -151,7 +151,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404d'
+    app.config['APP_VERSION'] = '20260404e'
 
     @app.context_processor
     def inject_version():
