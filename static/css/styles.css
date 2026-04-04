@@ -121,9 +121,9 @@ a:hover {
    Layout Components
    ======================================== */
 .container {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 30px;
 }
 
 .hidden {
@@ -285,18 +285,18 @@ a:hover {
 .main-content {
   background: var(--white);
   margin: 20px auto;
-  max-width: 1200px;
+  max-width: 1600px;
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-light);
   overflow: hidden;
 }
 
-.tab-content, 
-.student-tab-content, 
-.teacher-tab-content, 
+.tab-content,
+.student-tab-content,
+.teacher-tab-content,
 .admin-tab-content {
   display: none;
-  padding: 40px;
+  padding: 40px 40px 60px;
   background: var(--white);
   animation: fadeInUp 0.3s ease;
 }
@@ -706,13 +706,13 @@ a:hover {
 /* ========================================
    Statistics Cards
    ======================================== */
-.stats-overview, 
-.stations-stats, 
+.stats-overview,
+.stations-stats,
 .students-overview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
-  margin-bottom: 40px;
+  margin-bottom: 60px;
 }
 
 .stat-card {
