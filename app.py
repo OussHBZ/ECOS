@@ -151,7 +151,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404c'
+    app.config['APP_VERSION'] = '20260404d'
 
     @app.context_processor
     def inject_version():
@@ -312,6 +312,34 @@ def create_app():
                     logger.info("Added email column to teacher table and migrated login values")
             except Exception as migration_err:
                 logger.warning(f"Migration note for teacher.email: {migration_err}")
+
+            # Drop NOT NULL constraint on teacher.login by recreating the table
+            # SQLite doesn't support ALTER COLUMN, so we recreate the table
+            try:
+                from sqlalchemy import text
+                with db.engine.connect() as conn:
+                    # Check if login column still has NOT NULL (detected by trying an insert)
+                    result = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='teacher'"))
+                    create_sql = (result.fetchone() or [''])[0] or ''
+                    if 'login' in create_sql and 'login VARCHAR(100) NOT NULL' in create_sql:
+                        conn.execute(text('''
+                            CREATE TABLE teacher_new (
+                                id INTEGER PRIMARY KEY,
+                                email VARCHAR(150) UNIQUE,
+                                login VARCHAR(100) UNIQUE,
+                                name VARCHAR(100) NOT NULL,
+                                password_hash VARCHAR(255) NOT NULL,
+                                created_at DATETIME,
+                                last_login DATETIME
+                            )
+                        '''))
+                        conn.execute(text('INSERT INTO teacher_new SELECT id, email, login, name, password_hash, created_at, last_login FROM teacher'))
+                        conn.execute(text('DROP TABLE teacher'))
+                        conn.execute(text('ALTER TABLE teacher_new RENAME TO teacher'))
+                        conn.commit()
+                        logger.info("Recreated teacher table to make login column nullable")
+            except Exception as migration_err:
+                logger.warning(f"Migration note for teacher.login nullable: {migration_err}")
 
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")

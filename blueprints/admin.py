@@ -1506,7 +1506,7 @@ def add_teacher():
         if Teacher.query.filter_by(email=email).first():
             return jsonify({'success': False, 'error': 'Cet email est déjà utilisé.'}), 400
 
-        teacher = Teacher(email=email, name=name)
+        teacher = Teacher(email=email, login=email, name=name)
         teacher.set_password(password)
         db.session.add(teacher)
         db.session.commit()
@@ -1638,7 +1638,7 @@ def import_users():
                     skipped.append(f'Ligne {i}: Email {email} déjà existant.')
                     continue
 
-                teacher = Teacher(email=email, name=name)
+                teacher = Teacher(email=email, login=email, name=name)
                 teacher.set_password(password)
                 db.session.add(teacher)
                 created.append(name)
