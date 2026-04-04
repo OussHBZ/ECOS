@@ -547,7 +547,8 @@ def student_stations():
                 'consultation_time': case.consultation_time,
                 'attempts': attempts,
                 'best_score': best_score,
-                'last_attempt': last_attempt
+                'last_attempt': last_attempt,
+                'summary': case.get_summary()
             })
         
         return jsonify({'stations': stations})

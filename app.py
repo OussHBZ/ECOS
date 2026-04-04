@@ -151,7 +151,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404f'
+    app.config['APP_VERSION'] = '20260404g'
 
     @app.context_processor
     def inject_version():
@@ -522,7 +522,8 @@ def create_app():
                     "case_number": case.case_number,
                     "specialty": case.specialty,
                     "created_at": case.created_at,
-                    "updated_at": case.updated_at
+                    "updated_at": case.updated_at,
+                    "summary": case.get_summary()
                 })
         except Exception as e:
             logger.error(f"Error fetching case metadata: {e}")

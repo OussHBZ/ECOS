@@ -80,6 +80,7 @@
                             <span class="specialty-badge">{{ case.specialty }}</span>
                         </div>
                         <div class="case-info">
+                            {% if case.summary %}<p class="case-summary">{{ case.summary }}</p>{% endif %}
                             <p><strong>Spécialité:</strong> {{ case.specialty }}</p>
                             <p><strong>Créé le:</strong> {{ case.created_at.strftime('%d/%m/%Y') }}</p>
                         </div>

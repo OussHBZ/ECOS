@@ -320,7 +320,7 @@
                                     <tr>
                                         <td>
                                             <strong>{{ case.case_number }}</strong>
-                                            <br><span class="station-summary">{{ case.get_summary() }}</span>
+                                            {% if case.summary %}<br><span class="station-summary">{{ case.summary }}</span>{% endif %}
                                         </td>
                                         <td><span class="specialty-badge">{{ case.specialty }}</span></td>
                                         <td>{{ case.created_at.strftime('%d/%m/%Y') }}</td>
