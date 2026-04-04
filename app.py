@@ -28,8 +28,8 @@ from blueprints.teacher import teacher_bp
 
 # Model Configuration
 LLAMA_MODELS = {
-    'primary': 'meta-llama/llama-4-scout-17b-16e-instruct',
-    'fallback': 'llama3-8b-8192',
+    'primary': 'meta-llama/llama-4-maverick-17b-16e-instruct',
+    'fallback': 'llama-3.3-70b-versatile',
     'config': {
         'temperature': 0.1,  # Low for consistent patient responses
         'max_tokens': 150,   # Concise patient responses
