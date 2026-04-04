@@ -153,7 +153,8 @@ class Student(db.Model, UserMixin):
 
 class Teacher(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
-    login = db.Column(db.String(100), unique=True, nullable=False)
+    email = db.Column(db.String(150), unique=True, nullable=True)  # primary identifier
+    login = db.Column(db.String(100), unique=True, nullable=True)   # kept for migration only
     name = db.Column(db.String(100), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -169,7 +170,7 @@ class Teacher(db.Model, UserMixin):
         return f"teacher_{self.id}"
 
     def __repr__(self):
-        return f'<Teacher {self.login}: {self.name}>'
+        return f'<Teacher {self.email or self.login}: {self.name}>'
 
 class AdminAccess(db.Model):
     """Model for Administrator access tracking"""

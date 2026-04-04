@@ -53,14 +53,14 @@ def login():
                 return redirect(url_for('auth.login'))
 
         elif login_type == 'teacher':
-            teacher_login = request.form.get('teacher_login', '').strip()
+            teacher_email = request.form.get('teacher_email', '').strip().lower()
             password = request.form.get('password', '').strip()
 
-            if not teacher_login or not password:
-                flash('Identifiant et mot de passe obligatoires.', 'error')
+            if not teacher_email or not password:
+                flash('Email et mot de passe obligatoires.', 'error')
                 return redirect(url_for('auth.login'))
 
-            teacher = Teacher.query.filter_by(login=teacher_login).first()
+            teacher = Teacher.query.filter_by(email=teacher_email).first()
 
             if teacher and teacher.check_password(password):
                 teacher.last_login = datetime.utcnow()
@@ -71,7 +71,7 @@ def login():
                 session['teacher_name'] = teacher.name
                 return redirect(url_for('teacher.teacher_interface'))
             else:
-                flash('Identifiant ou mot de passe incorrect.', 'error')
+                flash('Email ou mot de passe incorrect.', 'error')
                 return redirect(url_for('auth.login'))
 
         elif login_type == 'admin':

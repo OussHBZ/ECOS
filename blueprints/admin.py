@@ -1467,14 +1467,14 @@ def admin_teachers():
         query = Teacher.query
         if search:
             query = query.filter(
-                db.or_(Teacher.name.ilike(f'%{search}%'), Teacher.login.ilike(f'%{search}%'))
+                db.or_(Teacher.name.ilike(f'%{search}%'), Teacher.email.ilike(f'%{search}%'))
             )
         teachers = query.order_by(Teacher.name).all()
         teacher_data = []
         for t in teachers:
             teacher_data.append({
                 'id': t.id,
-                'login': t.login,
+                'email': t.email or '',
                 'name': t.name,
                 'created_at': t.created_at.strftime('%d/%m/%Y') if t.created_at else '-',
                 'last_login': t.last_login.strftime('%d/%m/%Y %H:%M') if t.last_login else 'Jamais',
@@ -1491,20 +1491,22 @@ def add_teacher():
     """Create a new teacher account"""
     try:
         data = request.get_json()
-        login = (data.get('login') or '').strip()
+        email = (data.get('email') or '').strip().lower()
         name = (data.get('name') or '').strip()
         password = (data.get('password') or '').strip()
 
-        if not login:
-            return jsonify({'success': False, 'error': 'L\'identifiant est obligatoire.'}), 400
+        if not email:
+            return jsonify({'success': False, 'error': 'L\'email est obligatoire.'}), 400
+        if '@' not in email:
+            return jsonify({'success': False, 'error': 'Adresse email invalide.'}), 400
         if not name:
             return jsonify({'success': False, 'error': 'Le nom est obligatoire.'}), 400
         if len(password) < 4:
             return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
-        if Teacher.query.filter_by(login=login).first():
-            return jsonify({'success': False, 'error': 'Cet identifiant est déjà utilisé.'}), 400
+        if Teacher.query.filter_by(email=email).first():
+            return jsonify({'success': False, 'error': 'Cet email est déjà utilisé.'}), 400
 
-        teacher = Teacher(login=login, name=name)
+        teacher = Teacher(email=email, name=name)
         teacher.set_password(password)
         db.session.add(teacher)
         db.session.commit()
@@ -1624,19 +1626,19 @@ def import_users():
 
         elif user_type == 'teacher':
             for i, row in enumerate(rows, start=2):
-                login = (row.get('login') or row.get('identifiant') or '').strip()
+                email = (row.get('email') or row.get('mail') or row.get('login') or '').strip().lower()
                 name = (row.get('name') or row.get('nom') or '').strip()
                 password = (row.get('password') or row.get('mot de passe') or row.get('mdp') or '').strip()
 
-                if not login or not name or not password:
-                    errors.append(f'Ligne {i}: données incomplètes (login, name, password requis).')
+                if not email or not name or not password:
+                    errors.append(f'Ligne {i}: données incomplètes (email, name, password requis).')
                     continue
 
-                if Teacher.query.filter_by(login=login).first():
-                    skipped.append(f'Ligne {i}: Identifiant {login} déjà existant.')
+                if Teacher.query.filter_by(email=email).first():
+                    skipped.append(f'Ligne {i}: Email {email} déjà existant.')
                     continue
 
-                teacher = Teacher(login=login, name=name)
+                teacher = Teacher(email=email, name=name)
                 teacher.set_password(password)
                 db.session.add(teacher)
                 created.append(name)

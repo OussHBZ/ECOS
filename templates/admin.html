@@ -192,7 +192,7 @@
                         <button onclick="searchAdminTeachers()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
                     <button onclick="openAddTeacherModal()" class="btn btn-primary">+ Ajouter un enseignant</button>
-                    <button onclick="openImportModal('teacher')" class="btn btn-secondary" title="Format CSV/Excel&#10;Ligne 1 (en-tête) : login, name, password&#10;Lignes suivantes : un enseignant par ligne&#10;Exemple :&#10;login,name,password&#10;prof.martin,Dr. Martin,mdp123">↑ Importer CSV/Excel</button>
+                    <button onclick="openImportModal('teacher')" class="btn btn-secondary" title="Format CSV/Excel&#10;Ligne 1 (en-tête) : email, name, password&#10;Lignes suivantes : un enseignant par ligne&#10;Exemple :&#10;email,name,password&#10;prof.martin@fmpm.ma,Dr. Martin,mdp123">↑ Importer CSV/Excel</button>
                 </div>
             </div>
 
@@ -207,7 +207,7 @@
                 <table class="students-table" id="admin-teachers-table">
                     <thead>
                         <tr>
-                            <th>Identifiant</th>
+                            <th>Email</th>
                             <th>Nom</th>
                             <th>Créé le</th>
                             <th>Dernière Connexion</th>
@@ -319,8 +319,8 @@
             <h3>Ajouter un Enseignant</h3>
             <form id="add-teacher-form" onsubmit="submitAddTeacher(event)">
                 <div class="form-group">
-                    <label>Identifiant :</label>
-                    <input type="text" id="new-teacher-login" placeholder="Ex: prof.martin" required>
+                    <label>Email :</label>
+                    <input type="email" id="new-teacher-email" placeholder="Ex: prof.martin@fmpm.ma" required autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label>Nom complet :</label>
@@ -604,7 +604,7 @@
                 data.teachers.forEach(function(t) {
                     _teacherMap[t.id] = t;
                     html += '<tr>' +
-                        '<td>' + escHtml(t.login) + '</td>' +
+                        '<td>' + escHtml(t.email) + '</td>' +
                         '<td>' + escHtml(t.name) + '</td>' +
                         '<td>' + t.created_at + '</td>' +
                         '<td>' + t.last_login + '</td>' +
@@ -726,7 +726,7 @@
         var errEl = document.getElementById('add-teacher-error');
         errEl.style.display = 'none';
         var payload = {
-            login: document.getElementById('new-teacher-login').value.trim(),
+            email: document.getElementById('new-teacher-email').value.trim(),
             name: document.getElementById('new-teacher-name').value.trim(),
             password: document.getElementById('new-teacher-password').value
         };

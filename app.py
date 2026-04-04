@@ -151,7 +151,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260403e'
+    app.config['APP_VERSION'] = '20260404a'
 
     @app.context_processor
     def inject_version():
@@ -297,6 +297,21 @@ def create_app():
                     logger.info("Added password_hash column to student table")
             except Exception as migration_err:
                 logger.warning(f"Migration note for student.password_hash: {migration_err}")
+
+            # Add email column to teacher table and migrate login → email
+            try:
+                from sqlalchemy import text
+                inspector3 = db.inspect(db.engine)
+                teacher_columns = [c['name'] for c in inspector3.get_columns('teacher')]
+                if 'email' not in teacher_columns:
+                    with db.engine.connect() as conn:
+                        conn.execute(text('ALTER TABLE teacher ADD COLUMN email VARCHAR(150)'))
+                        # Copy existing login values into email so current teachers can still log in
+                        conn.execute(text('UPDATE teacher SET email = login WHERE email IS NULL'))
+                        conn.commit()
+                    logger.info("Added email column to teacher table and migrated login values")
+            except Exception as migration_err:
+                logger.warning(f"Migration note for teacher.email: {migration_err}")
 
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")
