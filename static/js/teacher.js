@@ -3122,7 +3122,7 @@ async function openStudentDetailModal(studentId, studentName) {
                     <td>${perf.specialty}</td>
                     <td>${perf.score}%</td>
                     <td>${perf.points_earned}/${perf.points_total}</td>
-                    <td><span class="grade-badge grade-${perf.grade}">${perf.grade}</span></td>
+                    <td><span class="grade-badge grade-${perf.status}">${perf.status}</span></td>
                     <td><span class="status-badge status-${perf.status.toLowerCase().replace(' ', '-')}">${perf.status}</span></td>
                     <td>${perf.consultation_duration}</td>
                     <td>

@@ -1,4 +1,10 @@
 
+// HTML escape helper to prevent XSS
+function escHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Global variables for admin interface
 let availableStudents = [];
 let selectedStudents = [];
@@ -176,13 +182,14 @@ async function loadAdminCompetitionSessions() {
         }
         
         tableBody.innerHTML = '';
-        
-        if (data.sessions.length === 0) {
+
+        const competitionSessions = data.sessions || [];
+        if (competitionSessions.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Aucune session de compétition trouvée</td></tr>';
         } else {
-            data.sessions.forEach(session => {
+            competitionSessions.forEach(session => {
                 const row = document.createElement('tr');
-                
+
                 // Determine button visibility based on status
                 let actionButtons = `<button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>`;
                 
@@ -242,8 +249,8 @@ async function viewCompetitionSessionDetails(sessionId) {
         // Create session details HTML
         let detailsHTML = `
             <div class="competition-session-details">
-                <h4>${sessionData.name}</h4>
-                <p><strong>Description:</strong> ${sessionData.description || 'Aucune description'}</p>
+                <h4>${escHtml(sessionData.name)}</h4>
+                <p><strong>Description:</strong> ${escHtml(sessionData.description) || 'Aucune description'}</p>
                 <p><strong>Début:</strong> ${sessionData.start_time}</p>
                 <p><strong>Fin:</strong> ${sessionData.end_time}</p>
                 <p><strong>Statut:</strong> <span class="status-badge status-${sessionData.status}">${sessionData.status_display}</span></p>
@@ -1070,8 +1077,8 @@ async function viewSessionDetails(sessionId) {
         // Create session details HTML
         let detailsHTML = `
             <div class="session-details">
-                <h4>${sessionData.name}</h4>
-                <p><strong>Description:</strong> ${sessionData.description || 'Aucune description'}</p>
+                <h4>${escHtml(sessionData.name)}</h4>
+                <p><strong>Description:</strong> ${escHtml(sessionData.description) || 'Aucune description'}</p>
                 <p><strong>Début:</strong> ${sessionData.start_time}</p>
                 <p><strong>Fin:</strong> ${sessionData.end_time}</p>
                 <p><strong>Statut:</strong> <span class="status-badge status-${sessionData.status}">${sessionData.status_display}</span></p>
@@ -1291,10 +1298,11 @@ async function loadAdminSessions() {
         const tableBody = document.getElementById('sessions-table-body');
         tableBody.innerHTML = '';
         
-        if (data.sessions.length === 0) {
+        const practiceSessions = data.sessions || [];
+        if (practiceSessions.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucune session trouvée</td></tr>';
         } else {
-            data.sessions.forEach(session => {
+            practiceSessions.forEach(session => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${session.name}</td>
@@ -1411,7 +1419,7 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
         // Update stats
         document.getElementById('student-total-consultations').textContent = data.total_consultations;
         document.getElementById('student-unique-stations').textContent = data.unique_stations;
-        document.getElementById('student-avg-score').textContent = data.average_score + '%';
+        document.getElementById('student-avg-score').textContent = (data.average_score != null ? data.average_score : 0) + '%';
         
         // Update performance table
         const tableBody = document.getElementById('student-performance-table-body');
