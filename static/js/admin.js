@@ -289,6 +289,7 @@ async function viewCompetitionSessionDetails(sessionId) {
                 detailsHTML += `
                     <div class="station-item">
                         <strong>Station ${station.case_number}</strong> - ${station.specialty}
+                        ${station.summary ? `<br><em class="station-summary">${station.summary}</em>` : ''}
                         <small>Durée: ${station.consultation_time} min</small>
                     </div>`;
             });
@@ -1042,7 +1043,10 @@ async function loadAdminStations(searchQuery = '') {
             data.stations.forEach(station => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${station.case_number}</td>
+                    <td>
+                        <strong>${station.case_number}</strong>
+                        ${station.summary ? `<br><span class="station-summary">${station.summary}</span>` : ''}
+                    </td>
                     <td>${station.specialty}</td>
                     <td>${station.consultation_time}</td>
                     <td>${station.created_at}</td>
@@ -1108,6 +1112,7 @@ async function viewSessionDetails(sessionId) {
                 detailsHTML += `
                     <div class="station-item">
                         <strong>Station ${station.case_number}</strong> - ${station.specialty}
+                        ${station.summary ? `<br><em class="station-summary">${station.summary}</em>` : ''}
                         <small>Durée: ${station.consultation_time} min | Ordre: ${station.station_order}</small>
                     </div>`;
             });
@@ -1789,7 +1794,10 @@ function updateAvailableStationsList() {
             item.className = 'selection-item';
             item.innerHTML = `
                 <input type="checkbox" id="station-${station.case_number}" value="${station.case_number}">
-                <label for="station-${station.case_number}">Station ${station.case_number} - ${station.specialty}</label>
+                <label for="station-${station.case_number}">
+                    <strong>${station.case_number}</strong> — ${station.specialty}
+                    ${station.summary ? `<br><span class="station-summary">${station.summary}</span>` : ''}
+                </label>
             `;
             container.appendChild(item);
         });
@@ -1893,7 +1901,10 @@ function updateSelectedStationsList() {
         item.className = 'selection-item';
         item.innerHTML = `
             <input type="checkbox" id="selected-station-${station.case_number}" value="${station.case_number}">
-            <label for="selected-station-${station.case_number}">Station ${station.case_number} - ${station.specialty}</label>
+            <label for="selected-station-${station.case_number}">
+                <strong>${station.case_number}</strong> — ${station.specialty}
+                ${station.summary ? `<br><span class="station-summary">${station.summary}</span>` : ''}
+            </label>
         `;
         container.appendChild(item);
     });

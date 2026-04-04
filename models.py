@@ -353,6 +353,33 @@ class PatientCase(db.Model):
     def get_completion_count(self):
         """Get number of times this case has been completed"""
         return StudentPerformance.query.filter_by(case_number=self.case_number).count()
+
+    def get_summary(self):
+        """Generate a short descriptive sentence: 'Un homme de 58 ans consulte pour...'"""
+        info = self.patient_info
+        age = info.get('age')
+        gender = str(info.get('gender', '')).lower()
+
+        if any(w in gender for w in ('f', 'femme', 'féminin', 'feminine')):
+            subject = f"Une femme de {age} ans" if age else "Une femme"
+        else:
+            subject = f"Un homme de {age} ans" if age else "Un homme"
+
+        symptoms = self.symptoms
+        complaint = ''
+        if symptoms:
+            first = symptoms[0]
+            complaint = first.split(':', 1)[1].strip() if ':' in first else first.strip()
+            complaint = complaint[0].lower() + complaint[1:] if complaint else ''
+            if len(complaint) > 70:
+                complaint = complaint[:70].rsplit(' ', 1)[0] + '…'
+
+        if complaint:
+            return f"{subject} consulte pour {complaint}."
+        elif self.diagnosis:
+            diag = self.diagnosis[:60].rsplit(' ', 1)[0] + '…' if len(self.diagnosis) > 60 else self.diagnosis
+            return f"{subject} — {diag}."
+        return f"{subject}."
     
     @classmethod
     def from_json_data(cls, case_data):

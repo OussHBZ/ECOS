@@ -497,7 +497,8 @@ def admin_stations():
                 'consultation_time': case.consultation_time,
                 'created_at': case.created_at.strftime('%d/%m/%Y'),
                 'usage_count': usage_count,
-                'average_score': avg_score
+                'average_score': avg_score,
+                'summary': case.get_summary()
             })
         
         # Calculate average score
@@ -689,7 +690,8 @@ def admin_available_stations():
             station_data.append({
                 'case_number': case.case_number,
                 'specialty': case.specialty,
-                'consultation_time': case.consultation_time
+                'consultation_time': case.consultation_time,
+                'summary': case.get_summary()
             })
         
         return jsonify({'stations': station_data})

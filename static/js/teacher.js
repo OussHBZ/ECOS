@@ -2989,7 +2989,10 @@ async function loadTeacherStations(searchQuery = '') {
             data.stations.forEach(station => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${station.case_number}</td>
+                    <td>
+                        <strong>${station.case_number}</strong>
+                        ${station.summary ? `<br><span class="station-summary">${station.summary}</span>` : ''}
+                    </td>
                     <td>${station.specialty}</td>
                     <td>${station.consultation_time}</td>
                     <td>${station.created_at}</td>

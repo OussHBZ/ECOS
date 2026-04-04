@@ -318,7 +318,10 @@
                                 <tbody>
                                     {% for case in cases %}
                                     <tr>
-                                        <td>{{ case.case_number }}</td>
+                                        <td>
+                                            <strong>{{ case.case_number }}</strong>
+                                            <br><span class="station-summary">{{ case.get_summary() }}</span>
+                                        </td>
                                         <td><span class="specialty-badge">{{ case.specialty }}</span></td>
                                         <td>{{ case.created_at.strftime('%d/%m/%Y') }}</td>
                                         <td>

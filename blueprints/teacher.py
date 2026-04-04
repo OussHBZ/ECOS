@@ -540,7 +540,8 @@ def teacher_stations():
                 'created_at': case.created_at.strftime('%d/%m/%Y'),
                 'updated_at': case.updated_at.strftime('%d/%m/%Y') if case.updated_at else case.created_at.strftime('%d/%m/%Y'),
                 'completion_count': completion_count,
-                'average_score': round(average_score)
+                'average_score': round(average_score),
+                'summary': case.get_summary()
             })
         
         return jsonify({
