@@ -901,13 +901,15 @@ a:hover {
 /* ========================================
    Chat Interface
    ======================================== */
-.chat-container, 
+.chat-container,
 .competition-chat-container {
   background: var(--white);
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-medium);
   overflow: hidden;
   border: 2px solid var(--border-color);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .chat-header {
@@ -949,13 +951,15 @@ a:hover {
   font-family: 'Courier New', monospace;
 }
 
-.chat-messages, 
+.chat-messages,
 .competition-chat-messages {
-  height: 400px;
+  height: 550px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
   background: var(--secondary-color);
   border-bottom: 1px solid var(--border-color);
+  box-sizing: border-box;
 }
 
 .chat-input-container {
@@ -963,6 +967,9 @@ a:hover {
   padding: 20px;
   gap: 15px;
   background: var(--white);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 
 .chat-input-container input {
@@ -1002,6 +1009,9 @@ a:hover {
   line-height: 1.5;
   box-shadow: var(--shadow-light);
   position: relative;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
 }
 
 .message.user {
