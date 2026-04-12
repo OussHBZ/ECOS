@@ -101,26 +101,55 @@
                 </div>
             </div>
 
-            <!-- Chat Interface -->
+            <!-- Chat Interface — two-column layout -->
             <div id="chat-container" class="chat-container hidden">
-                <div class="chat-header">
-                    <div class="case-info">
-                        <h2 id="current-case-title">Cas en cours</h2>
-                        <button id="view-directives-btn" class="btn view-button">Voir les directives</button>
-                    </div>
-                    <div class="timer-container">
-                        <span class="timer-label">Temps restant:</span>
+
+                <!-- Top bar: title + timer + end button -->
+                <div class="chat-topbar">
+                    <h2 id="current-case-title" class="chat-topbar-title">Cas en cours</h2>
+                    <div class="chat-topbar-timer">
+                        <span class="timer-label">Temps restant</span>
                         <span id="timer" class="timer">10:00</span>
                     </div>
-                    <button id="end-chat" class="btn end-button">Terminer la consultation</button>
+                    <button id="end-chat" class="btn end-button">&#9632; Terminer la consultation</button>
                 </div>
 
-                <div class="chat-content">
-                    <div id="chat-messages" class="chat-messages"></div>
-                    <div class="chat-input-container">
-                        <input type="text" id="user-input" placeholder="Tapez votre message ou question...">
-                        <button id="send-btn" class="btn send-button">Envoyer</button>
+                <!-- Body: left panel + chat area -->
+                <div class="chat-body">
+
+                    <!-- Left panel -->
+                    <aside class="chat-sidebar">
+
+                        <div class="sidebar-section">
+                            <div class="sidebar-section-title">Patient</div>
+                            <div id="sidebar-patient-info" class="sidebar-patient-info">
+                                <span class="sidebar-placeholder">Chargement…</span>
+                            </div>
+                        </div>
+
+                        <div class="sidebar-section">
+                            <div class="sidebar-section-title">Directives</div>
+                            <div id="directives-content" class="sidebar-directives">
+                                <span class="sidebar-placeholder">Aucune directive.</span>
+                            </div>
+                        </div>
+
+                        <div class="sidebar-section" id="sidebar-labs-section" style="display:none">
+                            <div class="sidebar-section-title">Examens complémentaires</div>
+                            <div id="sidebar-labs" class="sidebar-labs"></div>
+                        </div>
+
+                    </aside>
+
+                    <!-- Right: messages + input -->
+                    <div class="chat-main">
+                        <div id="chat-messages" class="chat-messages"></div>
+                        <div class="chat-input-container">
+                            <input type="text" id="user-input" placeholder="Tapez votre message ou question…" autocomplete="off">
+                            <button id="send-btn" class="btn send-button">Envoyer</button>
+                        </div>
                     </div>
+
                 </div>
             </div>
 
@@ -133,21 +162,11 @@
                         <button id="back-to-cases" class="btn back-button">Nouveau cas</button>
                     </div>
                 </div>
-                <div id="evaluation-results" class="evaluation-results">
-                    <!-- Results will be populated by JavaScript -->
-                </div>
+                <div id="evaluation-results" class="evaluation-results"></div>
             </div>
 
-            <!-- Directives Modal -->
-            <div id="directives-modal" class="modal">
-                <div class="modal-content">
-                    <span class="close-modal directives-close">&times;</span>
-                    <h3>Directives de la consultation</h3>
-                    <div id="directives-content" class="directives-content">
-                        <!-- Directives will be populated by JavaScript -->
-                    </div>
-                </div>
-            </div>
+            <!-- Directives modal kept for compatibility (hidden, unused) -->
+            <div id="directives-modal" class="modal"></div>
         </div>
 
         <!-- Competition Tab -->

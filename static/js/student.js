@@ -108,44 +108,36 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
 
                 const data = await response.json();
-                
+
                 currentDirectives = data.directives || '';
                 directivesViewed = false;
-                
+
                 if (selectedCaseCard) {
                     const specialty = selectedCaseCard.getAttribute('data-specialty');
                     if (currentCaseTitle) {
                         currentCaseTitle.textContent = `Cas ${currentCase} (${specialty})`;
                     }
                 }
-                
+
+                // Populate sidebar
+                populateSidebar(data);
+
                 if (chatMessages) chatMessages.innerHTML = '';
-                
+
                 if (caseSelection) caseSelection.classList.add('hidden');
                 if (chatContainer) {
                     chatContainer.classList.remove('hidden');
-                    // Ensure input is visible after showing chat
                     setTimeout(() => {
                         ensureInputVisibility();
-                        // Focus the input
                         const userInput = document.getElementById('user-input');
-                        if (userInput) {
-                            userInput.focus();
-                        }
+                        if (userInput) userInput.focus();
                     }, 100);
                 }
-                
+
                 const configuredTime = data.consultation_time || 10;
                 startTimer(configuredTime);
-                
+
                 addMessageToChat('system', 'Consultation initiée. Vous pouvez commencer à poser vos questions.');
-                
-                if (currentDirectives && viewDirectivesBtn) {
-                    viewDirectivesBtn.classList.add('flash-attention');
-                    setTimeout(() => {
-                        viewDirectivesBtn.classList.remove('flash-attention');
-                    }, 3000);
-                }
                 
             } catch (error) {
                 console.error('Error:', error);
@@ -2566,6 +2558,49 @@ window.openImageModal = function(src) {
         if (e.target === modal) modal.remove();
     };
 };
+
+// Populate left sidebar with patient info, directives and lab results
+function populateSidebar(data) {
+    const caseData = data.case_data || {};
+    const patientInfo = caseData.patient_info || {};
+
+    // --- Patient info ---
+    const patientEl = document.getElementById('sidebar-patient-info');
+    if (patientEl) {
+        const name = patientInfo.name || '';
+        const age  = patientInfo.age  || '';
+        const gender = patientInfo.gender || '';
+        const occupation = patientInfo.occupation || '';
+        let html = '';
+        if (name)       html += `<div><strong>Nom :</strong> ${name}</div>`;
+        if (age)        html += `<div><strong>Âge :</strong> ${age} ans</div>`;
+        if (gender)     html += `<div><strong>Sexe :</strong> ${gender}</div>`;
+        if (occupation) html += `<div><strong>Profession :</strong> ${occupation}</div>`;
+        patientEl.innerHTML = html || '<span class="sidebar-placeholder">Non précisé.</span>';
+    }
+
+    // --- Directives ---
+    const dirEl = document.getElementById('directives-content');
+    if (dirEl) {
+        const raw = data.directives || caseData.directives || '';
+        dirEl.innerHTML = raw
+            ? raw.replace(/\n/g, '<br>')
+            : '<span class="sidebar-placeholder">Aucune directive.</span>';
+    }
+
+    // --- Lab results ---
+    const labsSection = document.getElementById('sidebar-labs-section');
+    const labsEl = document.getElementById('sidebar-labs');
+    const labs = caseData.lab_results || '';
+    if (labsSection && labsEl) {
+        if (labs && labs.trim()) {
+            labsEl.innerHTML = labs.replace(/\n/g, '<br>');
+            labsSection.style.display = '';
+        } else {
+            labsSection.style.display = 'none';
+        }
+    }
+}
 
 // Directives functionality
 function showDirectives() {

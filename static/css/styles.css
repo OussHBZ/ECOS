@@ -899,19 +899,168 @@ a:hover {
 }
 
 /* ========================================
-   Chat Interface
+   Chat Interface — two-column layout
    ======================================== */
-.chat-container,
-.competition-chat-container {
+.chat-container {
   background: var(--white);
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-medium);
-  overflow: hidden;
   border: 2px solid var(--border-color);
   width: 100%;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
+/* ---- Top bar ---- */
+.chat-topbar {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+  color: var(--white);
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 2px solid var(--primary-dark);
+  flex-shrink: 0;
+}
+
+.chat-topbar-title {
+  flex: 1;
+  margin: 0;
+  font-size: 18px;
+  font-family: var(--font-family-secondary);
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-topbar-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: var(--border-radius);
+  padding: 8px 18px;
+  min-width: 110px;
+}
+
+.chat-topbar-timer .timer-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.85;
+  margin-bottom: 2px;
+}
+
+.chat-topbar-timer .timer {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: var(--white);
+}
+
+/* ---- Body: sidebar + main ---- */
+.chat-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- Left sidebar ---- */
+.chat-sidebar {
+  width: 280px;
+  min-width: 240px;
+  max-width: 300px;
+  background: #faf8f5;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.sidebar-section {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--primary-color);
+  margin-bottom: 10px;
+}
+
+.sidebar-patient-info {
+  font-size: 13px;
+  color: var(--text-dark);
+  line-height: 1.6;
+}
+
+.sidebar-patient-info strong {
+  color: var(--primary-color);
+}
+
+.sidebar-directives {
+  font-size: 13px;
+  color: var(--text-dark);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.sidebar-labs {
+  font-size: 12px;
+  color: var(--text-dark);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.sidebar-placeholder {
+  font-size: 12px;
+  color: var(--text-light);
+  font-style: italic;
+}
+
+/* ---- Right: chat main ---- */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-messages,
+.competition-chat-messages {
+  flex: 1;
+  height: 520px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px;
+  background: var(--secondary-color);
+  box-sizing: border-box;
+}
+
+.chat-input-container {
+  display: flex;
+  padding: 16px 20px;
+  gap: 12px;
+  background: var(--white);
+  border-top: 1px solid var(--border-color);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* legacy .chat-header kept for competition stations */
 .chat-header {
   background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
   color: var(--white);
@@ -920,12 +1069,6 @@ a:hover {
   justify-content: space-between;
   align-items: center;
   border-bottom: 2px solid var(--primary-dark);
-}
-
-.chat-header h2 {
-  margin: 0;
-  color: var(--white);
-  font-family: var(--font-family-secondary);
 }
 
 .timer-container {
@@ -951,25 +1094,15 @@ a:hover {
   font-family: 'Courier New', monospace;
 }
 
-.chat-messages,
-.competition-chat-messages {
-  height: 550px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 20px;
-  background: var(--secondary-color);
-  border-bottom: 1px solid var(--border-color);
-  box-sizing: border-box;
-}
-
-.chat-input-container {
-  display: flex;
-  padding: 20px;
-  gap: 15px;
+/* competition chat unchanged */
+.competition-chat-container {
   background: var(--white);
-  box-sizing: border-box;
+  border-radius: var(--border-radius-large);
+  box-shadow: var(--shadow-medium);
+  overflow: hidden;
+  border: 2px solid var(--border-color);
   width: 100%;
-  min-width: 0;
+  box-sizing: border-box;
 }
 
 .chat-input-container input {
@@ -1851,6 +1984,27 @@ a:hover {
   background: linear-gradient(90deg, var(--primary-color), var(--accent-color), var(--primary-color));
 }
 
+
+/* Chat sidebar collapses on small screens */
+@media (max-width: 900px) {
+  .chat-body {
+    flex-direction: column;
+  }
+  .chat-sidebar {
+    width: 100%;
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    max-height: 220px;
+    overflow-y: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0;
+  }
+  .sidebar-section {
+    flex: 1 1 200px;
+  }
+}
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
