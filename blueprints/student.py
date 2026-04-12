@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 import time
 import random
-import json, tempfile
+import json, tempfile, os
 from simple_pdf_generator import create_competition_pdf_report, create_simple_consultation_pdf
 
 student_bp = Blueprint('student', __name__)
@@ -778,3 +778,41 @@ def student_download_report(performance_id):
     except Exception as e:
         logger.error(f"Error generating student report PDF for performance {performance_id}: {str(e)}", exc_info=True)
         return jsonify({"error": "Erreur lors de la génération du rapport"}), 500
+
+
+@student_bp.route('/transcribe', methods=['POST'])
+@student_required
+def transcribe_audio():
+    """Transcribe audio using Groq Whisper API (fallback when Web Speech API unavailable)"""
+    if 'audio' not in request.files:
+        return jsonify({'error': 'Aucun fichier audio fourni'}), 400
+
+    audio_file = request.files['audio']
+    if not audio_file or audio_file.filename == '':
+        return jsonify({'error': 'Fichier audio vide'}), 400
+
+    try:
+        import groq as groq_sdk
+
+        api_key = os.getenv('GROQ_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Clé API non configurée'}), 500
+
+        client = groq_sdk.Groq(api_key=api_key)
+
+        audio_bytes = audio_file.read()
+        content_type = audio_file.content_type or 'audio/webm'
+        filename = audio_file.filename or 'recording.webm'
+
+        transcription = client.audio.transcriptions.create(
+            file=(filename, audio_bytes, content_type),
+            model='whisper-large-v3',
+            language='fr',
+            response_format='json'
+        )
+
+        return jsonify({'text': transcription.text.strip()})
+
+    except Exception as e:
+        logger.error(f"Transcription error: {e}", exc_info=True)
+        return jsonify({'error': 'Erreur lors de la transcription'}), 500

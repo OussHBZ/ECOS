@@ -3624,82 +3624,170 @@ console.log('Use window.debugCompetition() to debug competition state');
 
 // ─── Microphone / Speech-to-Text ─────────────────────────────────────────────
 (function initMic() {
+
+    // Helper: set all mic buttons for a given inputId to active/inactive state
+    function setMicState(inputId, active) {
+        document.querySelectorAll('.mic-button').forEach(btn => {
+            const oc = btn.getAttribute('onclick') || '';
+            if (oc.includes(inputId)) {
+                btn.classList.toggle('listening', active);
+                btn.title = active ? 'Arrêter la dictée' : 'Dicter un message';
+            }
+        });
+    }
+
+    function setMicIcon(inputId, icon) {
+        document.querySelectorAll('.mic-button').forEach(btn => {
+            const oc = btn.getAttribute('onclick') || '';
+            if (oc.includes(inputId)) btn.textContent = icon;
+        });
+    }
+
+    // ── Path A: Web Speech API (Chrome/Edge on HTTPS) ──────────────────────
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        // Hide mic buttons if API not supported
-        document.querySelectorAll('.mic-button').forEach(btn => btn.style.display = 'none');
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'fr-FR';
+        recognition.continuous = false;
+        recognition.interimResults = true;
+
+        let listening = false;
+        let activeInputId = 'user-input';
+        let baseText = '';
+
+        recognition.onstart = () => {
+            listening = true;
+            setMicState(activeInputId, true);
+        };
+
+        recognition.onresult = (event) => {
+            let interim = '', final = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) final += event.results[i][0].transcript;
+                else interim += event.results[i][0].transcript;
+            }
+            if (final) baseText += final;
+            const inp = document.getElementById(activeInputId);
+            if (inp) inp.value = baseText + interim;
+        };
+
+        recognition.onend = () => {
+            listening = false;
+            setMicState(activeInputId, false);
+        };
+
+        recognition.onerror = (e) => {
+            listening = false;
+            setMicState(activeInputId, false);
+            if (e.error === 'not-allowed') {
+                const inp = document.getElementById(activeInputId);
+                if (inp) inp.placeholder = 'Microphone non autorisé — vérifiez les permissions du navigateur.';
+            }
+            console.warn('Speech recognition error:', e.error);
+        };
+
+        window.toggleMic = function(inputId) {
+            activeInputId = inputId || 'user-input';
+            if (listening) {
+                recognition.stop();
+            } else {
+                baseText = (document.getElementById(activeInputId) || {}).value || '';
+                try { recognition.start(); } catch (err) { console.warn('SpeechRecognition start failed:', err); }
+            }
+        };
+
+        console.log('Microphone: Web Speech API ready');
         return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'fr-FR';
-    recognition.continuous = false;
-    recognition.interimResults = true;
+    // ── Path B: MediaRecorder + Groq Whisper fallback ─────────────────────
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        // No audio support at all — hide buttons
+        document.querySelectorAll('.mic-button').forEach(btn => btn.style.display = 'none');
+        console.warn('Microphone: no audio support in this browser');
+        return;
+    }
 
+    console.log('Microphone: Web Speech API not available, using Whisper fallback');
+
+    let mediaRecorder = null;
+    let audioChunks = [];
     let listening = false;
     let activeInputId = 'user-input';
-    let baseText = '';
 
-    recognition.onstart = () => {
-        listening = true;
-        // Activate the correct mic button (there may be one per chat)
-        document.querySelectorAll('.mic-button').forEach(btn => {
-            if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(activeInputId)) {
-                btn.classList.add('listening');
-                btn.title = 'Arrêter la dictée';
-            }
-        });
-    };
+    window.toggleMic = async function(inputId) {
+        activeInputId = inputId || 'user-input';
 
-    recognition.onresult = (event) => {
-        let interim = '';
-        let final = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-                final += event.results[i][0].transcript;
-            } else {
-                interim += event.results[i][0].transcript;
-            }
+        // Stop recording if already running
+        if (listening && mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            return;
         }
-        if (final) baseText += final;
-        const inp = document.getElementById(activeInputId);
-        if (inp) inp.value = baseText + interim;
-    };
 
-    recognition.onend = () => {
-        listening = false;
-        document.querySelectorAll('.mic-button').forEach(btn => {
-            btn.classList.remove('listening');
-            btn.title = 'Dicter un message';
-        });
-    };
-
-    recognition.onerror = (e) => {
-        listening = false;
-        document.querySelectorAll('.mic-button').forEach(btn => {
-            btn.classList.remove('listening');
-            btn.title = 'Dicter un message';
-        });
-        if (e.error === 'not-allowed') {
+        // Request microphone access
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+            console.error('Microphone access denied:', err);
             const inp = document.getElementById(activeInputId);
             if (inp) inp.placeholder = 'Microphone non autorisé — vérifiez les permissions du navigateur.';
+            return;
         }
-        console.warn('Speech recognition error:', e.error);
+
+        // Prefer webm/opus, fall back to whatever the browser supports
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : MediaRecorder.isTypeSupported('audio/webm')
+                ? 'audio/webm'
+                : '';
+
+        audioChunks = [];
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            listening = false;
+            setMicState(activeInputId, false);
+            stream.getTracks().forEach(t => t.stop());
+
+            if (audioChunks.length === 0) return;
+
+            // Show spinner while waiting for transcription
+            setMicIcon(activeInputId, '⏳');
+
+            const blob = new Blob(audioChunks, { type: mimeType || 'audio/webm' });
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
+
+            try {
+                const response = await authenticatedFetch('/student/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (response && response.ok) {
+                    const data = await response.json();
+                    if (data.text) {
+                        const inp = document.getElementById(activeInputId);
+                        if (inp) inp.value = (inp.value + ' ' + data.text).trim();
+                    } else if (data.error) {
+                        console.error('Transcription error:', data.error);
+                    }
+                }
+            } catch (err) {
+                console.error('Transcription request failed:', err);
+            } finally {
+                setMicIcon(activeInputId, '🎤');
+            }
+        };
+
+        mediaRecorder.start();
+        listening = true;
+        setMicState(activeInputId, true);
     };
 
-    // Exposed globally so onclick= in HTML can call it
-    window.toggleMic = function(inputId) {
-        activeInputId = inputId || 'user-input';
-        if (listening) {
-            recognition.stop();
-        } else {
-            const inp = document.getElementById(activeInputId);
-            baseText = inp ? inp.value : '';
-            try {
-                recognition.start();
-            } catch (err) {
-                console.warn('Could not start recognition:', err);
-            }
-        }
-    };
+    console.log('Microphone: Whisper (MediaRecorder) fallback ready');
 })();
