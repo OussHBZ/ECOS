@@ -535,7 +535,7 @@ OUI/NON/PARTIELLEMENT - [justification factuelle en une phrase, citant un élém
                 )
             elif 'examen' in cat_lower:
                 recommendations.append(
-                    f"Examen physique : Verbalisez vos intentions d'examen (\"Je vais vous examiner...\") et recherchez les signes pertinents. "
+                    f"Examen clinique (station) : Verbalisez vos intentions d'examen (\"Je vais vous examiner...\") et recherchez les signes pertinents. "
                     f"Points manqués : {item_descriptions}."
                 )
             elif 'diagnostic' in cat_lower:
