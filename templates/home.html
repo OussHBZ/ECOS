@@ -10,8 +10,9 @@
     <link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='images/favicon-192x192.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version }}">
 </head>
-<body>
-    <!-- FMPM Header -->
+<body class="home-page">
+
+    <!-- Header -->
     <header class="fmpm-header">
         <div class="container">
             <div class="header-content">
@@ -28,9 +29,20 @@
     </header>
 
     <div class="container">
+
+        <!-- Hero section -->
+        <div class="home-hero">
+            <h2 class="home-hero-title">Entraîne-toi aux ECOS avec l'IA</h2>
+            <p class="home-hero-sub">
+                Simule des stations ECOS réalistes — à l'écrit — et reçois un feedback détaillé<br>
+                pour progresser avant le jour J.
+            </p>
+        </div>
+
+        <!-- Profile cards -->
         <div class="role-selection">
-            <h1 class="page-title">Sélectionnez votre profil</h1>
-            
+            <h3 class="page-title">Sélectionnez votre profil</h3>
+
             <div class="role-buttons">
                 <a href="{{ url_for('auth.login') }}?role=student" class="role-button student">
                     <span class="role-icon">🎓</span>
@@ -39,7 +51,7 @@
                         Pratiquez vos consultations avec des patients virtuels et recevez des évaluations détaillées
                     </div>
                 </a>
-                
+
                 <a href="{{ url_for('auth.login') }}?role=teacher" class="role-button teacher">
                     <span class="role-icon">👨‍🏫</span>
                     <div class="role-title">Enseignant</div>
@@ -47,7 +59,7 @@
                         Créez et gérez des cas cliniques, suivez les performances des étudiants
                     </div>
                 </a>
-                
+
                 <a href="{{ url_for('auth.login') }}?role=admin" class="role-button admin">
                     <span class="role-icon">⚙️</span>
                     <div class="role-title">Administrateur</div>
@@ -56,13 +68,10 @@
                     </div>
                 </a>
             </div>
-            
-            <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-color);">
-                <p style="color: var(--text-light); font-size: 14px; text-align: center;">
-                    Besoin d'aide ? Contactez votre coordinateur pédagogique.
-                </p>
-            </div>
+
+            <p class="home-footer-note">Besoin d'aide ? Contactez votre coordinateur pédagogique.</p>
         </div>
+
     </div>
 </body>
 </html>

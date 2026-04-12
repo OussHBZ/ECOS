@@ -1843,17 +1843,43 @@ a:hover {
 }
 
 /* ========================================
-   Role Selection (Home Page)
+   Home Page — Hero + Role Selection
    ======================================== */
+
+/* Hero banner */
+.home-hero {
+  text-align: center;
+  padding: 56px 20px 36px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.home-hero-title {
+  font-size: 2.4rem;
+  font-family: var(--font-family-secondary);
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 16px;
+  line-height: 1.25;
+}
+
+.home-hero-sub {
+  font-size: 1.05rem;
+  color: var(--text-light);
+  line-height: 1.7;
+  font-weight: 400;
+}
+
+/* Card container */
 .role-selection {
   background: var(--white);
-  padding: 50px 40px;
+  padding: 44px 40px 36px;
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-medium);
   text-align: center;
-  max-width: 900px;
-  margin: 40px auto;
-  border: 2px solid var(--border-color);
+  max-width: 1000px;
+  margin: 0 auto 60px;
+  border: 1px solid var(--border-color);
   position: relative;
   overflow: hidden;
 }
@@ -1864,98 +1890,86 @@ a:hover {
   top: 0;
   left: 0;
   right: 0;
-  height: 6px;
+  height: 4px;
   background: linear-gradient(90deg, var(--primary-color), var(--accent-color), var(--primary-color));
 }
 
-.main-title {
-  color: var(--primary-color);
-  font-family: var(--font-family-secondary);
-  font-size: 3rem;
-  font-weight: 700;
-  margin-bottom: 15px;
-}
-
-.subtitle {
+/* Section heading inside card */
+.role-selection .page-title {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
   color: var(--text-light);
-  font-size: 1.2rem;
-  margin-bottom: 40px;
-  font-weight: 300;
+  margin-bottom: 0;
 }
 
 .role-buttons {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 30px;
-  margin-top: 40px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 30px;
+}
+
+@media (max-width: 700px) {
+  .role-buttons { grid-template-columns: 1fr; }
+  .home-hero-title { font-size: 1.7rem; }
 }
 
 .role-button {
-  display: block;
-  padding: 40px 30px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 24px;
   border-radius: var(--border-radius-large);
   text-decoration: none;
-  font-weight: 600;
-  font-size: 18px;
   transition: var(--transition);
   border: 2px solid var(--border-color);
+  background: var(--secondary-color);
   position: relative;
   overflow: hidden;
-  background: var(--white);
-}
-
-.role-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(163, 81, 25, 0.05), rgba(212, 165, 116, 0.05));
-  transform: translateY(100%);
-  transition: transform 0.3s ease;
-}
-
-.role-button:hover::before {
-  transform: translateY(0);
 }
 
 .role-button:hover {
-  transform: translateY(-8px);
+  transform: translateY(-6px);
   box-shadow: var(--shadow-strong);
-  border-color: var(--primary-color);
+  background: var(--white);
 }
 
-.role-button.student {
-  border-left: 4px solid var(--success-color);
-}
+.role-button.student  { border-top: 4px solid var(--success-color); }
+.role-button.teacher  { border-top: 4px solid var(--primary-color); }
+.role-button.admin    { border-top: 4px solid var(--warning-color); }
 
-.role-button.teacher {
-  border-left: 4px solid var(--primary-color);
-}
-
-.role-button.admin {
-  border-left: 4px solid var(--warning-color);
-}
+.role-button.student:hover  { border-color: var(--success-color); }
+.role-button.teacher:hover  { border-color: var(--primary-color); }
+.role-button.admin:hover    { border-color: var(--warning-color); }
 
 .role-icon {
-  font-size: 48px;
-  margin-bottom: 20px;
+  font-size: 44px;
+  margin-bottom: 16px;
   display: block;
 }
 
 .role-title {
-  font-size: 24px;
-  margin-bottom: 15px;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 10px;
   color: var(--text-dark);
   font-family: var(--font-family-secondary);
 }
 
 .role-description {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-light);
-  line-height: 1.5;
+  line-height: 1.55;
+}
+
+.home-footer-note {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+  color: var(--text-light);
 }
 
 /* ========================================
