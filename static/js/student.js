@@ -3621,3 +3621,85 @@ updateCompetitionInterface = function(status) {
 
 console.log('Competition debugging and additional styles loaded');
 console.log('Use window.debugCompetition() to debug competition state');
+
+// ─── Microphone / Speech-to-Text ─────────────────────────────────────────────
+(function initMic() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        // Hide mic buttons if API not supported
+        document.querySelectorAll('.mic-button').forEach(btn => btn.style.display = 'none');
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'fr-FR';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    let listening = false;
+    let activeInputId = 'user-input';
+    let baseText = '';
+
+    recognition.onstart = () => {
+        listening = true;
+        // Activate the correct mic button (there may be one per chat)
+        document.querySelectorAll('.mic-button').forEach(btn => {
+            if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(activeInputId)) {
+                btn.classList.add('listening');
+                btn.title = 'Arrêter la dictée';
+            }
+        });
+    };
+
+    recognition.onresult = (event) => {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+                final += event.results[i][0].transcript;
+            } else {
+                interim += event.results[i][0].transcript;
+            }
+        }
+        if (final) baseText += final;
+        const inp = document.getElementById(activeInputId);
+        if (inp) inp.value = baseText + interim;
+    };
+
+    recognition.onend = () => {
+        listening = false;
+        document.querySelectorAll('.mic-button').forEach(btn => {
+            btn.classList.remove('listening');
+            btn.title = 'Dicter un message';
+        });
+    };
+
+    recognition.onerror = (e) => {
+        listening = false;
+        document.querySelectorAll('.mic-button').forEach(btn => {
+            btn.classList.remove('listening');
+            btn.title = 'Dicter un message';
+        });
+        if (e.error === 'not-allowed') {
+            const inp = document.getElementById(activeInputId);
+            if (inp) inp.placeholder = 'Microphone non autorisé — vérifiez les permissions du navigateur.';
+        }
+        console.warn('Speech recognition error:', e.error);
+    };
+
+    // Exposed globally so onclick= in HTML can call it
+    window.toggleMic = function(inputId) {
+        activeInputId = inputId || 'user-input';
+        if (listening) {
+            recognition.stop();
+        } else {
+            const inp = document.getElementById(activeInputId);
+            baseText = inp ? inp.value : '';
+            try {
+                recognition.start();
+            } catch (err) {
+                console.warn('Could not start recognition:', err);
+            }
+        }
+    };
+})();

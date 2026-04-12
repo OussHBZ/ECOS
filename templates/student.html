@@ -145,7 +145,8 @@
                     <div class="chat-main">
                         <div id="chat-messages" class="chat-messages"></div>
                         <div class="chat-input-container">
-                            <input type="text" id="user-input" placeholder="Tapez votre message ou question…" autocomplete="off">
+                            <input type="text" id="user-input" placeholder="Tapez ou dictez votre message…" autocomplete="off">
+                            <button id="mic-btn" class="btn mic-button" onclick="toggleMic('user-input')" title="Dicter un message">🎤</button>
                             <button id="send-btn" class="btn send-button">Envoyer</button>
                         </div>
                     </div>
@@ -230,9 +231,10 @@
                         <div class="competition-chat-container">
                             <div id="competition-chat-messages" class="chat-messages"></div>
                             <div class="chat-input-container">
-                                <input type="text" id="competition-chat-input" 
-                                       placeholder="Tapez votre message..." 
+                                <input type="text" id="competition-chat-input"
+                                       placeholder="Tapez ou dictez votre message..."
                                        onkeypress="handleCompetitionChatKeypress(event)">
+                                <button class="btn mic-button" onclick="toggleMic('competition-chat-input')" title="Dicter un message">🎤</button>
                                 <button onclick="sendCompetitionMessage()" class="btn send-button">Envoyer</button>
                             </div>
                         </div>
