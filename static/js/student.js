@@ -2600,7 +2600,51 @@ function populateSidebar(data) {
             labsSection.style.display = 'none';
         }
     }
+
+    // --- Medical images ---
+    const imgSection = document.getElementById('sidebar-images-section');
+    const imgEl = document.getElementById('sidebar-images');
+    const images = (data.images && data.images.length ? data.images : caseData.images) || [];
+    if (imgSection && imgEl) {
+        if (images.length > 0) {
+            imgEl.innerHTML = images.map((img, i) => {
+                const rawPath = (img && (img.path || img.url)) || '';
+                if (!rawPath) return '';
+                // Prepend BASE_PATH only for absolute /static/... paths
+                const src = rawPath.startsWith('/') && typeof BASE_PATH !== 'undefined'
+                    ? BASE_PATH + rawPath
+                    : rawPath;
+                const desc = (img && img.description) ? img.description : `Image ${i + 1}`;
+                const safeDesc = String(desc).replace(/"/g, '&quot;');
+                return `
+                    <figure class="sidebar-image-item" onclick="openSidebarImage('${src}', '${safeDesc}')">
+                        <img src="${src}" alt="${safeDesc}" loading="lazy">
+                        <figcaption>${safeDesc}</figcaption>
+                    </figure>`;
+            }).join('');
+            imgSection.style.display = '';
+        } else {
+            imgSection.style.display = 'none';
+            imgEl.innerHTML = '';
+        }
+    }
 }
+
+// Lightbox for sidebar image click — uses #images-modal that's already in the DOM
+function openSidebarImage(src, description) {
+    const modal = document.getElementById('images-modal');
+    const content = document.getElementById('images-content');
+    if (!modal || !content) return;
+    content.innerHTML = `
+        <div style="text-align:center">
+            <img src="${src}" alt="${description}" style="max-width:100%;max-height:70vh;border-radius:8px;">
+            <p style="margin-top:12px;color:#555;font-style:italic">${description}</p>
+        </div>`;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+}
+
+window.openSidebarImage = openSidebarImage;
 
 // Directives functionality
 function showDirectives() {
