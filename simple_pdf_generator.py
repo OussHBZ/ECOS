@@ -322,9 +322,10 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
                 role = "Médecin" if msg['role'] == 'human' else "Patient"
                 content = msg.get('content', '')
                 if content:
-                    # Limit content length for PDF to prevent issues
-                    if len(content) > 500:
-                        content = content[:500] + "..."
+                    # Keep full message content. Only truncate pathological cases
+                    # (>5000 chars) to avoid breaking the PDF layout.
+                    if len(content) > 5000:
+                        content = content[:5000] + "…"
                     conversation_messages.append({
                         'role': role,
                         'content': content

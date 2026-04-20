@@ -4443,3 +4443,66 @@ input[type="password"], input[type="datetime-local"], textarea, select {
     #zoom-image-viewer .ziv-hint { display: none; }
     #zoom-image-viewer .ziv-stage img { max-width: 96vw; max-height: 75vh; }
 }
+
+/* ============================
+   Evaluation full-conversation transcript
+   ============================ */
+.transcript-section {
+    margin-top: 24px;
+    padding: 16px 18px;
+    border-radius: 10px;
+    background: #f8f9fa;
+    border-left: 5px solid #6c757d;
+}
+.transcript-section > summary {
+    cursor: pointer;
+    list-style: none;
+    outline: none;
+    user-select: none;
+    padding: 4px 0;
+}
+.transcript-section > summary::-webkit-details-marker { display: none; }
+.transcript-section > summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 8px;
+    transition: transform 0.15s;
+}
+.transcript-section[open] > summary::before { transform: rotate(90deg); }
+.transcript-messages {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 520px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+.transcript-msg {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #e4e7eb;
+}
+.transcript-msg.msg-doctor { border-left: 4px solid #5B9BD5; }
+.transcript-msg.msg-patient { border-left: 4px solid #70AD47; background: #fbfdf9; }
+.transcript-role {
+    font-weight: 600;
+    font-size: 13px;
+    color: #555;
+}
+.transcript-msg.msg-doctor .transcript-role { color: #1f6fb2; }
+.transcript-msg.msg-patient .transcript-role { color: #3f7a2a; }
+.transcript-content {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #222;
+    word-wrap: break-word;
+}
+@media (max-width: 600px) {
+    .transcript-msg { grid-template-columns: 1fr; gap: 4px; }
+    .transcript-messages { max-height: 400px; }
+}

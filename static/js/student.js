@@ -518,7 +518,7 @@ async function endConsultation() {
         // Display evaluation results with recommendations
         if (data.evaluation) {
             console.log('Displaying evaluation results...');
-            displayEvaluation(data.evaluation, data.recommendations || []);
+            displayEvaluation(data.evaluation, data.recommendations || [], data.conversation || []);
         } else {
             console.warn('No evaluation data received');
         }
@@ -2845,7 +2845,7 @@ function formatDirectives(text) {
 }
 
 // Display evaluation results
-function displayEvaluation(evaluation, recommendations) {
+function displayEvaluation(evaluation, recommendations, conversation) {
     if (!evaluationResults) return;
     
     let totalPoints = evaluation.points_total || 0;
@@ -3003,8 +3003,34 @@ function displayEvaluation(evaluation, recommendations) {
         evaluationResults.prepend(directivesReminder);
     }
     
+    // Build conversation transcript section
+    let transcriptHTML = '';
+    if (Array.isArray(conversation) && conversation.length > 0) {
+        const escapeHtml = (s) => String(s || '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const doctorCount = conversation.filter(m => m.role === 'human').length;
+        const patientCount = conversation.filter(m => m.role === 'assistant').length;
+
+        transcriptHTML += '<details class="transcript-section" open>';
+        transcriptHTML += `<summary><h3 style="display:inline-block;margin:0">Transcription complète de la consultation (${doctorCount} questions, ${patientCount} réponses)</h3></summary>`;
+        transcriptHTML += '<div class="transcript-messages">';
+        conversation.forEach((msg) => {
+            if (!msg || (msg.role !== 'human' && msg.role !== 'assistant')) return;
+            const isDoctor = msg.role === 'human';
+            const label = isDoctor ? 'Médecin' : 'Patient';
+            const cls = isDoctor ? 'msg-doctor' : 'msg-patient';
+            transcriptHTML += `
+                <div class="transcript-msg ${cls}">
+                    <div class="transcript-role">${label}</div>
+                    <div class="transcript-content">${escapeHtml(msg.content).replace(/\n/g, '<br>')}</div>
+                </div>`;
+        });
+        transcriptHTML += '</div></details>';
+    }
+
     // Combine all sections
-    resultsHTML = scoreHTML + recommendationsHTML + feedbackHTML + checklistHTML;
+    resultsHTML = scoreHTML + recommendationsHTML + feedbackHTML + checklistHTML + transcriptHTML;
     
     // Display the evaluation
     evaluationResults.innerHTML = resultsHTML;

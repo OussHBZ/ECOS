@@ -221,7 +221,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404t'
+    app.config['APP_VERSION'] = '20260404u'
 
     @app.context_processor
     def inject_version():
@@ -944,6 +944,13 @@ def create_app():
                 except Exception as e:
                     logger.error(f"Error saving performance: {str(e)}")
 
+            # Build a clean transcript (exclude system messages) to return to the client
+            transcript_for_client = [
+                {'role': m.get('role'), 'content': m.get('content', '')}
+                for m in conversation
+                if isinstance(m, dict) and m.get('role') in ('human', 'assistant')
+            ]
+
             # Clear session
             session.pop('current_conversation', None)
             session.pop('current_case', None)
@@ -952,6 +959,7 @@ def create_app():
                 'success': True,
                 'evaluation': evaluation_results,
                 'recommendations': evaluation_results.get('recommendations', []),
+                'conversation': transcript_for_client,
                 'pdf_url': pdf_url,
                 'pdf_available': pdf_url is not None
             })
