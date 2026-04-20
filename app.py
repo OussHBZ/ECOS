@@ -84,14 +84,14 @@ class FallbackGroqClient:
         msg = str(err).lower()
         return any(k in msg for k in self._FALLBACK_KEYWORDS)
 
-    def invoke(self, messages, **kwargs):
+    def invoke(self, messages, config=None, **kwargs):
         last_error = None
         # Try the currently-active model first, then the rest of the chain
         order = [self.active_model] + [m for m in self.models if m != self.active_model]
         for model in order:
             try:
                 client = self._get_client(model)
-                response = client.invoke(messages, **kwargs)
+                response = client.invoke(messages, config=config, **kwargs)
                 if model != self.active_model:
                     logger.warning(f"[Groq fallback] switched active model to '{model}'")
                     self.active_model = model
@@ -111,6 +111,15 @@ class FallbackGroqClient:
             f"All Groq models exhausted ({len(self.models)} tried). "
             f"Last error: {last_error}"
         )
+
+    # Forward other LangChain Runnable-style calls to the active client
+    def __call__(self, messages, config=None, **kwargs):
+        return self.invoke(messages, config=config, **kwargs)
+
+    def __getattr__(self, name):
+        # Delegate any unknown attribute to the underlying active ChatGroq client
+        # (e.g. .bind, .with_structured_output, .stream, .batch, etc.)
+        return getattr(self._get_client(self.active_model), name)
 
 
 def create_groq_client(api_key, http_client):
@@ -212,7 +221,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404r'
+    app.config['APP_VERSION'] = '20260404s'
 
     @app.context_processor
     def inject_version():
