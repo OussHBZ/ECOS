@@ -460,25 +460,31 @@ function startTimer(minutes = 10) {
 // End the consultation
 async function endConsultation() {
     clearInterval(timerInterval);
-    
+
+    // Client-side timeout so the button can never hang forever if the server
+    // or nginx drops the connection silently. 180s > nginx proxy timeout (120s).
+    const controller = new AbortController();
+    const clientTimeout = setTimeout(() => controller.abort(), 180000);
+
     try {
         console.log('=== ENDING CONSULTATION DEBUG ===');
         console.log('Current case:', currentCase);
         console.log('Session storage keys:', Object.keys(sessionStorage));
-        
+
         // Show loading state
         if (endChatButton) {
             endChatButton.disabled = true;
-            endChatButton.textContent = 'Traitement...';
+            endChatButton.textContent = 'Traitement... (évaluation en cours)';
         }
-        
+
         const timeElapsed = Math.max(0, consultationStartSeconds - remainingTime);
         const response = await authenticatedFetch('/end_chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ time_elapsed_seconds: timeElapsed })
+            body: JSON.stringify({ time_elapsed_seconds: timeElapsed }),
+            signal: controller.signal
         });
 
         if (!response) {
@@ -562,11 +568,13 @@ async function endConsultation() {
         console.error('Error type:', error.constructor.name);
         console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
-        
-        // Show user-friendly error message
-        const errorMessage = `Une erreur est survenue lors de la finalisation: ${error.message}`;
-        alert(errorMessage);
-        
+
+        const isAbort = error.name === 'AbortError';
+        const userMsg = isAbort
+            ? "L'évaluation a pris trop de temps et a été interrompue. Veuillez réessayer."
+            : `Une erreur est survenue lors de la finalisation: ${error.message}`;
+        alert(userMsg);
+
         // Try to show a basic evaluation screen even if PDF failed
         if (chatContainer) chatContainer.classList.add('hidden');
         if (evaluationContainer) {
@@ -582,8 +590,10 @@ async function endConsultation() {
                 `;
             }
         }
-        
-        // Re-enable the button
+    } finally {
+        clearTimeout(clientTimeout);
+        // Always restore the button so it is usable on retry or if the user
+        // navigates back to the chat screen.
         if (endChatButton) {
             endChatButton.disabled = false;
             endChatButton.textContent = 'Terminer la consultation';
