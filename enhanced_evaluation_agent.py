@@ -394,6 +394,7 @@ OUI/NON/PARTIELLEMENT - [justification factuelle en une phrase, citant un élém
             'communication': 'communication',
             'anamnèse': 'anamnese',
             'anamnese': 'anamnese',
+            'examen clinique': 'examen_physique',
             'examen physique': 'examen_physique',
             'examen': 'examen_physique',
             'diagnostic': 'diagnostic',
@@ -535,7 +536,7 @@ OUI/NON/PARTIELLEMENT - [justification factuelle en une phrase, citant un élém
                 )
             elif 'examen' in cat_lower:
                 recommendations.append(
-                    f"Examen clinique (station) : Verbalisez vos intentions d'examen (\"Je vais vous examiner...\") et recherchez les signes pertinents. "
+                    f"Examen clinique : Verbalisez vos intentions d'examen (\"Je vais vous examiner...\") et recherchez les signes pertinents. "
                     f"Points manqués : {item_descriptions}."
                 )
             elif 'diagnostic' in cat_lower:

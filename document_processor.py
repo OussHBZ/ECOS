@@ -526,7 +526,7 @@ class DocumentExtractionAgent:
         if any(kw in description_lower for kw in ['demande', 'question', 'interroge', 'anamnèse', 'antécédent']):
             return 'Anamnèse'
         elif any(kw in description_lower for kw in ['examen', 'ausculte', 'palpe', 'percute', 'inspecte', 'mesure']):
-            return 'Examen clinique (station)'
+            return 'Examen clinique'
         elif any(kw in description_lower for kw in ['communique', 'explique', 'informe', 'rassure', 'écoute']):
             return 'Communication'
         elif any(kw in description_lower for kw in ['diagnostic', 'diagnose', 'diagnostic différentiel']):

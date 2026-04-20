@@ -487,8 +487,8 @@ Réponds au format JSON:
         for cat, items in list(categories.items())[:3]:
             if cat == "Anamnèse":
                 recommendations.append(f"Améliorez votre anamnèse en posant des questions sur {items[0].get('description').lower()}")
-            elif cat == "Examen clinique (station)":
-                recommendations.append(f"N'oubliez pas de mentionner l'examen physique, notamment {items[0].get('description').lower()}")
+            elif cat in ("Examen clinique", "Examen clinique (station)"):
+                recommendations.append(f"N'oubliez pas de mentionner l'examen clinique, notamment {items[0].get('description').lower()}")
             elif cat == "Communication":
                 recommendations.append(f"Travaillez votre communication: {items[0].get('description')}")
             elif cat == "Diagnostic":

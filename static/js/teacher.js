@@ -180,7 +180,7 @@ function setupFormHandlers() {
                     <label>Catégorie :</label>
                     <select name="checklist_categories[]">
                         <option value="Anamnèse">Anamnèse</option>
-                        <option value="Examen clinique (station)">Examen clinique (station)</option>
+                        <option value="Examen clinique">Examen clinique</option>
                         <option value="Communication">Communication</option>
                         <option value="Diagnostic">Diagnostic</option>
                         <option value="Prise en charge">Prise en charge</option>
@@ -575,7 +575,7 @@ function addEditChecklistItem(description = '', points = 1, category = '') {
             <label>Catégorie :</label>
             <select name="checklist_categories[]">
                 <option value="Anamnèse" ${category === 'Anamnèse' ? 'selected' : ''}>Anamnèse</option>
-                <option value="Examen clinique (station)" ${category === 'Examen clinique (station)' ? 'selected' : ''}>Examen clinique (station)</option>
+                <option value="Examen clinique" ${(category === 'Examen clinique' || category === 'Examen clinique (station)') ? 'selected' : ''}>Examen clinique</option>
                 <option value="Communication" ${category === 'Communication' ? 'selected' : ''}>Communication</option>
                 <option value="Diagnostic" ${category === 'Diagnostic' ? 'selected' : ''}>Diagnostic</option>
                 <option value="Prise en charge" ${category === 'Prise en charge' ? 'selected' : ''}>Prise en charge</option>
