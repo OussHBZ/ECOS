@@ -2630,18 +2630,147 @@ function populateSidebar(data) {
     }
 }
 
-// Lightbox for sidebar image click — uses #images-modal that's already in the DOM
+// Zoomable / pannable lightbox for sidebar image click
 function openSidebarImage(src, description) {
-    const modal = document.getElementById('images-modal');
-    const content = document.getElementById('images-content');
-    if (!modal || !content) return;
-    content.innerHTML = `
-        <div style="text-align:center">
-            <img src="${src}" alt="${description}" style="max-width:100%;max-height:70vh;border-radius:8px;">
-            <p style="margin-top:12px;color:#555;font-style:italic">${description}</p>
-        </div>`;
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    // Remove any previous viewer
+    const existing = document.getElementById('zoom-image-viewer');
+    if (existing) existing.remove();
+
+    const viewer = document.createElement('div');
+    viewer.id = 'zoom-image-viewer';
+    viewer.innerHTML = `
+        <div class="ziv-toolbar">
+            <button type="button" class="ziv-btn" data-act="out" title="Zoom arrière (-)">&minus;</button>
+            <span class="ziv-zoom" id="ziv-zoom-label">100%</span>
+            <button type="button" class="ziv-btn" data-act="in" title="Zoom avant (+)">&plus;</button>
+            <button type="button" class="ziv-btn" data-act="reset" title="Réinitialiser (0)">⟳</button>
+            <button type="button" class="ziv-btn ziv-close" data-act="close" title="Fermer (Échap)">&times;</button>
+        </div>
+        <div class="ziv-stage" id="ziv-stage">
+            <img id="ziv-img" src="${src}" alt="${(description || '').replace(/"/g,'&quot;')}" draggable="false">
+        </div>
+        ${description ? `<div class="ziv-caption">${description}</div>` : ''}
+        <div class="ziv-hint">Molette: zoom • Glisser: déplacer • Double-clic: reset</div>
+    `;
+    document.body.appendChild(viewer);
+
+    const img = viewer.querySelector('#ziv-img');
+    const stage = viewer.querySelector('#ziv-stage');
+    const zoomLabel = viewer.querySelector('#ziv-zoom-label');
+
+    let scale = 1, tx = 0, ty = 0;
+    const MIN = 0.2, MAX = 8;
+
+    function apply() {
+        img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        zoomLabel.textContent = Math.round(scale * 100) + '%';
+    }
+    function reset() { scale = 1; tx = 0; ty = 0; apply(); }
+    function zoomAt(factor, cx, cy) {
+        const newScale = Math.min(MAX, Math.max(MIN, scale * factor));
+        if (newScale === scale) return;
+        // Zoom around cursor point relative to stage center
+        const rect = stage.getBoundingClientRect();
+        const ox = (cx ?? rect.left + rect.width / 2) - rect.left - rect.width / 2;
+        const oy = (cy ?? rect.top + rect.height / 2) - rect.top - rect.height / 2;
+        const k = newScale / scale;
+        tx = ox - (ox - tx) * k;
+        ty = oy - (oy - ty) * k;
+        scale = newScale;
+        apply();
+    }
+
+    // Toolbar
+    viewer.querySelector('.ziv-toolbar').addEventListener('click', (e) => {
+        const btn = e.target.closest('.ziv-btn');
+        if (!btn) return;
+        const act = btn.dataset.act;
+        if (act === 'in') zoomAt(1.25);
+        else if (act === 'out') zoomAt(1 / 1.25);
+        else if (act === 'reset') reset();
+        else if (act === 'close') close();
+    });
+
+    // Wheel zoom
+    stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        zoomAt(factor, e.clientX, e.clientY);
+    }, { passive: false });
+
+    // Drag to pan
+    let dragging = false, sx = 0, sy = 0, startTx = 0, startTy = 0;
+    img.addEventListener('mousedown', (e) => {
+        dragging = true; sx = e.clientX; sy = e.clientY; startTx = tx; startTy = ty;
+        img.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        tx = startTx + (e.clientX - sx);
+        ty = startTy + (e.clientY - sy);
+        apply();
+    });
+    window.addEventListener('mouseup', () => { dragging = false; img.style.cursor = 'grab'; });
+
+    // Touch: pinch-to-zoom + 1-finger pan
+    let pinchDist = 0, pinchScale = 1, tStartX = 0, tStartY = 0, tStartTx = 0, tStartTy = 0, oneFinger = false;
+    stage.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchDist = Math.hypot(dx, dy);
+            pinchScale = scale;
+            oneFinger = false;
+        } else if (e.touches.length === 1) {
+            oneFinger = true;
+            tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY;
+            tStartTx = tx; tStartTy = ty;
+        }
+    }, { passive: true });
+    stage.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            if (pinchDist > 0) {
+                const newScale = Math.min(MAX, Math.max(MIN, pinchScale * (dist / pinchDist)));
+                const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                zoomAt(newScale / scale, cx, cy);
+            }
+        } else if (e.touches.length === 1 && oneFinger) {
+            tx = tStartTx + (e.touches[0].clientX - tStartX);
+            ty = tStartTy + (e.touches[0].clientY - tStartY);
+            apply();
+        }
+    }, { passive: false });
+
+    // Double-click to reset
+    img.addEventListener('dblclick', reset);
+
+    // Keyboard
+    function onKey(e) {
+        if (e.key === 'Escape') close();
+        else if (e.key === '+' || e.key === '=') zoomAt(1.25);
+        else if (e.key === '-' || e.key === '_') zoomAt(1 / 1.25);
+        else if (e.key === '0') reset();
+    }
+    document.addEventListener('keydown', onKey);
+
+    // Click on backdrop (not image/toolbar) closes
+    viewer.addEventListener('click', (e) => {
+        if (e.target === viewer) close();
+    });
+
+    function close() {
+        document.removeEventListener('keydown', onKey);
+        viewer.remove();
+    }
+
+    apply();
+    img.style.cursor = 'grab';
 }
 
 window.openSidebarImage = openSidebarImage;

@@ -4347,3 +4347,99 @@ input[type="password"], input[type="datetime-local"], textarea, select {
   h2 { font-size: 1.3rem; }
   h3 { font-size: 1.1rem; }
 }
+
+/* ============================
+   Zoomable image viewer (sidebar lightbox)
+   ============================ */
+#zoom-image-viewer {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 10050;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    animation: zivFadeIn 0.15s ease-out;
+}
+@keyframes zivFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+#zoom-image-viewer .ziv-toolbar {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(30, 30, 30, 0.85);
+    backdrop-filter: blur(6px);
+    border-radius: 999px;
+    padding: 6px 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    z-index: 2;
+}
+#zoom-image-viewer .ziv-btn {
+    background: transparent;
+    color: #fff;
+    border: none;
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+#zoom-image-viewer .ziv-btn:hover { background: rgba(255,255,255,0.15); }
+#zoom-image-viewer .ziv-btn.ziv-close { font-size: 22px; margin-left: 6px; }
+#zoom-image-viewer .ziv-zoom {
+    color: #fff;
+    min-width: 52px;
+    text-align: center;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+#zoom-image-viewer .ziv-stage {
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+}
+#zoom-image-viewer .ziv-stage img {
+    max-width: 90vw;
+    max-height: 82vh;
+    transform-origin: center center;
+    transition: transform 0.05s linear;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-drag: none;
+    will-change: transform;
+    border-radius: 4px;
+}
+#zoom-image-viewer .ziv-caption {
+    color: #eee;
+    font-style: italic;
+    padding: 10px 16px;
+    max-width: 80vw;
+    text-align: center;
+    font-size: 14px;
+}
+#zoom-image-viewer .ziv-hint {
+    color: rgba(255,255,255,0.55);
+    font-size: 12px;
+    padding-bottom: 14px;
+    text-align: center;
+}
+@media (max-width: 600px) {
+    #zoom-image-viewer .ziv-hint { display: none; }
+    #zoom-image-viewer .ziv-stage img { max-width: 96vw; max-height: 75vh; }
+}
