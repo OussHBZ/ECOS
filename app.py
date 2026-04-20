@@ -26,57 +26,118 @@ from blueprints.admin import admin_bp
 from blueprints.student import student_bp
 from blueprints.teacher import teacher_bp
 
-# Model Configuration
+# Model Configuration — chain of Groq models tried in order.
+# On rate-limit / 429 / service errors the client automatically falls back
+# to the next model in the chain at RUNTIME (not just at startup).
 LLAMA_MODELS = {
-    'primary': 'meta-llama/llama-4-maverick-17b-16e-instruct',
-    'fallback': 'llama-3.3-70b-versatile',
+    'chain': [
+        'meta-llama/llama-4-maverick-17b-16e-instruct',   # ~500k TPD
+        'meta-llama/llama-4-scout-17b-16e-instruct',      # ~500k TPD
+        'llama-3.3-70b-versatile',                        # ~100k TPD
+        'llama-3.1-8b-instant',                           # ~500k TPD
+        'gemma2-9b-it',                                   # ~500k TPD
+    ],
     'config': {
-        'temperature': 0.1,  # Low for consistent patient responses
-        'max_tokens': 150,   # Concise patient responses
-        'timeout': 30        # Increased for larger model
+        'temperature': 0.1,
+        'max_tokens': 150,
+        'timeout': 30
     }
 }
 
-def create_groq_client(api_key, http_client):
-    """Create Groq client with model fallback capability"""
-    
-    # Try primary model first
-    try:
-        client = ChatGroq(
-            api_key=api_key,
-            model=LLAMA_MODELS['primary'],
-            temperature=LLAMA_MODELS['config']['temperature'],
-            max_tokens=LLAMA_MODELS['config']['max_tokens'],
-            timeout=LLAMA_MODELS['config']['timeout'],
-            http_client=http_client
-        )
-        
-        # Test the client with a simple request
-        test_messages = [SystemMessage(content="Test")]
-        test_response = client.invoke(test_messages)
-        
-        logger.info(f"Successfully initialized {LLAMA_MODELS['primary']}")
-        return client, LLAMA_MODELS['primary']
-        
-    except Exception as e:
-        logger.warning(f"Primary model {LLAMA_MODELS['primary']} failed: {str(e)}")
-        
-        # Fallback to secondary model
-        try:
-            client = ChatGroq(
-                api_key=api_key,
-                model=LLAMA_MODELS['fallback'],
-                temperature=0,
-                max_tokens=256,
-                http_client=http_client
+
+class FallbackGroqClient:
+    """
+    Drop-in replacement for ChatGroq that wraps a chain of models.
+    On rate-limit / 429 / service errors from the active model, it
+    automatically retries the request against the next model in the chain.
+    Successful model is remembered and used first on subsequent calls.
+    """
+
+    # Errors that should trigger a fallback to the next model.
+    _FALLBACK_KEYWORDS = (
+        '429', 'rate limit', 'rate_limit', 'quota', 'tokens per day',
+        'tpd', 'service unavailable', '503', '502', 'overloaded',
+        'model_not_found', 'model not found', 'decommissioned'
+    )
+
+    def __init__(self, api_key, http_client, models, config):
+        self.api_key = api_key
+        self.http_client = http_client
+        self.models = list(models)
+        self.config = config
+        self._clients = {}
+        self.active_model = self.models[0]
+
+    def _get_client(self, model):
+        if model not in self._clients:
+            self._clients[model] = ChatGroq(
+                api_key=self.api_key,
+                model=model,
+                temperature=self.config['temperature'],
+                max_tokens=self.config['max_tokens'],
+                timeout=self.config['timeout'],
+                http_client=self.http_client,
             )
-            
-            logger.info(f"Fallback to {LLAMA_MODELS['fallback']} successful")
-            return client, LLAMA_MODELS['fallback']
-            
-        except Exception as fallback_error:
-            logger.error(f"Fallback model also failed: {str(fallback_error)}")
-            raise Exception(f"Both models failed. Primary: {str(e)}, Fallback: {str(fallback_error)}")
+        return self._clients[model]
+
+    def _is_fallback_error(self, err):
+        msg = str(err).lower()
+        return any(k in msg for k in self._FALLBACK_KEYWORDS)
+
+    def invoke(self, messages, **kwargs):
+        last_error = None
+        # Try the currently-active model first, then the rest of the chain
+        order = [self.active_model] + [m for m in self.models if m != self.active_model]
+        for model in order:
+            try:
+                client = self._get_client(model)
+                response = client.invoke(messages, **kwargs)
+                if model != self.active_model:
+                    logger.warning(f"[Groq fallback] switched active model to '{model}'")
+                    self.active_model = model
+                return response
+            except Exception as e:
+                last_error = e
+                if self._is_fallback_error(e):
+                    logger.warning(
+                        f"[Groq fallback] '{model}' failed ({type(e).__name__}): "
+                        f"{str(e)[:250]}. Trying next model…"
+                    )
+                    continue
+                # Non-fallback error (auth, bad request, etc.) — don't cycle
+                logger.error(f"[Groq] non-recoverable error on '{model}': {e}")
+                raise
+        raise Exception(
+            f"All Groq models exhausted ({len(self.models)} tried). "
+            f"Last error: {last_error}"
+        )
+
+
+def create_groq_client(api_key, http_client):
+    """Create Groq client with a runtime fallback chain across multiple models."""
+    client = FallbackGroqClient(
+        api_key=api_key,
+        http_client=http_client,
+        models=LLAMA_MODELS['chain'],
+        config=LLAMA_MODELS['config'],
+    )
+
+    # Lightweight ping — find the first model in the chain that currently
+    # works. We don't fail startup here because rate-limits are per-day:
+    # a model may be unavailable right now but fine in 10 minutes.
+    try:
+        client.invoke([HumanMessage(content="ping")])
+        logger.info(
+            f"Groq client ready. Active model: {client.active_model}. "
+            f"Chain: {LLAMA_MODELS['chain']}"
+        )
+    except Exception as e:
+        logger.warning(
+            f"Startup ping failed for all models — continuing anyway "
+            f"(models may recover later): {e}"
+        )
+
+    return client, client.active_model
 
 def setup_enhanced_logging():
     """Set up enhanced logging with filtering for reduced noise"""
@@ -151,7 +212,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404n'
+    app.config['APP_VERSION'] = '20260404o'
 
     @app.context_processor
     def inject_version():
