@@ -17,6 +17,7 @@ uploads/
 
 # Flask session files
 flask_session/
+flask_session_data/
 
 # Application logs
 logs/

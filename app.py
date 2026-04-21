@@ -7,6 +7,7 @@ import tempfile
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, session, send_from_directory, url_for, redirect
 from flask_login import LoginManager, current_user
+from flask_session import Session as FlaskSession
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -209,10 +210,15 @@ def create_app():
                 static_folder='static',
                 template_folder='templates')
 
-    # Session configuration
-    # Note: nginx handles /ecos/ prefix via sub_filter and proxy_redirect
+    # Session configuration — MUST use server-side sessions (filesystem) so that
+    # large conversation histories are not limited by the ~4 KB browser cookie cap.
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ecos-fmpm-secret-key-2026')
     app.config['SESSION_TYPE'] = 'filesystem'
+    # Store session files next to the app so they survive restarts
+    _session_dir = os.path.join(os.path.dirname(__file__), 'flask_session_data')
+    os.makedirs(_session_dir, exist_ok=True)
+    app.config['SESSION_FILE_DIR'] = _session_dir
+    app.config['SESSION_FILE_THRESHOLD'] = 500          # max files before old ones are removed
     app.config['SESSION_PERMANENT'] = True
     app.config['SESSION_USE_SIGNER'] = True
     app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -221,7 +227,11 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/ecos'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404u'
+    app.config['APP_VERSION'] = '20260404v'
+
+    # Activate server-side session BEFORE any other extension so the session
+    # object is upgraded from cookie-based to filesystem-based.
+    FlaskSession(app)
 
     @app.context_processor
     def inject_version():
@@ -230,7 +240,7 @@ def create_app():
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
+
     # Initialize extensions
     db.init_app(app)
     login_manager = LoginManager()
