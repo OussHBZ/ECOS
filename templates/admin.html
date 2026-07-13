@@ -294,7 +294,7 @@
                 </div>
                 <div class="form-group">
                     <label for="new-student-ecos-type">Affectation exclusive :</label>
-                    <select id="new-student-ecos-type" required><option value="standard">ECOS standard / Sondar</option><option value="kine">ECOS Kiné</option></select>
+                    <select id="new-student-ecos-type" required><option value="standard">ECOS standard</option><option value="kine">ECOS Kiné</option></select>
                 </div>
                 <div id="add-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
@@ -343,7 +343,7 @@
                 </div>
                 <div class="form-group">
                     <label for="new-teacher-ecos-type">Affectation exclusive :</label>
-                    <select id="new-teacher-ecos-type" required><option value="standard">ECOS standard / Sondar</option><option value="kine">ECOS Kiné</option></select>
+                    <select id="new-teacher-ecos-type" required><option value="standard">ECOS standard</option><option value="kine">ECOS Kiné</option></select>
                 </div>
                 <div id="add-teacher-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
@@ -623,7 +623,7 @@
                         '<td>' + escHtml(t.email) + '</td>' +
                         '<td>' + escHtml(t.name) + '</td>' +
                         '<td><select aria-label="Type d’ECOS de ' + escHtml(t.name) + '" onchange="updateTeacherEcosType(' + t.id + ',this)">' +
-                          '<option value="standard"' + (t.ecos_type === 'standard' ? ' selected' : '') + '>Standard / Sondar</option>' +
+                          '<option value="standard"' + (t.ecos_type === 'standard' ? ' selected' : '') + '>ECOS standard</option>' +
                           '<option value="kine"' + (t.ecos_type === 'kine' ? ' selected' : '') + '>Kiné</option></select></td>' +
                         '<td>' + t.created_at + '</td>' +
                         '<td>' + t.last_login + '</td>' +

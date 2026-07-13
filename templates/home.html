@@ -24,6 +24,11 @@
                         <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
                     </div>
                 </div>
+                <a href="{{ url_for('auth.login', workspace='kine') }}" class="home-kine-cta">
+                    <span class="home-kine-cta__icon" aria-hidden="true">✚</span>
+                    <span><strong>ECOS Kiné</strong><small>Accéder à l’espace kinésithérapie</small></span>
+                    <span aria-hidden="true">→</span>
+                </a>
             </div>
         </div>
     </header>
@@ -47,9 +52,9 @@
                     <div><strong>ECOS Standard</strong><p>Consultations médicales et stations ECOS générales</p></div>
                 </a>
                 <a href="{{ url_for('auth.login', workspace='kine') }}" class="workspace-card workspace-card--kine">
-                    <span class="workspace-card-icon" aria-hidden="true">✚</span>
-                    <div><strong>ECOS Kiné</strong><p>Simulation spécialisée en kinésithérapie cardiovasculaire</p></div>
-                    <span class="workspace-card-arrow" aria-hidden="true">→</span>
+                    <span class="workspace-card__icon" aria-hidden="true">✚</span>
+                    <div class="workspace-card__content"><strong>ECOS Kiné</strong><span>Simulation spécialisée en kinésithérapie cardiovasculaire</span></div>
+                    <span class="workspace-card__arrow" aria-hidden="true">→</span>
                 </a>
             </div>
         </section>

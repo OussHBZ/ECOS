@@ -33,7 +33,7 @@ def _requested_ecos_type():
 
 
 def _ecos_access_denied(role, assigned_type):
-    label = 'ECOS Kiné' if assigned_type == 'kine' else 'ECOS standard / Sondar'
+    label = 'ECOS Kiné' if assigned_type == 'kine' else 'ECOS standard'
     message = f"Ce compte est affecté exclusivement à {label}."
     if is_ajax_request():
         return jsonify({

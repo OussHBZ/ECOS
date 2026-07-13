@@ -4591,6 +4591,41 @@ input[type="password"], input[type="datetime-local"], textarea, select {
 }
 
 /* Public workspace choice: Standard ECOS or Physiotherapy ECOS. */
+.home-page .header-content {
+    align-items: center;
+    display: flex;
+    gap: 24px;
+    justify-content: space-between;
+}
+
+.home-kine-cta {
+    align-items: center;
+    background: linear-gradient(135deg, #7c3aed 0%, #db2777 55%, #f97316 100%);
+    border: 2px solid rgba(255, 255, 255, .68);
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(190, 24, 93, .32);
+    color: #fff;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 13px;
+    padding: 13px 18px;
+    text-decoration: none;
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+
+.home-kine-cta:hover,
+.home-kine-cta:focus-visible {
+    box-shadow: 0 17px 34px rgba(190, 24, 93, .44);
+    color: #fff;
+    transform: translateY(-3px) scale(1.02);
+}
+
+.home-kine-cta strong,
+.home-kine-cta small { display: block; }
+.home-kine-cta strong { font-size: 1.1rem; }
+.home-kine-cta small { color: rgba(255, 255, 255, .9); margin-top: 2px; }
+.home-kine-cta__icon { font-size: 1.55rem; font-weight: 900; }
+
 .workspace-selection {
     margin: 12px auto 34px;
     max-width: 1050px;
@@ -4686,6 +4721,8 @@ input[type="password"], input[type="datetime-local"], textarea, select {
 }
 
 @media (max-width: 760px) {
+    .home-page .header-content { align-items: stretch; flex-direction: column; }
+    .home-kine-cta { justify-content: center; }
     .workspace-buttons { grid-template-columns: 1fr; }
     .workspace-card--kine { transform: none; }
     .workspace-card--kine:hover,

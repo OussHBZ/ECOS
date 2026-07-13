@@ -13,30 +13,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from app import create_app
-    from models import db, Student, Teacher, PatientCase, CompetitionSession, PathologyFolder
+    from models import (
+        db, Student, Teacher, PatientCase, CompetitionSession, PathologyFolder,
+        DEFAULT_KINE_PATHOLOGY_FOLDERS, KINE_PATHOLOGY_FOLDER_TRANSLATIONS,
+    )
     import logging
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure you're running this from the project root directory")
     sys.exit(1)
-
-
-KINE_PATHOLOGY_FOLDER_TRANSLATIONS = {
-    'Ischemic heart disease': 'Cardiopathie ischémique',
-    'Non-ischemic heart disease': 'Cardiopathie non ischémique',
-    'Congenital heart disease': 'Cardiopathie congénitale',
-    'Cardiac surgery': 'Chirurgie cardiaque',
-    'Heart transplant': 'Transplantation cardiaque',
-    'Hypertension (HTN)': 'Hypertension artérielle (HTA)',
-    'Hemodynamic regulation': 'Régulation hémodynamique',
-    'Peripheral arterial disease of the lower limbs (PAD)': 'Artériopathie oblitérante des membres inférieurs (AOMI)',
-    'Special arterial diseases': 'Pathologies artérielles particulières',
-    'Vascular compression syndromes': 'Syndromes de compression vasculaire',
-    'Venous diseases': 'Pathologies veineuses',
-    'Mild venous and lymphatic diseases': 'Pathologies veineuses et lymphatiques légères',
-}
-
-DEFAULT_KINE_PATHOLOGY_FOLDERS = list(KINE_PATHOLOGY_FOLDER_TRANSLATIONS.values())
 
 
 def seed_default_accounts():

@@ -1264,7 +1264,7 @@ async function loadAdminStudents(searchQuery = '') {
                     </td>
                     <td>${student.name}</td>
                     <td><select aria-label="Type d’ECOS de ${student.name}" onchange="updateStudentEcosType(${student.id},this)">
-                        <option value="standard" ${student.ecos_type === 'standard' ? 'selected' : ''}>Standard / Sondar</option>
+                        <option value="standard" ${student.ecos_type === 'standard' ? 'selected' : ''}>ECOS standard</option>
                         <option value="kine" ${student.ecos_type === 'kine' ? 'selected' : ''}>Kiné</option>
                     </select></td>
                     <td>${student.created_at}</td>

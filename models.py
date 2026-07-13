@@ -566,6 +566,26 @@ class PatientCase(db.Model):
         return f'<PatientCase {self.case_number}: {self.specialty}>'
 
 # Student Performance Tracking
+KINE_PATHOLOGY_FOLDER_TRANSLATIONS = {
+    'Ischemic heart disease': 'Cardiopathie ischémique',
+    'Non-ischemic heart disease': 'Cardiopathie non ischémique',
+    'Congenital heart disease': 'Cardiopathie congénitale',
+    'Cardiac surgery': 'Chirurgie cardiaque',
+    'Heart transplant': 'Transplantation cardiaque',
+    'Hypertension (HTN)': 'Hypertension artérielle (HTA)',
+    'Hemodynamic regulation': 'Régulation hémodynamique',
+    'Peripheral arterial disease of the lower limbs (PAD)':
+        'Artériopathie oblitérante des membres inférieurs (AOMI)',
+    'Special arterial diseases': 'Pathologies artérielles particulières',
+    'Vascular compression syndromes': 'Syndromes de compression vasculaire',
+    'Venous diseases': 'Pathologies veineuses',
+    'Mild venous and lymphatic diseases':
+        'Pathologies veineuses et lymphatiques légères',
+}
+
+DEFAULT_KINE_PATHOLOGY_FOLDERS = tuple(KINE_PATHOLOGY_FOLDER_TRANSLATIONS.values())
+
+
 class PathologyFolder(db.Model):
     """Editable grouping of physiotherapy clinical cases."""
     __tablename__ = 'pathology_folders'

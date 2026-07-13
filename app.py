@@ -20,7 +20,8 @@ from models import (
     db, Student, Teacher, AdminAccess, PatientCase, StudentPerformance, CaseImage,
     OSCESession, SessionParticipant, SessionStationAssignment,
     CompetitionSession, CompetitionParticipant, CompetitionStationBank,
-    StudentCompetitionSession, StudentStationAssignment
+    StudentCompetitionSession, StudentStationAssignment, PathologyFolder,
+    DEFAULT_KINE_PATHOLOGY_FOLDERS, KINE_PATHOLOGY_FOLDER_TRANSLATIONS,
 )
 from auth import auth_bp
 from blueprints.admin import admin_bp
@@ -570,6 +571,32 @@ def create_app():
                     """))
             except Exception as migration_err:
                 logger.warning(f"Migration note for unique exam attempts: {migration_err}")
+
+            # Seed the 12 editable Kine pathology folders on every normal app
+            # startup. INSERT OR IGNORE preserves existing/custom folders and
+            # is safe when several Gunicorn workers start simultaneously.
+            try:
+                from sqlalchemy import text
+                with db.engine.begin() as conn:
+                    for old_name, french_name in KINE_PATHOLOGY_FOLDER_TRANSLATIONS.items():
+                        conn.execute(text("""
+                            UPDATE pathology_folders
+                            SET name = :french_name
+                            WHERE specialty = 'kine' AND name = :old_name
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM pathology_folders
+                                  WHERE specialty = 'kine' AND name = :french_name
+                              )
+                        """), {'old_name': old_name, 'french_name': french_name})
+                    for folder_name in DEFAULT_KINE_PATHOLOGY_FOLDERS:
+                        conn.execute(text("""
+                            INSERT OR IGNORE INTO pathology_folders
+                                (name, specialty, is_archived, created_at, updated_at)
+                            VALUES (:name, 'kine', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """), {'name': folder_name})
+                logger.info("Default Kine pathology folders are available")
+            except Exception as migration_err:
+                logger.warning("Migration note for Kine pathology folders: %s", migration_err)
 
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")
