@@ -239,8 +239,39 @@
             button.disabled = true; status.textContent = 'Extraction en cours…';
             const body = new FormData(); body.append('source_document', file); body.append('case_number', form.elements.case_number?.value || 'kine-preview');
             try {
-                const response = await fetch(form.dataset.extractionUrl, {method:'POST', credentials:'same-origin', body});
-                const payload = await response.json(); if (!response.ok) throw new Error(payload.error || 'Extraction impossible');
+                const response = await fetch(form.dataset.extractionUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body
+                });
+                const contentType = response.headers.get('content-type') || '';
+                let payload = {};
+                if (contentType.includes('application/json')) {
+                    payload = await response.json();
+                } else {
+                    // Reverse proxies and authentication redirects commonly
+                    // return an HTML page. Never feed that page to JSON.parse.
+                    const responseText = await response.text();
+                    const title = responseText.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+                    if (response.redirected || response.url.includes('/login')) {
+                        throw new Error('Votre session a expiré. Reconnectez-vous puis relancez l’extraction.');
+                    }
+                    const proxyErrors = {
+                        413: 'Le document dépasse la taille maximale autorisée (25 Mo).',
+                        502: 'Le service d’extraction est momentanément indisponible.',
+                        504: 'L’extraction a dépassé le délai du serveur. Réessayez ou utilisez un document plus court.'
+                    };
+                    throw new Error(proxyErrors[response.status] ||
+                        `Le serveur a retourné une réponse non JSON (${response.status}${title ? ` – ${title}` : ''}).`);
+                }
+                if (!response.ok) {
+                    if (payload.auth_required && payload.redirect) window.location.assign(payload.redirect);
+                    throw new Error(payload.error || `Extraction impossible (${response.status})`);
+                }
                 const data = payload.extracted_data || {}; form.querySelector('[data-extracted-case-data]').value = JSON.stringify(data);
                 const filled = populateExtractedCase(form, data);
                 status.textContent = filled

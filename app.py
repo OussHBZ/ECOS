@@ -251,6 +251,9 @@ def create_app():
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    # Keep document uploads bounded and return a controlled 413 response.
+    # Nginx must use the same (or a higher) client_max_body_size value.
+    app.config['MAX_CONTENT_LENGTH'] = 25 * 1024 * 1024
     # Generic OSCE and kine cases can safely coexist in one database. Generic
     # screens exclude the dedicated kine specialty; /kine routes require it.
     app.config['KINE_SPECIALTY'] = os.environ.get('KINE_SPECIALTY', 'kine').strip().lower()
@@ -302,6 +305,16 @@ def create_app():
             message='Internal Server Error',
             description='Something went wrong on our end. Please try refreshing the page.'
         ), 500
+
+    @app.errorhandler(413)
+    def request_entity_too_large(error):
+        message = 'Le document dépasse la taille maximale autorisée (25 Mo).'
+        if _is_ajax() or request.accept_mimetypes.best == 'application/json':
+            return jsonify({'error': message}), 413
+        return render_template('error.html',
+            code=413, color='#dc3545', title='Document trop volumineux',
+            message='Document trop volumineux', description=message
+        ), 413
     
     @login_manager.user_loader
     def load_user(user_id):
