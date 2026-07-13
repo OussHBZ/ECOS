@@ -382,6 +382,71 @@ def create_app():
             else:
                 logger.info("All competition tables already exist")
 
+            # Add columns required by the Kine extension to legacy tables.
+            # ``create_all`` creates missing tables but never alters existing
+            # SQLite tables, so every column is migrated independently and
+            # idempotently. Separate transactions also make concurrent
+            # Gunicorn worker startup safe when another worker adds a column
+            # between inspection and ALTER TABLE.
+            additive_columns = {
+                'student': {
+                    'level': "VARCHAR(20) DEFAULT 'licence'",
+                    'group_name': 'VARCHAR(100)',
+                    'class_name': 'VARCHAR(100)',
+                },
+                'patient_case1': {
+                    'title': 'VARCHAR(250)',
+                    'folder_id': 'INTEGER REFERENCES pathology_folders(id)',
+                    'level': "VARCHAR(20) DEFAULT 'both'",
+                    'mode_availability': "VARCHAR(20) DEFAULT 'both'",
+                    'pedagogical_objectives': 'TEXT',
+                    'emotional_state': 'VARCHAR(50)',
+                    'is_archived': 'BOOLEAN NOT NULL DEFAULT 0',
+                },
+                'simulation_sessions': {
+                    'conversation': "JSON DEFAULT '[]'",
+                    'evaluation_results': 'JSON',
+                    'runtime_state': "JSON DEFAULT '{}'",
+                    'paused_at': 'DATETIME',
+                    'total_paused_seconds': 'INTEGER DEFAULT 0',
+                    'supplementary_score': 'FLOAT',
+                    'teacher_comments': 'TEXT',
+                    'reviewed_by': 'INTEGER REFERENCES teacher(id)',
+                    'reviewed_at': 'DATETIME',
+                },
+                'exams': {
+                    'group_names': "JSON DEFAULT '[]'",
+                },
+            }
+            for table_name, columns in additive_columns.items():
+                if table_name not in set(db.inspect(db.engine).get_table_names()):
+                    continue
+                for column_name, definition in columns.items():
+                    current_columns = {
+                        column['name']
+                        for column in db.inspect(db.engine).get_columns(table_name)
+                    }
+                    if column_name in current_columns:
+                        continue
+                    try:
+                        with db.engine.begin() as conn:
+                            conn.exec_driver_sql(
+                                f'ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}'
+                            )
+                        logger.info("Added legacy column %s.%s", table_name, column_name)
+                    except Exception as migration_err:
+                        # Another Gunicorn worker may have completed the same
+                        # idempotent ALTER after our inspection.
+                        refreshed = {
+                            column['name']
+                            for column in db.inspect(db.engine).get_columns(table_name)
+                        }
+                        if column_name not in refreshed:
+                            logger.warning(
+                                "Migration note for %s.%s: %s",
+                                table_name, column_name, migration_err,
+                            )
+
             # Add password_hash column to student table if missing (migration)
             try:
                 from sqlalchemy import text
