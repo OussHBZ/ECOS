@@ -26,6 +26,7 @@ from auth import auth_bp
 from blueprints.admin import admin_bp
 from blueprints.student import student_bp
 from blueprints.teacher import teacher_bp
+from blueprints.kine import kine_bp
 
 # Model Configuration — chain of Groq models tried in order.
 # On rate-limit / 429 / service errors the client automatically falls back
@@ -43,6 +44,14 @@ LLAMA_MODELS = {
         'max_tokens': 150,
         'timeout': 30
     }
+}
+
+# Structured case extraction needs a much larger response than chat replies or
+# individual evaluation criteria. A dedicated client prevents JSON truncation.
+DOCUMENT_EXTRACTION_CONFIG = {
+    'temperature': 0.0,
+    'max_tokens': 6000,
+    'timeout': 90,
 }
 
 
@@ -224,7 +233,9 @@ def create_app():
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_NAME'] = 'ecos_session'
-    app.config['SESSION_COOKIE_PATH'] = '/ecos'
+    # Local development serves from '/', while deployments behind an /ecos
+    # reverse-proxy prefix can set SESSION_COOKIE_PATH=/ecos.
+    app.config['SESSION_COOKIE_PATH'] = os.environ.get('SESSION_COOKIE_PATH', '/')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
     app.config['APP_VERSION'] = '20260404v'
@@ -240,6 +251,11 @@ def create_app():
     # Configure database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///osce_simulator.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    # Generic OSCE and kine cases can safely coexist in one database. Generic
+    # screens exclude the dedicated kine specialty; /kine routes require it.
+    app.config['KINE_SPECIALTY'] = os.environ.get('KINE_SPECIALTY', 'kine').strip().lower()
+    app.config['SHARED_SPECIALTY_DATABASE'] = True
+    app.config['KINE_REUSES_GROQ_CLIENT'] = True
 
     # Initialize extensions
     db.init_app(app)
@@ -330,6 +346,7 @@ def create_app():
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(student_bp, url_prefix='/student')
     app.register_blueprint(teacher_bp, url_prefix='/teacher')
+    app.register_blueprint(kine_bp)
     
     # Create tables if they don't exist
     with app.app_context():
@@ -421,6 +438,61 @@ def create_app():
             except Exception as migration_err:
                 logger.warning(f"Migration note for teacher.login nullable: {migration_err}")
 
+            # Separate generic/Sondar and Kine accounts. Existing users with
+            # Kine activity are migrated once; all other legacy users remain
+            # assigned to the standard platform.
+            try:
+                from sqlalchemy import text
+                assignment_columns_added = set()
+                inspector4 = db.inspect(db.engine)
+                for table_name in ('student', 'teacher'):
+                    columns = {column['name'] for column in inspector4.get_columns(table_name)}
+                    if 'ecos_type' not in columns:
+                        with db.engine.begin() as conn:
+                            conn.execute(text(
+                                f"ALTER TABLE {table_name} ADD COLUMN ecos_type VARCHAR(20) NOT NULL DEFAULT 'standard'"
+                            ))
+                        assignment_columns_added.add(table_name)
+                tables = set(db.inspect(db.engine).get_table_names())
+                with db.engine.begin() as conn:
+                    if 'student' in assignment_columns_added and 'simulation_sessions' in tables:
+                        conn.execute(text("""
+                            UPDATE student SET ecos_type = 'kine'
+                            WHERE id IN (SELECT DISTINCT student_id FROM simulation_sessions)
+                        """))
+                    if 'teacher' in assignment_columns_added:
+                        sources = []
+                        if 'exams' in tables:
+                            sources.append('SELECT created_by FROM exams WHERE created_by IS NOT NULL')
+                        if 'pathology_folders' in tables:
+                            sources.append('SELECT created_by FROM pathology_folders WHERE created_by IS NOT NULL')
+                        if sources:
+                            conn.execute(text(
+                                "UPDATE teacher SET ecos_type = 'kine' WHERE id IN (" +
+                                " UNION ".join(sources) + ")"
+                            ))
+                        conn.execute(text("""
+                            UPDATE teacher SET ecos_type = 'kine'
+                            WHERE lower(coalesce(email, '')) = 'teacher@ecos.local'
+                        """))
+                if assignment_columns_added:
+                    logger.info("Added exclusive ECOS account assignments: %s", sorted(assignment_columns_added))
+            except Exception as migration_err:
+                logger.warning(f"Migration note for ECOS account assignment: {migration_err}")
+
+            # Enforce one attempt for each student/exam/case combination. The
+            # partial index keeps unlimited training attempts (exam_id is NULL).
+            try:
+                from sqlalchemy import text
+                with db.engine.begin() as conn:
+                    conn.execute(text("""
+                        CREATE UNIQUE INDEX IF NOT EXISTS uq_exam_attempt_student_case
+                        ON simulation_sessions (student_id, exam_id, clinical_case_id)
+                        WHERE exam_id IS NOT NULL
+                    """))
+            except Exception as migration_err:
+                logger.warning(f"Migration note for unique exam attempts: {migration_err}")
+
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")
 
@@ -448,8 +520,15 @@ def create_app():
         logger.error(f"Error initializing ChatGroq client: {str(e)}")
         raise
         
-    # Initialize document processor
-    document_agent = DocumentExtractionAgent(llm_client=client)
+    # Use an independent long-output client for structured document extraction.
+    # The shared chat client is intentionally limited to short patient replies.
+    document_client = FallbackGroqClient(
+        api_key=api_key,
+        http_client=http_client,
+        models=LLAMA_MODELS['chain'],
+        config=DOCUMENT_EXTRACTION_CONFIG,
+    )
+    document_agent = DocumentExtractionAgent(llm_client=document_client)
     
     # Initialize evaluation agent 
     evaluation_agent = EnhancedEvaluationAgent(llm_client=client)
@@ -465,15 +544,23 @@ def create_app():
 
     # Store instances in app config for access by other modules
     app.config['DOCUMENT_AGENT'] = document_agent
+    app.config['DOCUMENT_LLM_CLIENT'] = document_client
     app.config['EVALUATION_AGENT'] = evaluation_agent
     app.config['GROQ_CLIENT'] = client
     app.config['EVALUATION_CONFIG'] = EVALUATION_CONFIG
+
+    def generic_case_query():
+        kine_specialty = app.config['KINE_SPECIALTY']
+        return PatientCase.query.filter(db.or_(
+            PatientCase.specialty.is_(None),
+            db.func.lower(PatientCase.specialty) != kine_specialty,
+        ))
 
     def load_patient_case(case_number):
         """Load patient case data from the database"""
         try:
             # First try to load from database
-            case_data_db = PatientCase.query.filter_by(case_number=str(case_number)).first()
+            case_data_db = generic_case_query().filter_by(case_number=str(case_number)).first()
 
             if case_data_db:
                 # Convert the SQLAlchemy object to a dictionary-like structure
@@ -596,7 +683,7 @@ def create_app():
     def get_case_metadata():
         cases_metadata = []
         try:
-            cases = PatientCase.query.all()
+            cases = generic_case_query().all()
             for case in cases:
                 cases_metadata.append({
                     "case_number": case.case_number,
@@ -614,7 +701,7 @@ def create_app():
         specialties = set()
         try:
             # Query distinct specialties directly from the database
-            distinct_specialties = db.session.query(PatientCase.specialty).distinct().all()
+            distinct_specialties = generic_case_query().with_entities(PatientCase.specialty).distinct().all()
             for spec_tuple in distinct_specialties:
                 if spec_tuple[0]: # Ensure specialty is not None or empty
                     specialties.add(spec_tuple[0])
@@ -737,6 +824,7 @@ def create_app():
     app.config['LOAD_PATIENT_CASE'] = load_patient_case
     app.config['GET_CASE_METADATA'] = get_case_metadata
     app.config['GET_UNIQUE_SPECIALTIES'] = get_unique_specialties
+    app.config['GET_GENERIC_CASE_QUERY'] = generic_case_query
     app.config['INITIALIZE_CONVERSATION'] = initialize_conversation
     app.config['EVALUATE_CONVERSATION'] = evaluate_conversation
 

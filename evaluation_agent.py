@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 import tempfile
 from langchain_core.messages import HumanMessage
+from kine_evaluation import evaluate_kine_conversation, is_kine_case
 
 # Setup logging
 logging.basicConfig(
@@ -23,9 +24,16 @@ class EvaluationAgent:
         # Add caching
         self._cache = {}
         
-    def evaluate_conversation(self, conversation, case_data):
+    def evaluate_conversation(self, conversation, case_data, student=None):
         """Main entry point to evaluate a conversation"""
         logger.info(f"Agent evaluating conversation for case {case_data.get('case_number')}")
+
+        # The kine grid is fully isolated from the legacy generic checklist.
+        if is_kine_case(case_data):
+            kine_case_data = dict(case_data)
+            if student is not None:
+                kine_case_data['student'] = student
+            return evaluate_kine_conversation(conversation, kine_case_data, self.llm_client)
         
         # Create a cache key based on the conversation
         cache_key = self._create_cache_key(conversation)

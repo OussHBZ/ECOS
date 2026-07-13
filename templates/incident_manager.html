@@ -1,0 +1,15 @@
+{% extends "kine_base.html" %}
+{% block title %}Incidents — {{ clinical_case.case_number }}{% endblock %}
+{% block content %}
+<div class="kine-page-heading"><div><span class="kine-eyebrow">{{ clinical_case.case_number }}</span><h1>Incidents du scénario</h1><p>Un incident ne se déclenche que lorsque sa condition est satisfaite.</p></div><a class="btn btn-secondary" href="{{ case_url|default('#') }}">Retour au cas</a></div>
+<div class="kine-split">
+    <section class="kine-card"><h2>{{ 'Modifier' if edited_incident else 'Ajouter' }} un incident</h2><form method="post" action="{{ incident_form_action|default('') }}" class="kine-form-grid">
+        <label class="kine-field-wide">Description<input name="trigger_description" value="{{ edited_incident.trigger_description|default('') }}"></label>
+        <label class="kine-field-wide">Condition de déclenchement<textarea name="trigger_condition" required>{{ edited_incident.trigger_condition|default('') }}</textarea></label>
+        <label class="kine-field-wide">Réaction scriptée du patient<textarea name="scripted_reaction" required>{{ edited_incident.scripted_reaction|default('') }}</textarea></label>
+        <label>Gravité<select name="severity"><option value="minor">Mineur</option><option value="major">Majeur</option></select></label>
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+    </form></section>
+    <section class="kine-card"><h2>Incidents configurés</h2><div class="kine-table-wrap"><table class="kine-table"><thead><tr><th>Condition</th><th>Réaction</th><th>Gravité</th><th>Actions</th></tr></thead><tbody>{% for incident in incidents %}<tr><td>{{ incident.trigger_condition }}</td><td>{{ incident.scripted_reaction }}</td><td><span class="kine-badge kine-badge--{{ incident.severity }}">{{ incident.severity }}</span></td><td><a href="{{ url_for('kine.case_incidents', case_id=clinical_case.id, edit=incident.id) }}">Modifier</a><form class="kine-inline" method="post" action="{{ url_for('kine.incident_item', incident_id=incident.id) }}" data-confirm="Supprimer cet incident ?"><input type="hidden" name="_action" value="delete"><button type="submit">Supprimer</button></form></td></tr>{% else %}<tr><td colspan="4">Aucun incident défini.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+{% endblock %}

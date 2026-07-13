@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ECOS Kinésithérapie{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version|default('1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/kine.css') }}?v={{ app_version|default('1') }}">
+    {% block head %}{% endblock %}
+</head>
+<body class="kine-app">
+    <header class="kine-header">
+        <a class="kine-brand" href="{{ kine_home_url|default('#') }}">
+            <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM">
+            <span>ECOS Kinésithérapie</span>
+        </a>
+        <nav aria-label="Navigation principale">
+            <a class="btn btn-secondary" href="{{ request.referrer or kine_home_url|default('/') }}" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
+            {% block navigation %}{% endblock %}
+            {% if session.get('user_type') %}
+                {% if session.get('user_type') == 'teacher' %}
+                <span class="kine-role-badge">Enseignant</span>
+                <a class="btn btn-secondary" href="{{ url_for('kine.teacher_dashboard') }}">Tableau de bord</a>
+                <a class="btn btn-secondary" href="{{ url_for('kine.teacher_dashboard') }}#tous-les-cas">Tous les cas</a>
+                <a class="btn btn-primary" href="{{ url_for('kine.new_case_form') }}">+ Nouveau cas</a>
+                {% elif session.get('user_type') == 'student' %}
+                <span class="kine-role-badge">Étudiant</span>
+                <a class="btn btn-secondary" href="{{ url_for('kine.student_kine_home') }}">Mes cas</a>
+                <a class="btn btn-secondary" href="{{ url_for('kine.simulation_history') }}">Mon historique</a>
+                {% elif session.get('user_type') == 'admin' %}
+                <span class="kine-role-badge">Administrateur</span>
+                <a class="btn btn-secondary" href="{{ url_for('admin.admin_interface') }}">Administration</a>
+                {% endif %}
+            <a class="btn kine-logout-button" href="{{ url_for('auth.logout') }}">Déconnexion</a>
+            {% endif %}
+        </nav>
+    </header>
+    <main class="kine-page">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="kine-flashes" role="status">
+            {% for category, message in messages %}<div class="kine-alert kine-alert--{{ category }}">{{ message }}</div>{% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+    <script src="{{ url_for('static', filename='js/kine-components.js') }}?v={{ app_version|default('1') }}" defer></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

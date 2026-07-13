@@ -998,7 +998,7 @@ async function loadOverviewData() {
                 row.innerHTML = `
                     <td>${activity.date}</td>
                     <td>${activity.student_name} (${activity.student_code})</td>
-                    <td>${activity.case_number}</td>
+                    <td>${activity.case_number}${activity.specialty ? `<br><small>${activity.specialty}</small>` : ''}</td>
                     <td><span class="score-badge score-${getScoreClass(activity.score)}">${activity.score}%</span></td>
                     <td><span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}">${activity.status}</span></td>
                 `;
@@ -1252,7 +1252,7 @@ async function loadAdminStudents(searchQuery = '') {
         tableBody.innerHTML = '';
         
         if (data.students.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
         } else {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
@@ -1263,6 +1263,10 @@ async function loadAdminStudents(searchQuery = '') {
                         <div class="code-type-label">N° Apogée</div>
                     </td>
                     <td>${student.name}</td>
+                    <td><select aria-label="Type d’ECOS de ${student.name}" onchange="updateStudentEcosType(${student.id},this)">
+                        <option value="standard" ${student.ecos_type === 'standard' ? 'selected' : ''}>Standard / Sondar</option>
+                        <option value="kine" ${student.ecos_type === 'kine' ? 'selected' : ''}>Kiné</option>
+                    </select></td>
                     <td>${student.created_at}</td>
                     <td>${student.last_login || 'Jamais'}</td>
                     <td><span class="workout-badge">${student.total_consultations}</span></td>
@@ -1280,7 +1284,7 @@ async function loadAdminStudents(searchQuery = '') {
     } catch (error) {
         console.error('Error loading admin students:', error);
         document.getElementById('admin-students-table-body').innerHTML = 
-            '<tr><td colspan="7" style="text-align: center;">Erreur lors du chargement</td></tr>';
+            '<tr><td colspan="8" style="text-align: center;">Erreur lors du chargement</td></tr>';
     }
 }
 
@@ -1345,33 +1349,76 @@ function searchAdminStudents() {
 }
 
 // View station details
+function escapeStationText(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[character]);
+}
+
+function formatStationValue(value) {
+    if (value === null || value === undefined || value === '') return '<span class="kine-empty">Non renseigné</span>';
+    if (Array.isArray(value)) {
+        if (!value.length) return '<span class="kine-empty">Aucune donnée</span>';
+        return `<ul>${value.map(item => `<li>${formatStationValue(item)}</li>`).join('')}</ul>`;
+    }
+    if (typeof value === 'object') {
+        if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+            return `${escapeStationText(value.value)}${value.unit ? ` ${escapeStationText(value.unit)}` : ''}`;
+        }
+        return `<dl>${Object.entries(value).map(([key, item]) =>
+            `<div><dt>${escapeStationText(key.replaceAll('_', ' '))}</dt><dd>${formatStationValue(item)}</dd></div>`
+        ).join('')}</dl>`;
+    }
+    return escapeStationText(value);
+}
+
 async function viewStationDetails(caseNumber) {
     try {
-        const response = await authenticatedFetch(`/get_case/${caseNumber}`);
+        const response = await authenticatedFetch(`/admin/stations/${encodeURIComponent(caseNumber)}/details`);
         if (!response.ok) {
             throw new Error('Failed to load station details');
         }
         
         const data = await response.json();
         
-        // Format station details
         let detailsHTML = `
             <div class="station-details">
-                <h4>Station ${data.case_number}</h4>
-                <p><strong>Spécialité:</strong> ${data.specialty}</p>
-                <p><strong>Durée:</strong> ${data.consultation_time} minutes</p>
+                <h4>Cas ${escapeStationText(data.case_number)}${data.title ? ` — ${escapeStationText(data.title)}` : ''}</h4>
+                <p><strong>Spécialité :</strong> ${escapeStationText(data.specialty || 'Non renseignée')}</p>`;
+
+        if (data.is_kine) {
+            const levels={licence:'Licence',master:'Master',both:'Licence et Master'};
+            const modes={training:'Entraînement',exam:'Examen',both:'Entraînement et examen'};
+            detailsHTML += `
+                <p><strong>Dossier pathologique :</strong> ${escapeStationText(data.pathology_folder || 'Non classé')}</p>
+                <p><strong>Niveau :</strong> ${escapeStationText(levels[data.level] || data.level || 'Non renseigné')}</p>
+                <p><strong>Disponibilité :</strong> ${escapeStationText(modes[data.mode_availability] || data.mode_availability || 'Non renseignée')}</p>
+                <p><strong>Diagnostic :</strong> ${formatStationValue(data.diagnosis)}</p>
+                <h5>Identité du patient</h5>${formatStationValue(data.patient_info)}
+                <h5>Contexte médical</h5>${formatStationValue(data.medical_context)}
+                <h5>Antécédents et comorbidités</h5>${formatStationValue(data.medical_history)}${formatStationValue(data.comorbidities)}
+                <h5>Interventions</h5>${formatStationValue(data.interventions)}
+                <h5>Médicaments</h5>${formatStationValue(data.medications)}
+                <h5>Examens et bilan</h5>${formatStationValue(data.tests)}
+                <h5>Paramètres de référence</h5>${formatStationValue(data.reference_vitals)}
+                <h5>Prescriptions</h5>${formatStationValue(data.prescriptions)}
+                <h5>Incidents</h5>${formatStationValue(data.incidents)}
+                <h5>Objectifs pédagogiques</h5>${formatStationValue(data.pedagogical_objectives)}
+            </div>`;
+        } else {
+            detailsHTML += `<p><strong>Durée :</strong> ${escapeStationText(data.consultation_time || '—')} minutes</p>
                 
                 <h5>Informations du patient</h5>
-                <p><strong>Nom:</strong> ${data.patient_info?.name || 'Non spécifié'}</p>
-                <p><strong>Âge:</strong> ${data.patient_info?.age || 'Non spécifié'}</p>
-                <p><strong>Sexe:</strong> ${data.patient_info?.gender || 'Non spécifié'}</p>
+                <p><strong>Nom :</strong> ${escapeStationText(data.patient_info?.name || 'Non spécifié')}</p>
+                <p><strong>Âge :</strong> ${escapeStationText(data.patient_info?.age || 'Non spécifié')}</p>
+                <p><strong>Sexe :</strong> ${escapeStationText(data.patient_info?.gender || 'Non spécifié')}</p>
                 
                 <h5>Symptômes (${data.symptoms?.length || 0})</h5>
                 <ul>`;
         
         if (data.symptoms && data.symptoms.length > 0) {
             data.symptoms.forEach(symptom => {
-                detailsHTML += `<li>${symptom}</li>`;
+                detailsHTML += `<li>${escapeStationText(symptom)}</li>`;
             });
         } else {
             detailsHTML += '<li>Aucun symptôme défini</li>';
@@ -1383,13 +1430,14 @@ async function viewStationDetails(caseNumber) {
         
         if (data.evaluation_checklist && data.evaluation_checklist.length > 0) {
             data.evaluation_checklist.forEach(item => {
-                detailsHTML += `<li>${item.description} (${item.points} points)</li>`;
+                detailsHTML += `<li>${escapeStationText(item.description)} (${escapeStationText(item.points)} points)</li>`;
             });
         } else {
             detailsHTML += '<li>Aucun élément d\'évaluation défini</li>';
         }
         
-        detailsHTML += '</ul></div>';
+            detailsHTML += '</ul></div>';
+        }
         
         // Show in modal
         document.getElementById('station-details-content').innerHTML = detailsHTML;
@@ -1440,9 +1488,10 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
                     <td>${perf.case_number}</td>
                     <td>${perf.specialty}</td>
                     <td>${perf.score}%</td>
+                    <td><span class="status-badge">${perf.status || 'Terminée'}</span></td>
                     <td>${perf.duration}</td>
                     <td>
-                        <button class="view-evaluation-btn" onclick="downloadStudentReport(${perf.id})">
+                        <button class="view-evaluation-btn" onclick="downloadStudentReport('${perf.report_url}')">
                             Télécharger PDF
                         </button>
                     </td>
@@ -1462,8 +1511,8 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
 }
 
 // Download student report
-function downloadStudentReport(performanceId) {
-    window.location.href = `/admin/download_student_report/${performanceId}`;
+function downloadStudentReport(reportUrl) {
+    window.location.href = reportUrl;
 }
 
 // Session management functions
@@ -1761,7 +1810,7 @@ function updateRecentActivity(activities) {
                         <span class="apogee-number-small">N° ${activity.student_code}</span>
                     </div>
                 </td>
-                <td>${activity.case_number}</td>
+                <td>${activity.case_number}${activity.specialty ? `<br><small>${activity.specialty}</small>` : ''}</td>
                 <td><span class="score-badge score-${getScoreClass(activity.score)}">${activity.score}%</span></td>
                 <td><span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}">${activity.status}</span></td>
             `;

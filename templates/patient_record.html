@@ -1,0 +1,43 @@
+{% extends "kine_base.html" %}
+{% block title %}Dossier patient — ECOS Kiné{% endblock %}
+{% block content %}
+{% set record = patient_record %}
+{% set field_labels = {'general_condition':'État général','pain':'Douleur','dyspnea':'Dyspnée','respiratory':'Respiratoire','muscular':'Musculaire','joint':'Articulaire','neurological':'Neurologique','balance':'Équilibre','gait':'Marche','scar':'Cicatrice','exertion_parameters':"Paramètres à l’effort",'value':'Valeur','unit':'Unité','name':'Nom','category':'Catégorie'} %}
+{% macro medical_value(value) %}
+    {% if value is mapping %}
+        {% if value.get('value') is not none %}<span>{{ value.get('value') }}{% if value.get('unit') %} {{ value.get('unit') }}{% endif %}</span>
+        {% elif value.get('name') %}<span><strong>{{ value.get('name') }}</strong>{% if value.get('value') %} : {{ value.get('value') }}{% endif %}{% if value.get('unit') %} {{ value.get('unit') }}{% endif %}</span>
+        {% else %}<ul class="kine-readable-list">{% for subkey, subvalue in value.items() %}<li><strong>{{ field_labels.get(subkey, subkey|replace('_',' ')|capitalize) }}</strong> : {{ medical_value(subvalue) }}</li>{% endfor %}</ul>
+        {% endif %}
+    {% elif value is sequence and value is not string %}
+        {% if value %}<ul class="kine-readable-list">{% for item in value %}<li>{{ medical_value(item) }}</li>{% endfor %}</ul>{% else %}<span>—</span>{% endif %}
+    {% elif value %}<span class="kine-readable-text">{{ value }}</span>
+    {% else %}<span>—</span>{% endif %}
+{% endmacro %}
+<div class="kine-page-heading">
+    <div><span class="kine-eyebrow">Avant la simulation</span><h1>Dossier médical initial</h1><p>Analysez le dossier avant de commencer l'entretien.</p></div>
+    <span class="kine-badge">{{ student_level|default('Licence')|capitalize }}</span>
+</div>
+<div class="kine-record-grid">
+    <section class="kine-card"><h2>Identité</h2><dl class="kine-definition-list">
+        {% for label, key in [('Nom / initiales','name'),('Âge','age'),('Sexe','gender'),('Situation familiale','family_situation'),('Profession','occupation'),('Taille','height_cm'),('Poids','weight_kg'),('IMC','bmi')] %}
+        <div><dt>{{ label }}</dt><dd>{{ record.identity.get(key, '—') if record.identity else '—' }}</dd></div>{% endfor %}
+    </dl></section>
+    <section class="kine-card"><h2>Contexte médical</h2><dl class="kine-definition-list">
+        {% for label, key in [('Diagnostic principal','main_diagnosis'),('Diagnostics associés','associated_diagnoses'),("Motif d'admission",'admission_reason'),('Date événement / procédure','cardiovascular_event_date')] %}
+        <div><dt>{{ label }}</dt><dd>{{ medical_value(record.medical_context.get(key)) if record.medical_context else '—' }}</dd></div>{% endfor %}
+    </dl></section>
+    <section class="kine-card kine-card--wide"><h2>Antécédents et comorbidités</h2><div class="kine-columns">
+        {% for label, key in [('Cardiovasculaires','cardiovascular'),('Médicaux','medical'),('Chirurgicaux','surgical'),('Allergies','allergies')] %}<div><h3>{{ label }}</h3>{{ medical_value(record.medical_history.get(key)) if record.medical_history else '—' }}</div>{% endfor %}
+        <div><h3>Comorbidités</h3>{{ medical_value(record.comorbidities) }}</div>
+    </div></section>
+    <section class="kine-card"><h2>Interventions</h2>{% for item in record.interventions %}<article class="kine-list-item"><strong>{{ item.intervention_type }}</strong><span>{{ item.intervention_date or 'Date non précisée' }}</span><p>{{ item.complications or 'Aucune complication précisée' }}</p></article>{% else %}<p class="kine-empty">Aucune intervention renseignée.</p>{% endfor %}</section>
+    <section class="kine-card"><h2>Traitement médicamenteux</h2>{% for med in record.medications %}<article class="kine-list-item"><strong>{{ med.therapeutic_class }}</strong>{% if student_level|lower == 'licence' %}<span>{{ med.inn or 'DCI non précisée' }}</span><p>{{ med.effect or 'Effet non précisé' }} — {{ med.physiotherapy_precautions or 'Précaution non précisée' }}</p>{% endif %}</article>{% else %}<p class="kine-empty">Aucun médicament renseigné.</p>{% endfor %}</section>
+    <section class="kine-card"><h2>Résultats médicaux</h2>{% set test_labels = {'cardiac':'Cardiaques','vascular':'Vasculaires','biological':'Biologiques','imaging':'Imagerie médicale','other':'Autres examens','items':'Examens détaillés','physiotherapy_assessment':'Bilan kinésithérapique','exertion_kinetics':"Réponse à l’effort"} %}{% for category, values in (record.tests or {}).items() %}<h3>{{ test_labels.get(category, category|replace('_',' ')|capitalize) }}</h3>{{ medical_value(values) }}{% else %}<p class="kine-empty">Aucun résultat médical renseigné.</p>{% endfor %}</section>
+    <section class="kine-card"><h2>Paramètres de référence</h2>{% set vital_labels = {'heart_rate_bpm':'Fréquence cardiaque','blood_pressure_mmhg':'Pression artérielle','spo2_percent':'Saturation en oxygène','respiratory_rate_bpm':'Fréquence respiratoire','height_cm':'Taille','weight_kg':'Poids','bmi':'IMC'} %}<dl class="kine-definition-list">{% for key, value in (record.reference_vitals or {}).items() %}<div><dt>{{ vital_labels.get(key, key|replace('_',' ')|capitalize) }}</dt><dd>{{ medical_value(value) }}</dd></div>{% else %}<div><dd>—</dd></div>{% endfor %}</dl></section>
+    <section class="kine-card"><h2>Prescription médicale</h2><div class="kine-prescription">{% if record.medical_prescription %}{{ medical_value(record.medical_prescription) }}{% else %}<p class="kine-empty">Aucune prescription médicale renseignée.</p>{% endif %}</div></section>
+    <section class="kine-card"><h2>Prescription kinésithérapique</h2><div class="kine-prescription">{% if record.physiotherapy_prescription %}{{ medical_value(record.physiotherapy_prescription) }}{% else %}<p class="kine-empty">Aucune prescription kinésithérapique renseignée.</p>{% endif %}</div></section>
+    <section class="kine-card kine-card--wide"><h2>Documents disponibles</h2><div class="kine-tags">{% for document in record.available_documents or [] %}<span>{{ document }}</span>{% else %}<span>Aucun document joint</span>{% endfor %}</div></section>
+</div>
+<form class="kine-start-panel" method="post" action="{{ start_simulation_url|default('#') }}"><input type="hidden" name="case_id" value="{{ clinical_case.id }}"><button class="btn btn-primary" type="submit">J'ai analysé le dossier — commencer</button></form>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "kine_base.html" %}
+{% block title %}Espace étudiant Kiné{% endblock %}
+{% block content %}
+<div class="kine-page-heading"><div><span class="kine-eyebrow">Espace étudiant · {{ student_level|capitalize }}</span><h1>Bienvenue {{ student_name }}</h1><p>Choisissez un dossier d'entraînement ou un examen ouvert.</p></div><a class="btn btn-secondary" href="{{ url_for('kine.simulation_history') }}">Mon historique</a></div>
+<section class="kine-card"><h2>Cas d'entraînement disponibles</h2><div class="kine-case-grid">{% for case in cases %}<article class="kine-case-tile"><span class="kine-badge">{{ case.pathology_folder.name if case.pathology_folder else 'Kinésithérapie' }}</span><h3>{{ case.case_number }}</h3><p>{{ case.pedagogical_objectives or case.get_summary() }}</p><a class="btn btn-primary" href="{{ url_for('kine.patient_record_view', case_id=case.id) }}">Ouvrir le dossier</a></article>{% else %}<p>Aucun cas d'entraînement disponible pour votre niveau.</p>{% endfor %}</div></section>
+<section class="kine-card">
+    <h2>Mes examens programmés</h2>
+    <div class="kine-case-grid">
+    {% for row in exam_rows %}
+        {% set exam = row.exam %}
+        {% for case in row.cases %}
+        {% set attempt = row.attempts.get(case.id) %}
+        <article class="kine-case-tile">
+            <span class="kine-badge">{{ 'Déjà passé' if attempt and attempt.status == 'completed' else ('En cours' if attempt else ('Examen ouvert' if row.is_open else 'Examen à venir')) }}</span>
+            <h3>{{ exam.name }} — {{ case.case_number }}</h3>
+            <p><strong>Ouverture :</strong> <time data-kine-local-time datetime="{{ exam.start_at.isoformat() }}Z">{{ exam.start_at.strftime('%d/%m/%Y %H:%M') }} UTC</time></p>
+            <p><strong>Fermeture :</strong> <time data-kine-local-time datetime="{{ exam.end_at.isoformat() }}Z">{{ exam.end_at.strftime('%d/%m/%Y %H:%M') }} UTC</time></p>
+            <p><strong>Durée maximale :</strong> {{ exam.max_duration_minutes }} minutes</p>
+            {% if exam.instructions %}<p><strong>Consignes :</strong> {{ exam.instructions }}</p>{% endif %}
+            {% if attempt and attempt.status == 'completed' %}
+            <a class="btn btn-secondary" href="{{ url_for('kine.simulation_chat', session_id=attempt.id) }}">Consulter le résultat</a>
+            {% elif attempt %}
+            <a class="btn btn-primary" href="{{ url_for('kine.simulation_chat', session_id=attempt.id) }}">Reprendre l’examen</a>
+            {% elif row.is_open %}
+            <form method="post" action="{{ url_for('kine.start_simulation') }}">
+                <input type="hidden" name="case_id" value="{{ case.id }}">
+                <input type="hidden" name="exam_id" value="{{ exam.id }}">
+                <input type="hidden" name="mode" value="exam">
+                <button class="btn btn-primary">Commencer l’examen</button>
+            </form>
+            {% else %}<button class="btn btn-secondary" type="button" disabled>Disponible à l’ouverture</button>{% endif %}
+        </article>
+        {% else %}
+        <article class="kine-case-tile"><span class="kine-badge">Attention</span><h3>{{ exam.name }}</h3><p>Aucun cas de cet examen ne correspond à votre niveau. Contactez votre enseignant.</p></article>
+        {% endfor %}
+    {% else %}
+        <p>Aucun examen ne vous est actuellement attribué.</p>
+    {% endfor %}
+    </div>
+</section>
+{% endblock %}

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>{{ title }} - ECOS</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title|default('Error') }} - ECOS</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,10 +21,13 @@
         }
         .error-code {
             font-size: 72px;
-            color: {{ color }};
+            color: #6c757d;
             margin-bottom: 20px;
             font-weight: bold;
         }
+        .error-code--401, .error-code--403 { color: #dc3545; }
+        .error-code--404 { color: #ff6b6b; }
+        .error-code--500 { color: #dc3545; }
         .error-message {
             font-size: 24px;
             margin-bottom: 20px;
@@ -46,18 +51,19 @@
         .back-link:hover { background: #0056b3; }
         .refresh-link { background: #28a745; }
         .refresh-link:hover { background: #1e7e34; }
+        button.back-link { border: 0; cursor: pointer; font-size: 1rem; }
     </style>
 </head>
 <body>
     <div class="error-container">
-        <div class="error-code">{{ code }}</div>
-        <div class="error-message">{{ message }}</div>
-        <div class="error-description">{{ description }}</div>
-        <a href="/" class="back-link">Go to Homepage</a>
-        {% if code == 401 %}
-        <a href="/login" class="back-link">Login</a>
-        {% elif code == 500 %}
-        <a href="javascript:location.reload()" class="back-link refresh-link">Refresh Page</a>
+        <div class="error-code error-code--{{ code|default('unknown') }}">{{ code|default('Error') }}</div>
+        <div class="error-message">{{ message|default('Something went wrong.') }}</div>
+        <div class="error-description">{{ description|default('Please try again or return to the homepage.') }}</div>
+        <a href="{{ url_for('index') }}" class="back-link">Go to Homepage</a>
+        {% if code|default(0)|int in (401, 403) %}
+        <a href="{{ url_for('auth.login') }}" class="back-link">Login</a>
+        {% elif code|default(0)|int == 500 %}
+        <button type="button" class="back-link refresh-link" onclick="window.location.reload()">Refresh Page</button>
         {% endif %}
     </div>
 </body>

@@ -518,7 +518,10 @@ def student_stations():
         search_query = request.args.get('search', '').strip()
         
         # Get all cases
-        query = PatientCase.query
+        query_factory = current_app.config.get('GET_GENERIC_CASE_QUERY')
+        query = query_factory() if query_factory else PatientCase.query.filter(
+            db.or_(PatientCase.specialty.is_(None), db.func.lower(PatientCase.specialty) != 'kine')
+        )
         if search_query:
             query = query.filter(
                 db.or_(

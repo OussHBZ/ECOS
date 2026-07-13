@@ -24,11 +24,12 @@
                     </div>
                 </div>
                 <div class="header-actions">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
                     <div class="user-info">
                         <div class="user-name">Enseignant</div>
                         <div class="user-role">Interface Pédagogique</div>
                     </div>
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Déconnexion</a>
+                    <a href="{{ url_for('auth.logout') }}" class="btn logout-button">Déconnexion</a>
                 </div>
             </div>
         </div>

@@ -5,6 +5,7 @@ import logging
 import docx2txt
 import PyPDF2
 import shutil
+from copy import deepcopy
 from PIL import Image
 from io import BytesIO
 from langchain_core.messages import HumanMessage
@@ -17,6 +18,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+PHYSIO_SPECIALTY_ALIASES = {
+    'kine', 'kiné', 'kinesitherapie', 'kinésithérapie',
+    'physio', 'physiotherapy', 'physiothérapie',
+}
+
+DEFAULT_PHYSIO_EXTRACTION_SCHEMA = {
+    "patient_info": {
+        "name": None, "age": None, "gender": None, "family_situation": None,
+        "occupation": None, "height_cm": None, "weight_kg": None, "bmi": None
+    },
+    "medical_context": {
+        "main_diagnosis": None, "associated_diagnoses": [],
+        "admission_reason": None, "cardiovascular_event_date": None
+    },
+    "history": {
+        "cardiovascular": [], "medical": [], "surgical": [],
+        "allergies": [], "risk_factors": [], "lifestyle": []
+    },
+    "comorbidities": [],
+    "procedures": [
+        {"type": None, "date": None, "complications": []}
+    ],
+    "medications": [
+        {"therapeutic_class": None, "inn": None, "effect": None,
+         "physiotherapy_precautions": None}
+    ],
+    "tests": {
+        "cardiac": [], "vascular": [], "biological": [], "imaging": [], "other": []
+    },
+    "reference_vitals": {
+        "heart_rate_bpm": None, "blood_pressure_mmhg": None,
+        "spo2_percent": None, "respiratory_rate_bpm": None,
+        "height_cm": None, "weight_kg": None, "bmi": None
+    },
+    "prescriptions": {"medical": None, "physiotherapy": None},
+    "available_documents": [],
+    "physiotherapy_assessment": {
+        "general_condition": [], "pain": [], "dyspnea": [], "respiratory": [],
+        "muscular": [], "joint": [], "neurological": [], "balance": [],
+        "gait": [], "scar": [], "exertion_parameters": [], "exertion_kinetics": []
+    },
+    "incidents": [
+        {"trigger_description": None, "trigger_condition": None,
+         "scripted_reaction": None, "severity": None}
+    ],
+    "symptoms": [], "evaluation_checklist": [], "diagnosis": None,
+    "directives": None, "custom_sections": []
+}
+
 class DocumentExtractionAgent:
     """Agent-based document processor that extracts structured information from medical case files"""
     
@@ -28,6 +78,26 @@ class DocumentExtractionAgent:
         os.makedirs(self.images_dir, exist_ok=True)
         # Initialize state
         self.state = {}
+
+    def _is_physio_case(self):
+        specialty = str(self.state.get("specialty") or "").strip().lower()
+        normalized = specialty.replace('-', '').replace('_', '').replace(' ', '')
+        return specialty in PHYSIO_SPECIALTY_ALIASES or any(
+            alias.replace(' ', '') in normalized for alias in PHYSIO_SPECIALTY_ALIASES
+        )
+
+    def _load_physio_extraction_schema(self):
+        """Load the editable kine schema while retaining a safe code fallback."""
+        template_path = os.path.join(os.path.dirname(__file__), 'response_template.json')
+        try:
+            with open(template_path, 'r', encoding='utf-8') as template_file:
+                template = json.load(template_file)
+            schema = template.get('physio_extraction_schema')
+            if isinstance(schema, dict):
+                return schema
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Unable to load physio extraction schema: %s", exc)
+        return DEFAULT_PHYSIO_EXTRACTION_SCHEMA
     
     def _extract_directives(self, text):
         """Extract directives from text using regex patterns"""
@@ -100,6 +170,10 @@ class DocumentExtractionAgent:
             
         except Exception as e:
             logger.error(f"Error during extraction process: {str(e)}")
+            # Physiotherapy extraction is required to be LLM-based. Returning a
+            # sparse regex fallback here would incorrectly look like success.
+            if self._is_physio_case():
+                raise
             # Set a fallback result if extraction fails
             if not self.state.get("extracted_data"):
                 self.state["extracted_data"] = {
@@ -234,6 +308,7 @@ class DocumentExtractionAgent:
         
         prompt = self._create_extraction_prompt(raw_text)
         raw_llm_response_content = "" # Initialize to store raw LLM output
+        extraction_error = None
 
         try:
             response = self.llm_client.invoke([HumanMessage(content=prompt)])
@@ -253,6 +328,7 @@ class DocumentExtractionAgent:
                     self._finalize_extracted_data(data)
                     return # Success
                 except json.JSONDecodeError as e:
+                    extraction_error = e
                     logger.error(f"Initial JSON parsing error: {str(e)}. Original JSON string part: {json_str[:500]}")
                     logger.info("Attempting to clean and re-parse JSON...")
                     cleaned_json_str = self._clean_json_string(json_str)
@@ -262,24 +338,40 @@ class DocumentExtractionAgent:
                         self._finalize_extracted_data(data)
                         return # Success after cleaning
                     except json.JSONDecodeError as e2:
+                        extraction_error = e2
                         logger.error(f"Failed to parse JSON even after cleaning: {str(e2)}. Cleaned JSON string part: {cleaned_json_str[:500]}")
                         # Log the full raw response if cleaning fails, for deeper inspection
                         logger.error(f"Full problematic raw LLM response was: {raw_llm_response_content}")
             else:
+                extraction_error = ValueError("La réponse du LLM ne contient pas de JSON exploitable")
                 logger.error("Failed to extract any JSON-like structure from LLM response.")
                 logger.error(f"Full raw LLM response was: {raw_llm_response_content}")
 
         except Exception as e:
+            extraction_error = e
             logger.error(f"Error during LLM call or initial processing: {str(e)}")
             if raw_llm_response_content: # Log if we have it
                  logger.error(f"Full raw LLM response during error was: {raw_llm_response_content}")
         
-        # Fallback if LLM extraction fails at any point
+        if self._is_physio_case():
+            raise RuntimeError(
+                "L'extraction Kiné par le LLM a échoué. Vérifiez la clé GROQ_API_KEY, "
+                "le quota du modèle et réessayez."
+            ) from extraction_error
+
+        # Keep the legacy generic OSCE fallback unchanged.
         logger.warning("Falling back to pattern-based extraction due to LLM JSON issues.")
         self._extract_structured_data_with_patterns()
     
     def _finalize_extracted_data(self, data_from_llm):
         """Helper to add images and set state after successful LLM extraction."""
+        if self._is_physio_case():
+            # Keep a stable shape even when the source omits whole sections.
+            for key, default_value in self._load_physio_extraction_schema().items():
+                data_from_llm.setdefault(key, deepcopy(default_value))
+            data_from_llm['specialty'] = self.state.get('specialty') or 'kine'
+            data_from_llm['case_number'] = self.state.get('case_number', 'unknown')
+            data_from_llm['extraction_method'] = 'llm'
         if "images" not in data_from_llm:
             data_from_llm["images"] = []
         # Ensure existing images from file processing are preserved/merged correctly
@@ -295,6 +387,17 @@ class DocumentExtractionAgent:
 
     def _get_default_extracted_data(self):
         """Provides a default structure for extracted_data if extraction fails early."""
+        if self._is_physio_case():
+            data = deepcopy(self._load_physio_extraction_schema())
+            # Example item definitions in the template are not clinical data.
+            for repeatable in ('procedures', 'medications', 'incidents'):
+                data[repeatable] = []
+            data.update({
+                'images': self.state.get('images', []),
+                'specialty': self.state.get('specialty') or 'kine',
+                'case_number': self.state.get('case_number', 'unknown'),
+            })
+            return data
         return {
             'patient_info': {},
             'symptoms': [],
@@ -310,6 +413,42 @@ class DocumentExtractionAgent:
     def _create_extraction_prompt(self, text):
         """Create a detailed prompt for the LLM to extract structured data"""
         case_number = self.state.get("case_number", "unknown")
+
+        if self._is_physio_case():
+            schema = self._load_physio_extraction_schema()
+            schema_json = json.dumps(schema, ensure_ascii=False, indent=2)
+            return f"""
+Vous êtes un expert en extraction de dossiers cardiovasculaires de kinésithérapie.
+Analysez le document du cas {case_number} et retournez UNIQUEMENT un objet JSON
+valide conforme exactement au schéma ci-dessous.
+
+RÈGLES D'EXTRACTION:
+- N'inventez aucune information. Utilisez null, [] ou {{}} lorsqu'une donnée manque.
+- Conservez les valeurs, unités, dates et formulations cliniques du document.
+- Analysez tout le document, y compris les tableaux, sans vous arrêter aux premières pages.
+- Extrayez chaque médicament, examen, constante, mesure, domaine du bilan et incident.
+- Placez dans custom_sections toute information clinique ou pédagogique importante qui
+  ne correspond à aucun autre champ, afin qu'aucune donnée du document ne soit perdue.
+- Classez les antécédents séparément: cardiovasculaires, médicaux, chirurgicaux,
+  allergies, facteurs de risque et habitudes de vie.
+- Une procédure contient son type, sa date et ses complications éventuelles.
+- Une mesure ou un test contient au minimum son nom, sa valeur, son unité et,
+  si présents, sa date, son contexte et son interprétation explicitement écrite.
+- Classez le bilan kinésithérapique par domaine sans déplacer ni déduire de données.
+- Un incident n'est extrait que s'il est décrit. Relevez son déclencheur/condition,
+  la réaction attendue du patient et sa gravité uniquement si elle est précisée.
+- N'ajoutez aucun incident probable ou comportement patient de votre initiative.
+- Gardez evaluation_checklist compatible avec le format existant:
+  description, points, category et completed=false.
+
+SCHÉMA JSON CIBLE:
+{schema_json}
+
+DOCUMENT SOURCE:
+{text}
+
+Répondez uniquement avec le JSON, sans balises Markdown ni commentaire.
+"""
         
         prompt = f"""
         En tant qu'expert médical, analysez ce document de cas OSCE {case_number} et extrayez les informations suivantes dans un format JSON structuré:
@@ -385,6 +524,10 @@ class DocumentExtractionAgent:
         }
         if "directives" in self.state:
             extracted_data['directives'] = self.state["directives"]
+        if self._is_physio_case():
+            physio_data = self._get_default_extracted_data()
+            physio_data.update(extracted_data)
+            extracted_data = physio_data
         
         self.state["extracted_data"] = extracted_data
     

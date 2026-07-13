@@ -1,7 +1,10 @@
 import os
 import tempfile
 import logging
+import csv
+import json
 from datetime import datetime
+from xml.sax.saxutils import escape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -12,6 +15,79 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Frame, BaseDocTemplate, PageTemplate
 
 logger = logging.getLogger(__name__)
+
+
+def _append_kine_evaluation(elements, evaluation_results, styles):
+    """Render the Licence/Master section grid and safety outcome."""
+    normal_style = styles['normal']
+    subtitle_style = styles['subtitle']
+    sections = evaluation_results.get('section_scores', [])
+    level = str(evaluation_results.get('level', 'licence')).capitalize()
+    grid_name = evaluation_results.get('grid_name', '')
+    raw_score = evaluation_results.get('raw_points_earned', evaluation_results.get('points_earned', 0))
+    final_score = evaluation_results.get('points_earned', 0)
+    total = evaluation_results.get('points_total', 20)
+    threshold = evaluation_results.get('validation_threshold', 12)
+    passed = bool(evaluation_results.get('passed', False))
+    has_error = bool(evaluation_results.get('eliminatory_error_triggered', False))
+
+    elements.append(Paragraph(f"<b>Grille {escape(level)} — {escape(str(grid_name))}</b>", subtitle_style))
+    outcome_color = '#1a7f37' if passed else '#b42318'
+    outcome = 'RÉUSSI' if passed else 'NON RÉUSSI'
+    summary = [
+        [Paragraph('<b>Niveau</b>', normal_style), Paragraph(escape(level), normal_style)],
+        [Paragraph('<b>Score brut</b>', normal_style), Paragraph(f'{raw_score}/{total}', normal_style)],
+        [Paragraph('<b>Score final</b>', normal_style), Paragraph(f'{final_score}/{total}', normal_style)],
+        [Paragraph('<b>Seuil de validation</b>', normal_style), Paragraph(f'{threshold}/{total}', normal_style)],
+        [Paragraph('<b>Résultat</b>', normal_style), Paragraph(f"<font color='{outcome_color}'><b>{outcome}</b></font>", normal_style)],
+        [Paragraph('<b>Erreur éliminatoire</b>', normal_style), Paragraph('OUI' if has_error else 'NON', normal_style)],
+    ]
+    summary_table = Table(summary, colWidths=[190, 260])
+    summary_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), .5, colors.lightgrey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.extend([summary_table, Spacer(1, 14)])
+
+    section_data = [[
+        Paragraph('<b>Section</b>', normal_style),
+        Paragraph('<b>Score</b>', normal_style),
+        Paragraph('<b>Justification</b>', normal_style),
+    ]]
+    for section in sections:
+        section_data.append([
+            Paragraph(escape(str(section.get('title') or section.get('criterion') or section.get('id', 'Section'))), normal_style),
+            Paragraph(f"{section.get('points_earned', 0)}/{section.get('points_possible', 0)}", normal_style),
+            Paragraph(escape(str(section.get('justification') or '—')), normal_style),
+        ])
+    if len(section_data) > 1:
+        section_table = Table(section_data, colWidths=[145, 55, 250], repeatRows=1)
+        section_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), .5, colors.lightgrey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
+        ]))
+        elements.extend([section_table, Spacer(1, 14)])
+
+    errors = evaluation_results.get('eliminatory_errors', [])
+    if errors:
+        elements.append(Paragraph("<font color='#b42318'><b>Erreurs éliminatoires détectées</b></font>", subtitle_style))
+        error_data = [[Paragraph('<b>Règle</b>', normal_style), Paragraph('<b>Justification / preuve</b>', normal_style)]]
+        for error in errors:
+            details = ' — '.join(filter(None, [str(error.get('justification') or ''), str(error.get('evidence') or '')]))
+            error_data.append([
+                Paragraph(escape(str(error.get('description') or error.get('id', 'Erreur'))), normal_style),
+                Paragraph(escape(details or 'Détectée dans la transcription'), normal_style),
+            ])
+        error_table = Table(error_data, colWidths=[190, 260], repeatRows=1)
+        error_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), .5, colors.HexColor('#f1a8a3')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#fee4e2')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        elements.extend([error_table, Spacer(1, 14)])
 
 
 
@@ -309,6 +385,29 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
             
             elements.append(feedback_table)
             elements.append(Spacer(1, 15))
+
+        if evaluation_results.get('teacher_comments') or evaluation_results.get('supplementary_score') is not None:
+            review_lines = []
+            if evaluation_results.get('supplementary_score') is not None:
+                review_lines.append(Paragraph(
+                    f"<b>Note complémentaire :</b> {evaluation_results['supplementary_score']}/20",
+                    normal_style,
+                ))
+            if evaluation_results.get('teacher_comments'):
+                review_lines.append(Paragraph(
+                    f"<b>Commentaires :</b> {evaluation_results['teacher_comments']}",
+                    normal_style,
+                ))
+            review_table = Table(
+                [[Paragraph("<b>Évaluation complémentaire de l’enseignant</b>", subtitle_style)]]
+                + [[line] for line in review_lines], colWidths=[450],
+            )
+            review_table.setStyle(TableStyle([
+                ('BOX', (0, 0), (-1, -1), 1, colors.lightgrey),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
+            ]))
+            elements.append(review_table)
+            elements.append(Spacer(1, 15))
         
         # STEP 5: Process conversation messages - NOW SAFE!
         elements.append(Paragraph("Dialogue de la consultation", subtitle_style))
@@ -370,8 +469,16 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         elements.append(Paragraph("Évaluation détaillée", title_style))
         elements.append(Spacer(1, 10))
         
-        # Add checklist items with categories
-        if evaluation_results.get('checklist'):
+        # Kine uses its fixed 7/8-section grid; generic OSCE retains the
+        # original checklist rendering below.
+        if evaluation_results.get('specialty') == 'kine':
+            _append_kine_evaluation(elements, evaluation_results, {
+                'normal': normal_style,
+                'subtitle': subtitle_style,
+            })
+
+        # Add generic checklist items with categories
+        elif evaluation_results.get('checklist'):
             # Group by category if available
             categories = {}
             has_categories = False
@@ -883,3 +990,105 @@ def create_competition_pdf_report(competition_summary, conversations_data):
     except Exception as e:
         logger.error(f"Error creating competition PDF report: {str(e)}", exc_info=True)
         return None
+
+
+KINE_DASHBOARD_EXPORT_COLUMNS = (
+    ('student_name', 'Student'),
+    ('student_code', 'Student code'),
+    ('student_level', 'Level'),
+    ('group', 'Group'),
+    ('folder_name', 'Pathology folder'),
+    ('case_number', 'Case'),
+    ('mode', 'Mode'),
+    ('started_at', 'Started at'),
+    ('completed_at', 'Completed at'),
+    ('duration_minutes', 'Duration (min)'),
+    ('phase_timings', 'Phase timings'),
+    ('raw_score', 'Raw score /20'),
+    ('score', 'Final score /20'),
+    ('passed', 'Passed'),
+    ('eliminatory_error_triggered', 'Eliminatory error'),
+    ('eliminatory_errors', 'Eliminatory error details'),
+    ('status', 'Status'),
+)
+
+
+def _row_value(row, key):
+    value = row.get(key) if isinstance(row, dict) else getattr(row, key, None)
+    if isinstance(value, datetime):
+        return value.isoformat(sep=' ', timespec='seconds')
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    if value is None:
+        return ''
+    return value
+
+
+def _safe_spreadsheet_value(value):
+    """Prevent user-controlled text from becoming a spreadsheet formula."""
+    if isinstance(value, str) and value.startswith(('=', '+', '-', '@')):
+        return "'" + value
+    return value
+
+
+def _export_path(prefix, extension, output_path=None):
+    if output_path:
+        return os.path.abspath(os.fspath(output_path))
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    return os.path.join(tempfile.gettempdir(), f'{prefix}_{timestamp}.{extension}')
+
+
+def export_kine_dashboard_csv(rows, output_path=None, columns=None):
+    """Export teacher-dashboard rows as UTF-8 CSV and return its full path."""
+    selected_columns = tuple(columns or KINE_DASHBOARD_EXPORT_COLUMNS)
+    filepath = _export_path('kine_dashboard', 'csv', output_path)
+    with open(filepath, 'w', encoding='utf-8-sig', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow([label for _, label in selected_columns])
+        for row in rows or []:
+            writer.writerow([
+                _safe_spreadsheet_value(_row_value(row, key))
+                for key, _ in selected_columns
+            ])
+    return filepath
+
+
+def export_kine_dashboard_excel(rows, output_path=None, columns=None):
+    """Export teacher-dashboard rows as styled XLSX and return its full path."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError as exc:
+        raise RuntimeError('Excel export requires openpyxl') from exc
+
+    selected_columns = tuple(columns or KINE_DASHBOARD_EXPORT_COLUMNS)
+    filepath = _export_path('kine_dashboard', 'xlsx', output_path)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = 'Kine simulations'
+    worksheet.freeze_panes = 'A2'
+    worksheet.auto_filter.ref = f'A1:{get_column_letter(len(selected_columns))}1'
+
+    header_fill = PatternFill('solid', fgColor='075985')
+    for column_index, (_, label) in enumerate(selected_columns, start=1):
+        cell = worksheet.cell(row=1, column=column_index, value=label)
+        cell.font = Font(color='FFFFFF', bold=True)
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+
+    for row_index, row in enumerate(rows or [], start=2):
+        for column_index, (key, _) in enumerate(selected_columns, start=1):
+            value = _safe_spreadsheet_value(_row_value(row, key))
+            worksheet.cell(row=row_index, column=column_index, value=value)
+
+    for column_index, (_, label) in enumerate(selected_columns, start=1):
+        values = [str(label)] + [
+            str(worksheet.cell(row=row_index, column=column_index).value or '')
+            for row_index in range(2, worksheet.max_row + 1)
+        ]
+        worksheet.column_dimensions[get_column_letter(column_index)].width = min(
+            55, max(12, max(len(value) for value in values) + 2)
+        )
+    workbook.save(filepath)
+    return filepath

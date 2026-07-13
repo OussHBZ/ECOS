@@ -7,6 +7,7 @@ from functools import wraps
 import logging
 
 logger = logging.getLogger(__name__)
+ECOS_TYPES = {'standard', 'kine'}
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -21,9 +22,36 @@ def is_ajax_request():
         request.accept_mimetypes.best == 'application/json'
     )
 
+
+def account_ecos_type(user):
+    value = str(getattr(user, 'ecos_type', None) or 'standard').strip().lower()
+    return value if value in ECOS_TYPES else 'standard'
+
+
+def _requested_ecos_type():
+    return 'kine' if request.path == '/kine' or request.path.startswith('/kine/') else 'standard'
+
+
+def _ecos_access_denied(role, assigned_type):
+    label = 'ECOS Kiné' if assigned_type == 'kine' else 'ECOS standard / Sondar'
+    message = f"Ce compte est affecté exclusivement à {label}."
+    if is_ajax_request():
+        return jsonify({
+            'error': message, 'ecos_access_denied': True,
+            'redirect': url_for('auth.login', workspace=assigned_type, role=role),
+        }), 403
+    flash(message, 'error')
+    return redirect(url_for('auth.login', workspace=assigned_type, role=role))
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Unified login page for students, teachers, and administrators"""
+    workspace = (request.form.get('workspace') or request.args.get('workspace') or 'standard').strip().lower()
+    workspace = 'kine' if workspace == 'kine' else 'standard'
+
+    def login_redirect(role=None):
+        return redirect(url_for('auth.login', workspace=workspace, role=role))
+
     if request.method == 'POST':
         login_type = request.form.get('login_type')
 
@@ -34,23 +62,27 @@ def login():
             is_valid, result = Student.validate_apogee_number(student_code)
             if not is_valid:
                 flash(result, 'error')
-                return redirect(url_for('auth.login'))
+                return login_redirect('student')
 
             if not password:
                 flash('Le mot de passe est obligatoire.', 'error')
-                return redirect(url_for('auth.login'))
+                return login_redirect('student')
 
             student = Student.query.filter_by(student_code=result).first()
 
             if student and student.check_password(password):
+                assigned_type = account_ecos_type(student)
+                if workspace != assigned_type:
+                    return _ecos_access_denied('student', assigned_type)
                 student.last_login = datetime.utcnow()
                 db.session.commit()
                 login_user(student)
                 session['user_type'] = 'student'
-                return redirect(url_for('student.student_interface'))
+                session['workspace'] = assigned_type
+                return redirect(url_for('kine.student_kine_home' if assigned_type == 'kine' else 'student.student_interface'))
             else:
                 flash('Numéro d\'Apogée ou mot de passe incorrect.', 'error')
-                return redirect(url_for('auth.login'))
+                return login_redirect('student')
 
         elif login_type == 'teacher':
             teacher_email = request.form.get('teacher_email', '').strip().lower()
@@ -58,21 +90,26 @@ def login():
 
             if not teacher_email or not password:
                 flash('Email et mot de passe obligatoires.', 'error')
-                return redirect(url_for('auth.login'))
+                return login_redirect('teacher')
 
             teacher = Teacher.query.filter_by(email=teacher_email).first()
 
             if teacher and teacher.check_password(password):
+                assigned_type = account_ecos_type(teacher)
+                if workspace != assigned_type:
+                    return _ecos_access_denied('teacher', assigned_type)
                 teacher.last_login = datetime.utcnow()
                 db.session.commit()
+                login_user(teacher)
                 session['user_type'] = 'teacher'
                 session['teacher_authenticated'] = True
                 session['teacher_id'] = teacher.id
                 session['teacher_name'] = teacher.name
-                return redirect(url_for('teacher.teacher_interface'))
+                session['workspace'] = assigned_type
+                return redirect(url_for('kine.teacher_kine_home' if assigned_type == 'kine' else 'teacher.teacher_interface'))
             else:
                 flash('Email ou mot de passe incorrect.', 'error')
-                return redirect(url_for('auth.login'))
+                return login_redirect('teacher')
 
         elif login_type == 'admin':
             access_code = request.form.get('access_code', '').strip()
@@ -92,9 +129,9 @@ def login():
                 return redirect(url_for('admin.admin_interface'))
             else:
                 flash('Code d\'accès administrateur incorrect.', 'error')
-                return redirect(url_for('auth.login'))
+                return login_redirect('admin')
 
-    return render_template('login.html')
+    return render_template('login.html', workspace=workspace)
 
 @auth_bp.route('/logout')
 def logout():
@@ -118,6 +155,9 @@ def student_required(f):
             else:
                 flash('Accès réservé aux étudiants.', 'error')
                 return redirect(url_for('auth.login'))
+        assigned_type = account_ecos_type(current_user)
+        if assigned_type != _requested_ecos_type():
+            return _ecos_access_denied('student', assigned_type)
         return f(*args, **kwargs)
     return decorated_function
 
@@ -126,7 +166,8 @@ def teacher_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Check if user is logged in as teacher
-        if session.get('user_type') != 'teacher' or not session.get('teacher_authenticated'):
+        if (not current_user.is_authenticated or session.get('user_type') != 'teacher'
+                or not session.get('teacher_authenticated')):
             if is_ajax_request():
                 logger.warning(f"Unauthorized teacher AJAX request to {request.path}")
                 return jsonify({
@@ -137,6 +178,9 @@ def teacher_required(f):
             else:
                 flash('Accès réservé aux enseignants.', 'error')
                 return redirect(url_for('auth.login'))
+        assigned_type = account_ecos_type(current_user)
+        if assigned_type != _requested_ecos_type():
+            return _ecos_access_denied('teacher', assigned_type)
         return f(*args, **kwargs)
     return decorated_function
 

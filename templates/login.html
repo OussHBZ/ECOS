@@ -30,6 +30,7 @@
     <div class="container">
         <div class="login-container">
             <h1 class="page-title">Connexion au système</h1>
+            {% if workspace == 'kine' %}<div class="login-workspace-badge">✚ Connexion à l'espace ECOS Kiné</div>{% endif %}
             
             <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -54,6 +55,7 @@
             <!-- Student Login Form -->
             <form method="POST" id="student-form" class="login-form active">
                 <input type="hidden" name="login_type" value="student">
+                <input type="hidden" name="workspace" value="{{ workspace|default('standard') }}">
 
                 <div class="form-group">
                     <label for="student_code">Numéro d'Apogée :</label>
@@ -78,6 +80,7 @@
             <!-- Teacher Login Form -->
             <form method="POST" id="teacher-form" class="login-form">
                 <input type="hidden" name="login_type" value="teacher">
+                <input type="hidden" name="workspace" value="{{ workspace|default('standard') }}">
 
                 <div class="form-group">
                     <label for="teacher_email">Email :</label>
@@ -101,6 +104,7 @@
             <!-- Administrator Login Form -->
             <form method="POST" id="admin-form" class="login-form">
                 <input type="hidden" name="login_type" value="admin">
+                <input type="hidden" name="workspace" value="{{ workspace|default('standard') }}">
                 
                 <div class="form-group">
                     <label for="admin_access_code">Code d'accès administrateur :</label>

@@ -21,3 +21,6 @@ flask_session_data/
 
 # Application logs
 logs/
+
+.venv/
+.pytest_cache/

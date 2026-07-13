@@ -11,11 +11,32 @@ from models import (
     db, Student, Teacher, AdminAccess, OSCESession, SessionParticipant,
     SessionStationAssignment, PatientCase, StudentPerformance,
     CompetitionSession, CompetitionParticipant, CompetitionStationBank,
-    StudentCompetitionSession, StudentStationAssignment
+    StudentCompetitionSession, StudentStationAssignment, SimulationSession
 )
 
 admin_bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
+ECOS_TYPES = {'standard', 'kine'}
+
+
+def _validated_ecos_type(value):
+    ecos_type = str(value or '').strip().lower()
+    if ecos_type not in ECOS_TYPES:
+        raise ValueError("Le type d’ECOS doit être 'standard' ou 'kine'.")
+    return ecos_type
+
+
+def _kine_score_percentage(simulation):
+    result = simulation.evaluation_results or {}
+    total = float(result.get('points_total') or 20)
+    return round(float(result.get('points_earned') or 0) / total * 100, 1) if total else 0
+
+
+def _kine_duration(simulation):
+    if not simulation.started_at or not simulation.completed_at:
+        return 'N/A'
+    seconds = max(0, int((simulation.completed_at - simulation.started_at).total_seconds()) - int(simulation.total_paused_seconds or 0))
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 @admin_bp.route('/')
 @admin_required
@@ -31,11 +52,16 @@ def admin_overview():
         # Get total counts
         total_stations = PatientCase.query.count()
         total_students = Student.query.count()
-        total_consultations = StudentPerformance.query.count()
+        completed_kine = SimulationSession.query.filter_by(status='completed').filter(
+            SimulationSession.evaluation_results.isnot(None)
+        )
+        total_consultations = StudentPerformance.query.count() + completed_kine.count()
         
         # Get active sessions (scheduled or active status)
         active_sessions = OSCESession.query.filter(
             OSCESession.status.in_(['scheduled', 'active'])
+        ).count() + SimulationSession.query.filter(
+            SimulationSession.status.in_(['in_progress', 'paused'])
         ).count()
         
         # Get recent activity (last 10 performances)
@@ -48,6 +74,7 @@ def admin_overview():
         recent_activity = []
         for perf, student, case in recent_performances:
             recent_activity.append({
+                '_sort_date': perf.completed_at,
                 'date': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
                 'student_name': student.name,
                 'student_code': student.student_code,
@@ -55,6 +82,20 @@ def admin_overview():
                 'score': perf.percentage_score,
                 'status': perf.get_performance_status()
             })
+        for simulation in completed_kine.order_by(SimulationSession.completed_at.desc()).limit(10).all():
+            result = simulation.evaluation_results or {}
+            recent_activity.append({
+                '_sort_date': simulation.completed_at,
+                'date': simulation.completed_at.strftime('%d/%m/%Y %H:%M'),
+                'student_name': simulation.student.name,
+                'student_code': simulation.student.student_code,
+                'case_number': simulation.clinical_case.case_number,
+                'score': _kine_score_percentage(simulation),
+                'status': 'Réussi' if result.get('passed') else 'Non réussi',
+                'specialty': 'Kiné',
+            })
+        recent_activity.sort(key=lambda item: item['_sort_date'] or datetime.min, reverse=True)
+        recent_activity = [{key: value for key, value in item.items() if key != '_sort_date'} for item in recent_activity[:10]]
         
         return jsonify({
             'total_stations': total_stations,
@@ -523,6 +564,57 @@ def admin_stations():
         logger.error(f"Error getting admin stations: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+@admin_bp.route('/stations/<case_number>/details')
+@admin_required
+def admin_station_details(case_number):
+    """Return a unified, read-only detail payload for generic and Kine cases."""
+    case = PatientCase.query.filter_by(case_number=case_number).first_or_404()
+    is_kine = str(case.specialty or '').strip().lower() == 'kine'
+    if not is_kine:
+        return jsonify({
+            'case_number': case.case_number, 'specialty': case.specialty,
+            'consultation_time': case.consultation_time,
+            'diagnosis': case.diagnosis, 'patient_info': case.patient_info,
+            'symptoms': case.symptoms,
+            'evaluation_checklist': case.evaluation_checklist,
+            'is_kine': False,
+        })
+
+    record = case.patient_record
+    return jsonify({
+        'case_number': case.case_number, 'title': case.title,
+        'specialty': 'Kinésithérapie', 'is_kine': True,
+        'level': case.level, 'mode_availability': case.mode_availability,
+        'diagnosis': case.diagnosis, 'emotional_state': case.emotional_state,
+        'pathology_folder': case.pathology_folder.name if case.pathology_folder else None,
+        'pedagogical_objectives': case.pedagogical_objectives,
+        'patient_info': record.identity if record else {},
+        'medical_context': record.medical_context if record else {},
+        'medical_history': record.medical_history if record else {},
+        'comorbidities': record.comorbidities if record else [],
+        'tests': record.tests if record else {},
+        'reference_vitals': record.reference_vitals if record else {},
+        'prescriptions': {
+            'medical': record.medical_prescription if record else None,
+            'physiotherapy': record.physiotherapy_prescription if record else None,
+        },
+        'interventions': [{
+            'type': item.intervention_type,
+            'date': item.intervention_date.isoformat() if item.intervention_date else None,
+            'complications': item.complications,
+        } for item in (record.interventions if record else [])],
+        'medications': [{
+            'classe': item.therapeutic_class, 'DCI': item.inn,
+            'effet': item.effect, 'précautions': item.physiotherapy_precautions,
+        } for item in (record.medications if record else [])],
+        'incidents': [{
+            'description': item.trigger_description,
+            'condition': item.trigger_condition,
+            'réaction': item.scripted_reaction, 'gravité': item.severity,
+        } for item in case.incidents],
+    })
+
 @admin_bp.route('/students')
 @admin_required
 def admin_students():
@@ -550,8 +642,14 @@ def admin_students():
         students_with_scores = 0
         
         for student in students:
-            total_consultations = student.get_total_workouts()
-            avg_score = student.get_average_score()
+            generic_performances = StudentPerformance.query.filter_by(student_id=student.id).all() if student.ecos_type == 'standard' else []
+            kine_performances = SimulationSession.query.filter_by(student_id=student.id, status='completed').filter(
+                SimulationSession.evaluation_results.isnot(None)
+            ).all() if student.ecos_type == 'kine' else []
+            scores = [float(item.percentage_score or 0) for item in generic_performances]
+            scores.extend(_kine_score_percentage(item) for item in kine_performances)
+            total_consultations = len(scores)
+            avg_score = round(sum(scores) / len(scores), 1) if scores else 0
             
             if total_consultations > 0:
                 active_count += 1
@@ -564,6 +662,7 @@ def admin_students():
                 'id': student.id,
                 'student_code': student.student_code,
                 'name': student.name,
+                'ecos_type': student.ecos_type or 'standard',
                 'created_at': student.created_at.strftime('%d/%m/%Y'),
                 'last_login': student.last_login.strftime('%d/%m/%Y %H:%M') if student.last_login else None,
                 'total_consultations': total_consultations,
@@ -592,7 +691,7 @@ def admin_student_details(student_id):
         
         # Get student performances
         performances = StudentPerformance.query.filter_by(student_id=student_id)\
-            .order_by(StudentPerformance.completed_at.desc()).all()
+            .order_by(StudentPerformance.completed_at.desc()).all() if student.ecos_type == 'standard' else []
         
         performance_data = []
         for perf in performances:
@@ -602,14 +701,36 @@ def admin_student_details(student_id):
                 'case_number': perf.case_number,
                 'specialty': case.specialty if case else 'Unknown',
                 'score': perf.percentage_score,
+                'status': perf.get_performance_status(),
                 'completed_at': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
-                'duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A"
+                'duration': f"{perf.consultation_duration // 60}:{perf.consultation_duration % 60:02d}" if perf.consultation_duration else "N/A",
+                'report_url': f'/admin/download_student_report/{perf.id}',
             })
+        kine_performances = SimulationSession.query.filter_by(student_id=student_id, status='completed').filter(
+            SimulationSession.evaluation_results.isnot(None)
+        ).order_by(SimulationSession.completed_at.desc()).all() if student.ecos_type == 'kine' else []
+        for simulation in kine_performances:
+            result = simulation.evaluation_results or {}
+            performance_data.append({
+                'id': f'kine-{simulation.id}',
+                'case_number': simulation.clinical_case.case_number,
+                'specialty': 'Kinésithérapie',
+                'score': _kine_score_percentage(simulation),
+                'status': 'Réussi' if result.get('passed') else 'Non réussi',
+                'completed_at': simulation.completed_at.strftime('%d/%m/%Y %H:%M'),
+                'duration': _kine_duration(simulation),
+                'report_url': f'/kine/dashboard/simulation/{simulation.id}/pdf',
+            })
+        performance_data.sort(key=lambda item: datetime.strptime(item['completed_at'], '%d/%m/%Y %H:%M'), reverse=True)
+        all_case_numbers = {item.case_number for item in performances}
+        all_case_numbers.update(item.clinical_case.case_number for item in kine_performances)
+        all_scores = [float(item.percentage_score or 0) for item in performances]
+        all_scores.extend(_kine_score_percentage(item) for item in kine_performances)
         
         return jsonify({
-            'total_consultations': student.get_total_workouts(),
-            'unique_stations': student.get_unique_stations_played(),
-            'average_score': student.get_average_score(),
+            'total_consultations': len(performance_data),
+            'unique_stations': len(all_case_numbers),
+            'average_score': round(sum(all_scores) / len(all_scores), 1) if all_scores else 0,
             'performances': performance_data
         })
         
@@ -662,7 +783,7 @@ def admin_sessions():
 def admin_available_students():
     """Get list of students available for session assignment"""
     try:
-        students = Student.query.order_by(Student.name).all()
+        students = Student.query.filter_by(ecos_type='standard').order_by(Student.name).all()
         
         student_data = []
         for student in students:
@@ -750,7 +871,7 @@ def admin_create_session():
         
         # Validate that participant IDs exist
         if participant_ids:
-            existing_students = Student.query.filter(Student.id.in_(participant_ids)).all()
+            existing_students = Student.query.filter(Student.id.in_(participant_ids), Student.ecos_type == 'standard').all()
             existing_student_ids = [s.id for s in existing_students]
             invalid_student_ids = [pid for pid in participant_ids if pid not in existing_student_ids]
             
@@ -1048,7 +1169,7 @@ def admin_create_competition_session():
         
         # Validate that participant IDs exist
         if participant_ids:
-            existing_students = Student.query.filter(Student.id.in_(participant_ids)).all()
+            existing_students = Student.query.filter(Student.id.in_(participant_ids), Student.ecos_type == 'standard').all()
             existing_student_ids = [s.id for s in existing_students]
             invalid_student_ids = [pid for pid in participant_ids if pid not in existing_student_ids]
             
@@ -1389,6 +1510,7 @@ def add_student():
         student_code = (data.get('student_code') or '').strip()
         name = (data.get('name') or '').strip()
         password = (data.get('password') or '').strip()
+        ecos_type = _validated_ecos_type(data.get('ecos_type'))
 
         is_valid, result = Student.validate_apogee_number(student_code)
         if not is_valid:
@@ -1401,12 +1523,15 @@ def add_student():
         if Student.query.filter_by(student_code=result).first():
             return jsonify({'success': False, 'error': 'Ce numéro d\'Apogée est déjà utilisé.'}), 400
 
-        student = Student(student_code=result, name=name)
+        student = Student(student_code=result, name=name, ecos_type=ecos_type)
         student.set_password(password)
         db.session.add(student)
         db.session.commit()
 
         return jsonify({'success': True, 'message': f'Étudiant {name} créé avec succès.', 'id': student.id})
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Error adding student: {str(e)}")
         db.session.rollback()
@@ -1478,6 +1603,7 @@ def admin_teachers():
                 'id': t.id,
                 'email': t.email or '',
                 'name': t.name,
+                'ecos_type': t.ecos_type or 'standard',
                 'created_at': t.created_at.strftime('%d/%m/%Y') if t.created_at else '-',
                 'last_login': t.last_login.strftime('%d/%m/%Y %H:%M') if t.last_login else 'Jamais',
             })
@@ -1496,6 +1622,7 @@ def add_teacher():
         email = (data.get('email') or '').strip().lower()
         name = (data.get('name') or '').strip()
         password = (data.get('password') or '').strip()
+        ecos_type = _validated_ecos_type(data.get('ecos_type'))
 
         if not email:
             return jsonify({'success': False, 'error': 'L\'email est obligatoire.'}), 400
@@ -1508,16 +1635,33 @@ def add_teacher():
         if Teacher.query.filter_by(email=email).first():
             return jsonify({'success': False, 'error': 'Cet email est déjà utilisé.'}), 400
 
-        teacher = Teacher(email=email, login=email, name=name)
+        teacher = Teacher(email=email, login=email, name=name, ecos_type=ecos_type)
         teacher.set_password(password)
         db.session.add(teacher)
         db.session.commit()
 
         return jsonify({'success': True, 'message': f'Enseignant {name} créé avec succès.', 'id': teacher.id})
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Error adding teacher: {str(e)}")
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/teachers/<int:teacher_id>/ecos-type', methods=['PUT', 'PATCH'])
+@admin_required
+def update_teacher_ecos_type(teacher_id):
+    try:
+        teacher = Teacher.query.get_or_404(teacher_id)
+        teacher.ecos_type = _validated_ecos_type((request.get_json(silent=True) or {}).get('ecos_type'))
+        db.session.commit()
+        return jsonify({'success': True, 'id': teacher.id, 'ecos_type': teacher.ecos_type,
+                        'message': 'Affectation ECOS de l’enseignant mise à jour.'})
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 400
 
 
 @admin_bp.route('/teachers/<int:teacher_id>/reset-password', methods=['POST'])
@@ -1607,6 +1751,7 @@ def import_users():
                 apogee = (row.get('apogee') or row.get('apogée') or row.get('student_code') or row.get('code') or '').strip()
                 name = (row.get('name') or row.get('nom') or row.get('prenom') or '').strip()
                 password = (row.get('password') or row.get('mot de passe') or row.get('mdp') or '').strip()
+                ecos_type = _validated_ecos_type(row.get('ecos_type') or row.get('type_ecos') or 'standard')
 
                 if not apogee or not name or not password:
                     errors.append(f'Ligne {i}: données incomplètes (apogee, name, password requis).')
@@ -1621,7 +1766,7 @@ def import_users():
                     skipped.append(f'Ligne {i}: Apogée {result} déjà existant.')
                     continue
 
-                student = Student(student_code=result, name=name)
+                student = Student(student_code=result, name=name, ecos_type=ecos_type)
                 student.set_password(password)
                 db.session.add(student)
                 created.append(name)
@@ -1631,6 +1776,7 @@ def import_users():
                 email = (row.get('email') or row.get('mail') or row.get('login') or '').strip().lower()
                 name = (row.get('name') or row.get('nom') or '').strip()
                 password = (row.get('password') or row.get('mot de passe') or row.get('mdp') or '').strip()
+                ecos_type = _validated_ecos_type(row.get('ecos_type') or row.get('type_ecos') or 'standard')
 
                 if not email or not name or not password:
                     errors.append(f'Ligne {i}: données incomplètes (email, name, password requis).')
@@ -1640,7 +1786,7 @@ def import_users():
                     skipped.append(f'Ligne {i}: Email {email} déjà existant.')
                     continue
 
-                teacher = Teacher(email=email, login=email, name=name)
+                teacher = Teacher(email=email, login=email, name=name, ecos_type=ecos_type)
                 teacher.set_password(password)
                 db.session.add(teacher)
                 created.append(name)
@@ -1660,3 +1806,17 @@ def import_users():
         logger.error(f"Error importing users: {str(e)}")
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/students/<int:student_id>/ecos-type', methods=['PUT', 'PATCH'])
+@admin_required
+def update_student_ecos_type(student_id):
+    try:
+        student = Student.query.get_or_404(student_id)
+        student.ecos_type = _validated_ecos_type((request.get_json(silent=True) or {}).get('ecos_type'))
+        db.session.commit()
+        return jsonify({'success': True, 'id': student.id, 'ecos_type': student.ecos_type,
+                        'message': 'Affectation ECOS de l’étudiant mise à jour.'})
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 400

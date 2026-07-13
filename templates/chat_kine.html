@@ -1,0 +1,48 @@
+{% extends "kine_base.html" %}
+{% block title %}Simulation {{ clinical_case.case_number }} — ECOS Kiné{% endblock %}
+{% block content %}
+<div class="kine-chat-page" data-kine-chat
+     data-message-url="{{ message_url }}" data-test-url="{{ test_url }}"
+     data-pause-url="{{ pause_url }}" data-resume-url="{{ resume_url }}"
+     data-complete-url="{{ complete_url }}" data-mode="{{ simulation.mode }}"
+     data-status="{{ simulation.status }}" data-deadline="{{ deadline|default('') }}">
+    <div class="kine-page-heading kine-chat-heading">
+        <div><span class="kine-eyebrow">{{ simulation.mode|capitalize }} · {{ clinical_case.case_number }}</span><h1>Consultation kinésithérapique</h1></div>
+        <div class="kine-actions">
+            <a class="btn btn-secondary" href="{{ record_url }}">Dossier patient</a>
+            <a class="btn btn-secondary" href="{{ timeline_url }}">Chronologie</a>
+            {% if simulation.mode == 'exam' %}<div class="kine-exam-clock" data-exam-clock><small>Temps restant</small><strong>--:--</strong></div>{% endif %}
+            {% if simulation.mode == 'training' %}<button class="btn btn-secondary" type="button" data-pause-toggle>{{ 'Reprendre' if simulation.status == 'paused' else 'Pause' }}</button>{% endif %}
+            <button class="btn btn-primary" type="button" data-complete>Terminer et évaluer</button>
+        </div>
+    </div>
+    {% include '_progression_tracker.html' %}
+    <div class="kine-chat-layout">
+        <aside class="kine-card kine-chat-side"><h2>Consignes</h2><p>{{ clinical_case.directives or 'Menez la consultation complète en respectant les phases.' }}</p><h3>État</h3><span class="kine-badge" data-session-status>{{ simulation.status }}</span></aside>
+        <section class="kine-card kine-chat-panel">
+            <div class="kine-chat-messages" data-chat-messages aria-live="polite">
+                {% for message in conversation %}<article class="kine-message kine-message--{{ 'student' if message.role == 'human' else 'patient' }}"><strong>{{ 'Étudiant' if message.role == 'human' else 'Patient' }}</strong><p>{{ message.content }}</p></article>{% endfor %}
+            </div>
+            <form class="kine-chat-input" data-chat-form><input name="message" autocomplete="off" placeholder="Votre message au patient…" {% if simulation.status != 'in_progress' %}disabled{% endif %}><button class="btn btn-primary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Envoyer</button></form>
+            <form class="kine-test-input" data-test-form><input name="test" placeholder="Annoncer un test (ex. SpO2, TUG, 6MWT)…" {% if simulation.status != 'in_progress' %}disabled{% endif %}><button class="btn btn-secondary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Demander le résultat</button></form>
+        </section>
+    </div>
+    <section class="kine-card kine-evaluation-panel{% if not evaluation %} hidden{% endif %}" data-evaluation-panel>
+        <h2>Évaluation finale</h2><div data-evaluation-content>{% if evaluation %}
+            <p><strong>{{ evaluation.points_earned }}/20 — {{ 'Réussi' if evaluation.passed else 'Non réussi' }}</strong></p>
+            {% if evaluation.eliminatory_error_triggered %}<div class="kine-evaluation-errors"><strong>Erreur(s) éliminatoire(s)</strong><ul>{% for item in evaluation.eliminatory_errors or [] %}<li>{{ item.description or item.justification }}</li>{% endfor %}</ul></div>{% endif %}
+            <div class="kine-evaluation-sections">{% for item in evaluation.section_scores or [] %}<article class="kine-evaluation-section"><header><h3>{{ item.title or item.criterion }}</h3><strong>{{ item.points_earned }}/{{ item.points_possible }} points</strong></header><p>{{ item.justification or 'Aucune justification disponible.' }}</p></article>{% endfor %}</div>
+            {% if evaluation.feedback %}<p>{{ evaluation.feedback }}</p>{% endif %}
+        {% endif %}</div>
+    </section>
+    {% if simulation.teacher_comments or simulation.supplementary_score is not none %}
+    <section class="kine-card" id="feedback-enseignant">
+        <h2>Feedback de l’enseignant</h2>
+        {% if simulation.reviewed_at %}<p><small>Publié le <time data-kine-local-time datetime="{{ simulation.reviewed_at.isoformat() }}Z">{{ simulation.reviewed_at }} UTC</time></small></p>{% endif %}
+        {% if simulation.supplementary_score is not none %}<p><strong>Note complémentaire : {{ simulation.supplementary_score }}/20</strong></p>{% endif %}
+        {% if simulation.teacher_comments %}<div class="kine-list-item"><strong>Commentaire personnalisé</strong><p>{{ simulation.teacher_comments }}</p></div>{% endif %}
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/kine-chat.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}

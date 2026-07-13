@@ -9,6 +9,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon-16x16.png') }}">
     <link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='images/favicon-192x192.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/kine.css') }}?v={{ app_version }}">
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 </head>
 <body>
@@ -25,10 +26,11 @@
                     </div>
                 </div>
                 <div class="header-actions">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
                     <div class="user-info">
                         <div class="user-name">Bienvenue, {{ student_name }}</div>
                     </div>
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Déconnexion</a>
+                    <a href="{{ url_for('auth.logout') }}" class="btn logout-button">Déconnexion</a>
                 </div>
             </div>
         </div>
@@ -107,12 +109,16 @@
                 <!-- Top bar: title + timer + end button -->
                 <div class="chat-topbar">
                     <h2 id="current-case-title" class="chat-topbar-title">Cas en cours</h2>
-                    <div class="chat-topbar-timer">
+                    <div class="chat-topbar-timer{% if kine_session|default(false) %} kine-chat-timer{% if simulation_mode|default('training') != 'exam' %} hidden{% endif %}{% endif %}">
                         <span class="timer-label">Temps restant</span>
                         <span id="timer" class="timer">10:00</span>
                     </div>
                     <button id="end-chat" class="btn end-button">&#9632; Terminer la consultation</button>
                 </div>
+
+                {% if kine_session|default(false) %}
+                    {% include '_progression_tracker.html' %}
+                {% endif %}
 
                 <!-- Body: left panel + chat area -->
                 <div class="chat-body">
@@ -426,5 +432,6 @@
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/student.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/kine-components.js') }}?v={{ app_version }}"></script>
 </body>
 </html>

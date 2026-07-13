@@ -39,12 +39,27 @@
             </p>
         </div>
 
+        <section class="workspace-selection" aria-labelledby="workspace-title">
+            <h3 id="workspace-title" class="page-title">Choisissez votre espace ECOS</h3>
+            <div class="workspace-buttons">
+                <a href="#standard-profiles" class="workspace-card workspace-card--standard">
+                    <span class="workspace-card-icon" aria-hidden="true">🩺</span>
+                    <div><strong>ECOS Standard</strong><p>Consultations médicales et stations ECOS générales</p></div>
+                </a>
+                <a href="{{ url_for('auth.login', workspace='kine') }}" class="workspace-card workspace-card--kine">
+                    <span class="workspace-card-icon" aria-hidden="true">✚</span>
+                    <div><strong>ECOS Kiné</strong><p>Simulation spécialisée en kinésithérapie cardiovasculaire</p></div>
+                    <span class="workspace-card-arrow" aria-hidden="true">→</span>
+                </a>
+            </div>
+        </section>
+
         <!-- Profile cards -->
-        <div class="role-selection">
-            <h3 class="page-title">Sélectionnez votre profil</h3>
+        <div class="role-selection" id="standard-profiles">
+            <h3 class="page-title">ECOS Standard — sélectionnez votre profil</h3>
 
             <div class="role-buttons">
-                <a href="{{ url_for('auth.login') }}?role=student" class="role-button student">
+                <a href="{{ url_for('auth.login', role='student', workspace='standard') }}" class="role-button student">
                     <span class="role-icon">🎓</span>
                     <div class="role-title">Étudiant</div>
                     <div class="role-description">
@@ -52,7 +67,7 @@
                     </div>
                 </a>
 
-                <a href="{{ url_for('auth.login') }}?role=teacher" class="role-button teacher">
+                <a href="{{ url_for('auth.login', role='teacher', workspace='standard') }}" class="role-button teacher">
                     <span class="role-icon">👨‍🏫</span>
                     <div class="role-title">Enseignant</div>
                     <div class="role-description">
@@ -60,7 +75,7 @@
                     </div>
                 </a>
 
-                <a href="{{ url_for('auth.login') }}?role=admin" class="role-button admin">
+                <a href="{{ url_for('auth.login', role='admin', workspace='standard') }}" class="role-button admin">
                     <span class="role-icon">⚙️</span>
                     <div class="role-title">Administrateur</div>
                     <div class="role-description">

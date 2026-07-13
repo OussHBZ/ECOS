@@ -38,6 +38,13 @@ class Student(db.Model, UserMixin):
     password_hash = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
+    # Physiotherapy curriculum level. Nullable for backward compatibility with
+    # existing generic OSCE accounts; new accounts default to Licence.
+    level = db.Column(db.String(20), nullable=True, default='licence')
+    group_name = db.Column(db.String(100), nullable=True)
+    class_name = db.Column(db.String(100), nullable=True)
+    # Exclusive platform assignment: generic/Sondar ECOS or physiotherapy ECOS.
+    ecos_type = db.Column(db.String(20), nullable=False, default='standard')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -159,6 +166,8 @@ class Teacher(db.Model, UserMixin):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
+    # Exclusive platform assignment: generic/Sondar ECOS or physiotherapy ECOS.
+    ecos_type = db.Column(db.String(20), nullable=False, default='standard')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -233,6 +242,7 @@ class PatientCase(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     case_number = db.Column(db.String(50), unique=True, nullable=False)
+    title = db.Column(db.String(250), nullable=True)
     specialty = db.Column(db.String(100))
     patient_info_json = db.Column(db.Text)
     symptoms_json = db.Column(db.Text)
@@ -246,11 +256,22 @@ class PatientCase(db.Model):
     custom_sections_json = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Optional physiotherapy metadata. These fields deliberately remain
+    # nullable so generic OSCE cases continue to work unchanged.
+    folder_id = db.Column(db.Integer, db.ForeignKey('pathology_folders.id'), nullable=True)
+    level = db.Column(db.String(20), nullable=True, default='both')
+    mode_availability = db.Column(db.String(20), nullable=True, default='both')
+    pedagogical_objectives = db.Column(db.Text)
+    emotional_state = db.Column(db.String(50))
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
     
     # Relationships
     performances = db.relationship('StudentPerformance', backref='case', lazy=True)
     images = db.relationship('CaseImage', backref='case', lazy=True, cascade='all, delete-orphan')
     session_assignments = db.relationship('SessionStationAssignment', backref='case', lazy=True, cascade='all, delete-orphan')
+    incidents = db.relationship('Incident', back_populates='clinical_case', lazy=True, cascade='all, delete-orphan')
+    patient_record = db.relationship('PatientRecord', back_populates='clinical_case', uselist=False, cascade='all, delete-orphan')
     
     @property
     def patient_info(self):
@@ -545,6 +566,187 @@ class PatientCase(db.Model):
         return f'<PatientCase {self.case_number}: {self.specialty}>'
 
 # Student Performance Tracking
+class PathologyFolder(db.Model):
+    """Editable grouping of physiotherapy clinical cases."""
+    __tablename__ = 'pathology_folders'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    specialty = db.Column(db.String(50), nullable=False, default='kine')
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    creator = db.relationship('Teacher', backref=db.backref('pathology_folders', lazy=True))
+    cases = db.relationship('PatientCase', backref='pathology_folder', lazy=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('name', 'specialty', name='uq_pathology_folder_name_specialty'),
+    )
+
+
+class PatientRecord(db.Model):
+    """Structured medical record displayed before a kine simulation."""
+    __tablename__ = 'patient_records'
+
+    id = db.Column(db.Integer, primary_key=True)
+    clinical_case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), nullable=False, unique=True)
+    identity = db.Column(db.JSON, nullable=False, default=dict)
+    medical_context = db.Column(db.JSON, nullable=False, default=dict)
+    medical_history = db.Column(db.JSON, nullable=False, default=dict)
+    comorbidities = db.Column(db.JSON, nullable=False, default=list)
+    tests = db.Column(db.JSON, nullable=False, default=dict)
+    reference_vitals = db.Column(db.JSON, nullable=False, default=dict)
+    medical_prescription = db.Column(db.Text)
+    physiotherapy_prescription = db.Column(db.Text)
+    available_documents = db.Column(db.JSON, nullable=False, default=list)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    clinical_case = db.relationship('PatientCase', back_populates='patient_record')
+    interventions = db.relationship('Intervention', back_populates='patient_record', cascade='all, delete-orphan', lazy=True)
+    medications = db.relationship('Medication', back_populates='patient_record', cascade='all, delete-orphan', lazy=True)
+
+
+class Intervention(db.Model):
+    __tablename__ = 'interventions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_record_id = db.Column(db.Integer, db.ForeignKey('patient_records.id'), nullable=False)
+    intervention_type = db.Column(db.String(200), nullable=False)
+    intervention_date = db.Column(db.Date)
+    complications = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    patient_record = db.relationship('PatientRecord', back_populates='interventions')
+
+
+class Medication(db.Model):
+    __tablename__ = 'medications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_record_id = db.Column(db.Integer, db.ForeignKey('patient_records.id'), nullable=False)
+    therapeutic_class = db.Column(db.String(200), nullable=False)
+    inn = db.Column(db.String(200))
+    effect = db.Column(db.Text)
+    physiotherapy_precautions = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    patient_record = db.relationship('PatientRecord', back_populates='medications')
+
+
+class Incident(db.Model):
+    __tablename__ = 'incidents'
+
+    id = db.Column(db.Integer, primary_key=True)
+    clinical_case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), nullable=False)
+    trigger_description = db.Column(db.Text)
+    trigger_condition = db.Column(db.Text, nullable=False)
+    scripted_reaction = db.Column(db.Text, nullable=False)
+    severity = db.Column(db.String(20), nullable=False, default='minor')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    clinical_case = db.relationship('PatientCase', back_populates='incidents')
+
+
+class EvaluationGrid(db.Model):
+    __tablename__ = 'evaluation_grids'
+
+    id = db.Column(db.Integer, primary_key=True)
+    level = db.Column(db.String(20), nullable=False, unique=True)
+    sections = db.Column(db.JSON, nullable=False, default=list)
+    elimination_rules = db.Column(db.JSON, nullable=False, default=list)
+    validation_threshold = db.Column(db.Float, nullable=False)
+    elimination_cap = db.Column(db.Float, nullable=False, default=8.0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+exam_cases = db.Table(
+    'exam_cases',
+    db.Column('exam_id', db.Integer, db.ForeignKey('exams.id'), primary_key=True),
+    db.Column('clinical_case_id', db.Integer, db.ForeignKey('patient_case1.id'), primary_key=True),
+)
+
+exam_students = db.Table(
+    'exam_students',
+    db.Column('exam_id', db.Integer, db.ForeignKey('exams.id'), primary_key=True),
+    db.Column('student_id', db.Integer, db.ForeignKey('student.id'), primary_key=True),
+)
+
+
+class Exam(db.Model):
+    __tablename__ = 'exams'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    instructions = db.Column(db.Text)
+    start_at = db.Column(db.DateTime, nullable=False)
+    end_at = db.Column(db.DateTime, nullable=False)
+    max_duration_minutes = db.Column(db.Integer, nullable=False)
+    group_names = db.Column(db.JSON, nullable=False, default=list)
+    created_by = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    creator = db.relationship('Teacher', backref=db.backref('kine_exams', lazy=True))
+    cases = db.relationship('PatientCase', secondary=exam_cases, backref=db.backref('kine_exams', lazy=True))
+    students = db.relationship('Student', secondary=exam_students, backref=db.backref('kine_exams', lazy=True))
+    simulation_sessions = db.relationship('SimulationSession', back_populates='exam', lazy=True)
+
+    @property
+    def is_locked(self):
+        """Opening time or a recorded attempt makes an exam immutable."""
+        return bool(self.start_at and datetime.utcnow() >= self.start_at) or bool(self.simulation_sessions)
+
+
+class SimulationSession(db.Model):
+    __tablename__ = 'simulation_sessions'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'student_id', 'exam_id', 'clinical_case_id',
+            name='uq_exam_attempt_student_case',
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    clinical_case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), nullable=False)
+    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), nullable=True)
+    mode = db.Column(db.String(20), nullable=False, default='training')
+    status = db.Column(db.String(20), nullable=False, default='in_progress')
+    current_phase = db.Column(db.Integer, nullable=False, default=1)
+    phase_timings = db.Column(db.JSON, nullable=False, default=dict)
+    timeline = db.Column(db.JSON, nullable=False, default=list)
+    conversation = db.Column(db.JSON, nullable=False, default=list)
+    evaluation_results = db.Column(db.JSON, nullable=True)
+    runtime_state = db.Column(db.JSON, nullable=False, default=dict)
+    eliminatory_error_triggered = db.Column(db.Boolean, nullable=False, default=False)
+    eliminatory_error = db.Column(db.Text)
+    supplementary_score = db.Column(db.Float)
+    teacher_comments = db.Column(db.Text)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    reviewed_at = db.Column(db.DateTime)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    paused_at = db.Column(db.DateTime)
+    total_paused_seconds = db.Column(db.Integer, nullable=False, default=0)
+    completed_at = db.Column(db.DateTime)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student = db.relationship('Student', backref=db.backref('simulation_sessions', lazy=True))
+    clinical_case = db.relationship('PatientCase', backref=db.backref('simulation_sessions', lazy=True))
+    exam = db.relationship('Exam', back_populates='simulation_sessions')
+    reviewer = db.relationship('Teacher', foreign_keys=[reviewed_by])
+
+
+# The existing application names its clinical-case entity PatientCase. This
+# alias gives new kine code the terminology used by the specification without
+# creating a duplicate table or breaking generic OSCE imports.
+ClinicalCase = PatientCase
+
+
 class StudentPerformance(db.Model):
     __tablename__ = 'student_performance'
     

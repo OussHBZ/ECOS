@@ -13,12 +13,138 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from app import create_app
-    from models import db, Student, PatientCase, CompetitionSession
+    from models import db, Student, Teacher, PatientCase, CompetitionSession, PathologyFolder
     import logging
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure you're running this from the project root directory")
     sys.exit(1)
+
+
+KINE_PATHOLOGY_FOLDER_TRANSLATIONS = {
+    'Ischemic heart disease': 'Cardiopathie ischémique',
+    'Non-ischemic heart disease': 'Cardiopathie non ischémique',
+    'Congenital heart disease': 'Cardiopathie congénitale',
+    'Cardiac surgery': 'Chirurgie cardiaque',
+    'Heart transplant': 'Transplantation cardiaque',
+    'Hypertension (HTN)': 'Hypertension artérielle (HTA)',
+    'Hemodynamic regulation': 'Régulation hémodynamique',
+    'Peripheral arterial disease of the lower limbs (PAD)': 'Artériopathie oblitérante des membres inférieurs (AOMI)',
+    'Special arterial diseases': 'Pathologies artérielles particulières',
+    'Vascular compression syndromes': 'Syndromes de compression vasculaire',
+    'Venous diseases': 'Pathologies veineuses',
+    'Mild venous and lymphatic diseases': 'Pathologies veineuses et lymphatiques légères',
+}
+
+DEFAULT_KINE_PATHOLOGY_FOLDERS = list(KINE_PATHOLOGY_FOLDER_TRANSLATIONS.values())
+
+
+def seed_default_accounts():
+    """Create optional local-development accounts without overwriting users."""
+    enabled = os.getenv('SEED_DEMO_ACCOUNTS', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
+    if not enabled:
+        print("Demo account seeding disabled (SEED_DEMO_ACCOUNTS=false)")
+        return
+
+    accounts = [
+        {
+            'student_code': os.getenv('DEMO_LICENCE_CODE', '123456'),
+            'name': 'Demo Licence Student', 'level': 'licence',
+            'ecos_type': 'kine',
+            'password': os.getenv('DEMO_LICENCE_PASSWORD', 'Student123!'),
+        },
+        {
+            'student_code': os.getenv('DEMO_MASTER_CODE', '123457'),
+            'name': 'Demo Master Student', 'level': 'master',
+            'ecos_type': 'kine',
+            'password': os.getenv('DEMO_MASTER_PASSWORD', 'Master123!'),
+        },
+    ]
+    for account in accounts:
+        student = Student.query.filter_by(student_code=account['student_code']).first()
+        if not student:
+            student = Student(student_code=account['student_code'], name=account['name'], level=account['level'], ecos_type=account['ecos_type'])
+            student.set_password(account['password'])
+            db.session.add(student)
+        elif not student.password_hash:
+            student.set_password(account['password'])
+            student.level = student.level or account['level']
+        student.ecos_type = account['ecos_type']
+
+    teacher_email = os.getenv('DEMO_TEACHER_EMAIL', 'teacher@ecos.local').strip().lower()
+    teacher = Teacher.query.filter_by(email=teacher_email).first()
+    if not teacher:
+        teacher = Teacher(email=teacher_email, name='Demo Kine Teacher', password_hash='temporary', ecos_type='kine')
+        teacher.set_password(os.getenv('DEMO_TEACHER_PASSWORD', 'Teacher123!'))
+        db.session.add(teacher)
+    teacher.ecos_type = 'kine'
+    db.session.commit()
+    print("Demo teacher and Licence/Master student accounts are ready")
+
+
+def apply_additive_schema_updates():
+    """Add kine columns to legacy SQLite tables without deleting data."""
+    inspector = db.inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    additions = {
+        'student': {
+            'level': "VARCHAR(20) DEFAULT 'licence'",
+            'group_name': 'VARCHAR(100)',
+            'class_name': 'VARCHAR(100)',
+            'ecos_type': "VARCHAR(20) NOT NULL DEFAULT 'standard'",
+        },
+        'patient_case1': {
+            'title': 'VARCHAR(250)',
+            'folder_id': 'INTEGER REFERENCES pathology_folders(id)',
+            'level': "VARCHAR(20) DEFAULT 'both'",
+            'mode_availability': "VARCHAR(20) DEFAULT 'both'",
+            'pedagogical_objectives': 'TEXT',
+            'emotional_state': 'VARCHAR(50)',
+            'is_archived': 'BOOLEAN NOT NULL DEFAULT 0',
+        },
+        'simulation_sessions': {
+            'conversation': "JSON DEFAULT '[]'",
+            'evaluation_results': 'JSON',
+            'runtime_state': "JSON DEFAULT '{}'",
+            'paused_at': 'DATETIME',
+            'total_paused_seconds': 'INTEGER DEFAULT 0',
+            'supplementary_score': 'FLOAT',
+            'teacher_comments': 'TEXT',
+            'reviewed_by': 'INTEGER REFERENCES teacher(id)',
+            'reviewed_at': 'DATETIME',
+        },
+        'exams': {
+            'group_names': "JSON DEFAULT '[]'",
+        },
+        'teacher': {
+            'ecos_type': "VARCHAR(20) NOT NULL DEFAULT 'standard'",
+        },
+    }
+    with db.engine.begin() as connection:
+        for table_name, columns in additions.items():
+            if table_name not in existing_tables:
+                continue
+            existing_columns = {
+                column['name'] for column in inspector.get_columns(table_name)
+            }
+            for column_name, definition in columns.items():
+                if column_name not in existing_columns:
+                    connection.exec_driver_sql(
+                        f'ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}'
+                    )
+
+
+def seed_pathology_folders():
+    """Seed editable default kine folders idempotently."""
+    existing_folders = PathologyFolder.query.filter_by(specialty='kine').all()
+    for folder in existing_folders:
+        if folder.name in KINE_PATHOLOGY_FOLDER_TRANSLATIONS:
+            folder.name = KINE_PATHOLOGY_FOLDER_TRANSLATIONS[folder.name]
+    existing_names = {folder.name for folder in existing_folders}
+    for name in DEFAULT_KINE_PATHOLOGY_FOLDERS:
+        if name not in existing_names:
+            db.session.add(PathologyFolder(name=name, specialty='kine'))
+    db.session.commit()
 
 def init_database():
     """Initialize the database with all required tables"""
@@ -32,6 +158,9 @@ def init_database():
             # Create all tables
             print("📋 Creating database tables...")
             db.create_all()
+            apply_additive_schema_updates()
+            seed_pathology_folders()
+            seed_default_accounts()
             
             # Verify critical tables exist
             print("✅ Verifying table creation...")
@@ -45,7 +174,17 @@ def init_database():
                 'competition_participants',
                 'competition_station_bank',
                 'student_competition_sessions',
-                'student_station_assignments'
+                'student_station_assignments',
+                'pathology_folders',
+                'patient_records',
+                'interventions',
+                'medications',
+                'incidents',
+                'evaluation_grids',
+                'simulation_sessions',
+                'exams',
+                'exam_cases',
+                'exam_students'
             ]
             
             inspector = db.inspect(db.engine)
@@ -61,21 +200,8 @@ def init_database():
             
             if missing_tables:
                 print(f"\n❌ Missing tables: {missing_tables}")
-                print("Attempting to recreate all tables...")
-                
-                # Drop and recreate all tables
-                db.drop_all()
-                db.create_all()
-                
-                # Check again
-                existing_tables = db.inspect(db.engine).get_table_names()
-                still_missing = [table for table in tables_to_check if table not in existing_tables]
-                
-                if still_missing:
-                    print(f"❌ Still missing tables: {still_missing}")
-                    return False
-                else:
-                    print("✅ All tables created successfully on second attempt")
+                print("Existing data was left untouched; initialization cannot continue.")
+                return False
             
             # Create some sample data for testing
             print("\n📊 Creating sample data...")
@@ -127,6 +253,7 @@ def init_database():
             print(f"  - Students: {Student.query.count()}")
             print(f"  - Cases: {PatientCase.query.count()}")
             print(f"  - Competition Sessions: {CompetitionSession.query.count()}")
+            print(f"  - Kine pathology folders: {PathologyFolder.query.filter_by(specialty='kine').count()}")
             
             return True
             
@@ -154,6 +281,8 @@ def reset_database():
             
             print("🔧 Recreating all tables...")
             db.create_all()
+            seed_pathology_folders()
+            seed_default_accounts()
             
             print("✅ Database reset completed!")
             return True

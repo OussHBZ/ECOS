@@ -24,11 +24,12 @@
                     </div>
                 </div>
                 <div class="header-actions">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
                     <div class="user-info">
                         <div class="user-name">Administrateur</div>
                         <div class="user-role">Système ECOS</div>
                     </div>
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Déconnexion</a>
+                    <a href="{{ url_for('auth.logout') }}" class="btn logout-button">Déconnexion</a>
                 </div>
             </div>
         </div>
@@ -147,7 +148,7 @@
                         <button onclick="searchAdminStudents()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
                     <button onclick="openAddStudentModal()" class="btn btn-primary">+ Ajouter un étudiant</button>
-                    <button onclick="openImportModal('student')" class="btn btn-secondary" title="Format CSV/Excel&#10;Ligne 1 (en-tête) : apogee, name, password&#10;Lignes suivantes : une ligne par étudiant&#10;Exemple :&#10;apogee,name,password&#10;1234567,Jean Dupont,motdepasse123">↑ Importer CSV/Excel</button>
+                    <button onclick="openImportModal('student')" class="btn btn-secondary" title="Format CSV/Excel&#10;Colonnes : apogee, name, password, ecos_type&#10;ecos_type : standard ou kine">↑ Importer CSV/Excel</button>
                 </div>
             </div>
 
@@ -172,6 +173,7 @@
                         <tr>
                             <th>Code</th>
                             <th>Nom</th>
+                            <th>Type d’ECOS</th>
                             <th>Créé le</th>
                             <th>Dernière Connexion</th>
                             <th>Consultations</th>
@@ -196,7 +198,7 @@
                         <button onclick="searchAdminTeachers()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
                     <button onclick="openAddTeacherModal()" class="btn btn-primary">+ Ajouter un enseignant</button>
-                    <button onclick="openImportModal('teacher')" class="btn btn-secondary" title="Format CSV/Excel&#10;Ligne 1 (en-tête) : email, name, password&#10;Lignes suivantes : un enseignant par ligne&#10;Exemple :&#10;email,name,password&#10;prof.martin@fmpm.ma,Dr. Martin,mdp123">↑ Importer CSV/Excel</button>
+                    <button onclick="openImportModal('teacher')" class="btn btn-secondary" title="Format CSV/Excel&#10;Colonnes : email, name, password, ecos_type&#10;ecos_type : standard ou kine">↑ Importer CSV/Excel</button>
                 </div>
             </div>
 
@@ -213,6 +215,7 @@
                         <tr>
                             <th>Email</th>
                             <th>Nom</th>
+                            <th>Type d’ECOS</th>
                             <th>Créé le</th>
                             <th>Dernière Connexion</th>
                             <th>Actions</th>
@@ -289,6 +292,10 @@
                     <label>Mot de passe :</label>
                     <input type="password" id="new-student-password" placeholder="Min. 4 caractères" required>
                 </div>
+                <div class="form-group">
+                    <label for="new-student-ecos-type">Affectation exclusive :</label>
+                    <select id="new-student-ecos-type" required><option value="standard">ECOS standard / Sondar</option><option value="kine">ECOS Kiné</option></select>
+                </div>
                 <div id="add-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Créer</button>
@@ -333,6 +340,10 @@
                 <div class="form-group">
                     <label>Mot de passe :</label>
                     <input type="password" id="new-teacher-password" placeholder="Min. 4 caractères" required>
+                </div>
+                <div class="form-group">
+                    <label for="new-teacher-ecos-type">Affectation exclusive :</label>
+                    <select id="new-teacher-ecos-type" required><option value="standard">ECOS standard / Sondar</option><option value="kine">ECOS Kiné</option></select>
                 </div>
                 <div id="add-teacher-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
@@ -558,6 +569,7 @@
                             <th>Station</th>
                             <th>Spécialité</th>
                             <th>Score</th>
+                            <th>Résultat</th>
                             <th>Durée</th>
                             <th>Actions</th>
                         </tr>
@@ -601,7 +613,7 @@
                 var tbody = document.getElementById('admin-teachers-table-body');
                 _teacherMap = {};
                 if (!data.teachers || data.teachers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">Aucun enseignant trouvé</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">Aucun enseignant trouvé</td></tr>';
                     return;
                 }
                 var html = '';
@@ -610,6 +622,9 @@
                     html += '<tr>' +
                         '<td>' + escHtml(t.email) + '</td>' +
                         '<td>' + escHtml(t.name) + '</td>' +
+                        '<td><select aria-label="Type d’ECOS de ' + escHtml(t.name) + '" onchange="updateTeacherEcosType(' + t.id + ',this)">' +
+                          '<option value="standard"' + (t.ecos_type === 'standard' ? ' selected' : '') + '>Standard / Sondar</option>' +
+                          '<option value="kine"' + (t.ecos_type === 'kine' ? ' selected' : '') + '>Kiné</option></select></td>' +
                         '<td>' + t.created_at + '</td>' +
                         '<td>' + t.last_login + '</td>' +
                         '<td>' +
@@ -632,7 +647,7 @@
             })
             .catch(function() {
                 document.getElementById('admin-teachers-table-body').innerHTML =
-                    '<tr><td colspan="5" style="text-align:center;color:#dc3545;">Erreur de chargement</td></tr>';
+                    '<tr><td colspan="6" style="text-align:center;color:#dc3545;">Erreur de chargement</td></tr>';
             });
     }
 
@@ -658,7 +673,8 @@
         var payload = {
             student_code: document.getElementById('new-student-code').value.trim(),
             name: document.getElementById('new-student-name').value.trim(),
-            password: document.getElementById('new-student-password').value
+            password: document.getElementById('new-student-password').value,
+            ecos_type: document.getElementById('new-student-ecos-type').value
         };
         authenticatedFetch('/admin/add-student', {
             method: 'POST',
@@ -675,6 +691,19 @@
                 errEl.style.display = 'block';
             }
         });
+    }
+
+    function updateStudentEcosType(id, select) {
+        select.disabled = true;
+        authenticatedFetch('/admin/students/' + id + '/ecos-type', {
+            method: 'PATCH', body: JSON.stringify({ecos_type: select.value})
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (!data.success) throw new Error(data.error || 'Mise à jour impossible.');
+            alert(data.message);
+        }).catch(function(error) {
+            alert('Erreur : ' + error.message);
+            if (typeof loadAdminStudents === 'function') loadAdminStudents();
+        }).finally(function() { select.disabled = false; });
     }
 
     // ── Reset Student Password ─────────────────────────────────────────────
@@ -732,7 +761,8 @@
         var payload = {
             email: document.getElementById('new-teacher-email').value.trim(),
             name: document.getElementById('new-teacher-name').value.trim(),
-            password: document.getElementById('new-teacher-password').value
+            password: document.getElementById('new-teacher-password').value,
+            ecos_type: document.getElementById('new-teacher-ecos-type').value
         };
         authenticatedFetch('/admin/add-teacher', {
             method: 'POST',
@@ -749,6 +779,19 @@
                 errEl.style.display = 'block';
             }
         });
+    }
+
+    function updateTeacherEcosType(id, select) {
+        select.disabled = true;
+        authenticatedFetch('/admin/teachers/' + id + '/ecos-type', {
+            method: 'PATCH', body: JSON.stringify({ecos_type: select.value})
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (!data.success) throw new Error(data.error || 'Mise à jour impossible.');
+            alert(data.message);
+        }).catch(function(error) {
+            alert('Erreur : ' + error.message);
+            loadAdminTeachers();
+        }).finally(function() { select.disabled = false; });
     }
 
     // ── Reset Teacher Password ─────────────────────────────────────────────
@@ -797,23 +840,23 @@
     var _importSamples = {
         student: {
             title: 'Importer des Étudiants',
-            cols: ['apogee', 'name', 'password'],
+            cols: ['apogee', 'name', 'password', 'ecos_type'],
             rows: [
-                ['1234567', 'Jean Dupont', 'motdepasse123'],
-                ['7654321', 'Marie Martin', 'secret456'],
-                ['9876543', 'Ahmed Benali', 'pass789']
+                ['1234567', 'Jean Dupont', 'motdepasse123', 'standard'],
+                ['7654321', 'Marie Martin', 'secret456', 'kine'],
+                ['9876543', 'Ahmed Benali', 'pass789', 'standard']
             ],
-            hint: '<strong>apogee</strong> &nbsp;·&nbsp; <strong>name</strong> &nbsp;·&nbsp; <strong>password</strong>'
+            hint: '<strong>apogee</strong> · <strong>name</strong> · <strong>password</strong> · <strong>ecos_type</strong> (standard ou kine)'
         },
         teacher: {
             title: 'Importer des Enseignants',
-            cols: ['login', 'name', 'password'],
+            cols: ['email', 'name', 'password', 'ecos_type'],
             rows: [
-                ['prof.martin', 'Dr. Martin', 'mdp123'],
-                ['prof.dupont', 'Pr. Dupont', 'pass456'],
-                ['prof.benali', 'Dr. Benali', 'secret789']
+                ['prof.martin@fmpm.ma', 'Dr. Martin', 'mdp123', 'standard'],
+                ['prof.dupont@fmpm.ma', 'Pr. Dupont', 'pass456', 'kine'],
+                ['prof.benali@fmpm.ma', 'Dr. Benali', 'secret789', 'standard']
             ],
-            hint: '<strong>login</strong> &nbsp;·&nbsp; <strong>name</strong> &nbsp;·&nbsp; <strong>password</strong>'
+            hint: '<strong>email</strong> · <strong>name</strong> · <strong>password</strong> · <strong>ecos_type</strong> (standard ou kine)'
         }
     };
 
