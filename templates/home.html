@@ -44,21 +44,6 @@
             </p>
         </div>
 
-        <section class="workspace-selection" aria-labelledby="workspace-title">
-            <h3 id="workspace-title" class="page-title">Choisissez votre espace ECOS</h3>
-            <div class="workspace-buttons">
-                <a href="#standard-profiles" class="workspace-card workspace-card--standard">
-                    <span class="workspace-card-icon" aria-hidden="true">🩺</span>
-                    <div><strong>ECOS Standard</strong><p>Consultations médicales et stations ECOS générales</p></div>
-                </a>
-                <a href="{{ url_for('auth.login', workspace='kine') }}" class="workspace-card workspace-card--kine">
-                    <span class="workspace-card__icon" aria-hidden="true">✚</span>
-                    <div class="workspace-card__content"><strong>ECOS Kiné</strong><span>Simulation spécialisée en kinésithérapie cardiovasculaire</span></div>
-                    <span class="workspace-card__arrow" aria-hidden="true">→</span>
-                </a>
-            </div>
-        </section>
-
         <!-- Profile cards -->
         <div class="role-selection" id="standard-profiles">
             <h3 class="page-title">ECOS Standard — sélectionnez votre profil</h3>
