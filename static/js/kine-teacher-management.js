@@ -1,6 +1,35 @@
 (function () {
     'use strict';
     const form = document.querySelector('[data-kine-exam-form]');
+    const studentSelector = form?.querySelector('[data-student-selector]');
+    const studentSearch = studentSelector?.querySelector('[data-student-search]');
+    const studentOptions = [...(studentSelector?.querySelectorAll('[data-student-option]') || [])];
+    const searchEmpty = studentSelector?.querySelector('[data-student-search-empty]');
+    const selectionSummary = studentSelector?.querySelector('[data-student-selection-summary]');
+    const normalizeSearch = (value) => String(value || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim();
+    const updateStudentSummary = () => {
+        const count = studentOptions.filter(option => option.querySelector('input')?.checked).length;
+        if (selectionSummary) {
+            selectionSummary.textContent = `${count} étudiant${count > 1 ? 's' : ''} sélectionné${count > 1 ? 's' : ''}`;
+        }
+    };
+    const filterStudents = () => {
+        const term = normalizeSearch(studentSearch?.value);
+        let visibleCount = 0;
+        studentOptions.forEach(option => {
+            const visible = !term || normalizeSearch(option.dataset.search).includes(term);
+            option.hidden = !visible;
+            if (visible) visibleCount += 1;
+        });
+        if (searchEmpty) searchEmpty.hidden = visibleCount !== 0;
+        // Les cases ne sont jamais recréées : une sélection reste cochée
+        // lorsqu'un autre filtre est saisi.
+        updateStudentSummary();
+    };
+    studentSearch?.addEventListener('input', filterStudents);
+    studentSelector?.addEventListener('change', updateStudentSummary);
+    updateStudentSummary();
     form?.addEventListener('submit', async (event) => {
         event.preventDefault();
         const status = form.querySelector('[data-exam-status]');

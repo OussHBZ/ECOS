@@ -17,6 +17,7 @@ from models import (
 admin_bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
 ECOS_TYPES = {'standard', 'kine'}
+KINE_LEVELS = {'licence', 'master'}
 
 
 def _validated_ecos_type(value):
@@ -24,6 +25,21 @@ def _validated_ecos_type(value):
     if ecos_type not in ECOS_TYPES:
         raise ValueError("Le type d’ECOS doit être 'standard' ou 'kine'.")
     return ecos_type
+
+
+def _validated_student_assignment(data):
+    """Return an exclusive workspace and its optional Kine level."""
+    ecos_type = _validated_ecos_type(data.get('ecos_type'))
+    if ecos_type == 'standard':
+        return ecos_type, None
+
+    level = str(data.get('level') or '').strip().lower()
+    if level not in KINE_LEVELS:
+        raise ValueError(
+            "Le niveau est obligatoire pour un étudiant ECOS Kiné et doit être "
+            "« licence » ou « master »."
+        )
+    return ecos_type, level
 
 
 def _kine_score_percentage(simulation):
@@ -630,7 +646,9 @@ def admin_students():
             query = query.filter(
                 db.or_(
                     Student.name.contains(search_query),
-                    Student.student_code.contains(search_query)
+                    Student.student_code.contains(search_query),
+                    Student.group_name.contains(search_query),
+                    Student.class_name.contains(search_query),
                 )
             )
         
@@ -663,6 +681,9 @@ def admin_students():
                 'student_code': student.student_code,
                 'name': student.name,
                 'ecos_type': student.ecos_type or 'standard',
+                'level': student.level if student.ecos_type == 'kine' else None,
+                'group_name': student.group_name,
+                'class_name': student.class_name,
                 'created_at': student.created_at.strftime('%d/%m/%Y'),
                 'last_login': student.last_login.strftime('%d/%m/%Y %H:%M') if student.last_login else None,
                 'total_consultations': total_consultations,
@@ -1510,20 +1531,30 @@ def add_student():
         student_code = (data.get('student_code') or '').strip()
         name = (data.get('name') or '').strip()
         password = (data.get('password') or '').strip()
-        ecos_type = _validated_ecos_type(data.get('ecos_type'))
+        ecos_type, level = _validated_student_assignment(data)
 
         is_valid, result = Student.validate_apogee_number(student_code)
         if not is_valid:
             return jsonify({'success': False, 'error': result}), 400
         if not name:
-            return jsonify({'success': False, 'error': 'Le nom est obligatoire.'}), 400
+            return jsonify({'success': False, 'error': 'Le nom complet est obligatoire.'}), 400
         if len(password) < 4:
             return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
 
         if Student.query.filter_by(student_code=result).first():
             return jsonify({'success': False, 'error': 'Ce numéro d\'Apogée est déjà utilisé.'}), 400
 
-        student = Student(student_code=result, name=name, ecos_type=ecos_type)
+        student = Student(
+            student_code=result, name=name, ecos_type=ecos_type, level=level,
+            group_name=(
+                str(data.get('group_name') or '').strip() or None
+                if ecos_type == 'kine' else None
+            ),
+            class_name=(
+                str(data.get('class_name') or '').strip() or None
+                if ecos_type == 'kine' else None
+            ),
+        )
         student.set_password(password)
         db.session.add(student)
         db.session.commit()
@@ -1749,9 +1780,21 @@ def import_users():
             for i, row in enumerate(rows, start=2):
                 # Accept flexible column names
                 apogee = (row.get('apogee') or row.get('apogée') or row.get('student_code') or row.get('code') or '').strip()
-                name = (row.get('name') or row.get('nom') or row.get('prenom') or '').strip()
+                explicit_name = (row.get('name') or row.get('nom complet') or '').strip()
+                first_name = (row.get('prenom') or row.get('prénom') or '').strip()
+                last_name = (row.get('nom') or '').strip()
+                name = explicit_name or ' '.join(
+                    value for value in (first_name, last_name) if value
+                )
                 password = (row.get('password') or row.get('mot de passe') or row.get('mdp') or '').strip()
-                ecos_type = _validated_ecos_type(row.get('ecos_type') or row.get('type_ecos') or 'standard')
+                try:
+                    ecos_type, level = _validated_student_assignment({
+                        'ecos_type': row.get('ecos_type') or row.get('type_ecos') or 'standard',
+                        'level': row.get('level') or row.get('niveau'),
+                    })
+                except ValueError as exc:
+                    errors.append(f'Ligne {i}: {exc}')
+                    continue
 
                 if not apogee or not name or not password:
                     errors.append(f'Ligne {i}: données incomplètes (apogee, name, password requis).')
@@ -1766,7 +1809,18 @@ def import_users():
                     skipped.append(f'Ligne {i}: Apogée {result} déjà existant.')
                     continue
 
-                student = Student(student_code=result, name=name, ecos_type=ecos_type)
+                student = Student(
+                    student_code=result, name=name, ecos_type=ecos_type,
+                    level=level,
+                    group_name=(
+                        (row.get('group_name') or row.get('groupe') or '').strip() or None
+                        if ecos_type == 'kine' else None
+                    ),
+                    class_name=(
+                        (row.get('class_name') or row.get('classe') or '').strip() or None
+                        if ecos_type == 'kine' else None
+                    ),
+                )
                 student.set_password(password)
                 db.session.add(student)
                 created.append(name)
@@ -1813,9 +1867,14 @@ def import_users():
 def update_student_ecos_type(student_id):
     try:
         student = Student.query.get_or_404(student_id)
-        student.ecos_type = _validated_ecos_type((request.get_json(silent=True) or {}).get('ecos_type'))
+        ecos_type, level = _validated_student_assignment(
+            request.get_json(silent=True) or {}
+        )
+        student.ecos_type = ecos_type
+        student.level = level
         db.session.commit()
         return jsonify({'success': True, 'id': student.id, 'ecos_type': student.ecos_type,
+                        'level': student.level,
                         'message': 'Affectation ECOS de l’étudiant mise à jour.'})
     except ValueError as exc:
         db.session.rollback()

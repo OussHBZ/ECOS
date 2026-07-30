@@ -24,9 +24,17 @@ PHYSIO_SPECIALTY_ALIASES = {
 }
 
 DEFAULT_PHYSIO_EXTRACTION_SCHEMA = {
+    "case_number": None,
+    "title": None,
+    "suggested_pathology_folder": None,
+    "level": None,
+    "mode_availability": None,
+    "pedagogical_objectives": None,
+    "emotional_state": None,
     "patient_info": {
         "name": None, "age": None, "gender": None, "family_situation": None,
-        "occupation": None, "height_cm": None, "weight_kg": None, "bmi": None
+        "occupation": None, "height_cm": None, "weight_kg": None, "bmi": None,
+        "social_context": None
     },
     "medical_context": {
         "main_diagnosis": None, "associated_diagnoses": [],
@@ -52,12 +60,18 @@ DEFAULT_PHYSIO_EXTRACTION_SCHEMA = {
         "spo2_percent": None, "respiratory_rate_bpm": None,
         "height_cm": None, "weight_kg": None, "bmi": None
     },
+    "vital_parameters": [
+        {
+            "name": None, "unit": None,
+            "values": {"before": None, "during": None, "after": None}
+        }
+    ],
     "prescriptions": {"medical": None, "physiotherapy": None},
     "available_documents": [],
     "physiotherapy_assessment": {
         "general_condition": [], "pain": [], "dyspnea": [], "respiratory": [],
         "muscular": [], "joint": [], "neurological": [], "balance": [],
-        "gait": [], "scar": [], "exertion_parameters": [], "exertion_kinetics": []
+        "gait": [], "scar": [], "exertion_parameters": []
     },
     "incidents": [
         {"trigger_description": None, "trigger_condition": None,
@@ -370,7 +384,10 @@ class DocumentExtractionAgent:
             for key, default_value in self._load_physio_extraction_schema().items():
                 data_from_llm.setdefault(key, deepcopy(default_value))
             data_from_llm['specialty'] = self.state.get('specialty') or 'kine'
-            data_from_llm['case_number'] = self.state.get('case_number', 'unknown')
+            data_from_llm['case_number'] = (
+                data_from_llm.get('case_number')
+                or self.state.get('case_number', 'unknown')
+            )
             data_from_llm['extraction_method'] = 'llm'
         if "images" not in data_from_llm:
             data_from_llm["images"] = []
@@ -424,6 +441,11 @@ valide conforme exactement au schéma ci-dessous.
 
 RÈGLES D'EXTRACTION:
 - N'inventez aucune information. Utilisez null, [] ou {{}} lorsqu'une donnée manque.
+- Extrayez le numéro et le titre du cas lorsqu'ils figurent dans le document.
+- Proposez un dossier pathologique seulement à partir du diagnostic explicite.
+- Proposez level parmi licence, master ou both et mode_availability parmi
+  training, exam ou both. Chaque proposition reste révisable par l'enseignant.
+- Extrayez les objectifs pédagogiques et l'état émotionnel explicitement décrits.
 - Conservez les valeurs, unités, dates et formulations cliniques du document.
 - Analysez tout le document, y compris les tableaux, sans vous arrêter aux premières pages.
 - Extrayez chaque médicament, examen, constante, mesure, domaine du bilan et incident.
@@ -434,6 +456,8 @@ RÈGLES D'EXTRACTION:
 - Une procédure contient son type, sa date et ses complications éventuelles.
 - Une mesure ou un test contient au minimum son nom, sa valeur, son unité et,
   si présents, sa date, son contexte et son interprétation explicitement écrite.
+- Regroupez les paramètres vitaux de séance dans vital_parameters : une seule ligne
+  par nom et unité, avec les valeurs before, during et after. N'inventez aucun moment.
 - Classez le bilan kinésithérapique par domaine sans déplacer ni déduire de données.
 - Un incident n'est extrait que s'il est décrit. Relevez son déclencheur/condition,
   la réaction attendue du patient et sa gravité uniquement si elle est précisée.

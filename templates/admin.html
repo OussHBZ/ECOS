@@ -148,7 +148,7 @@
                         <button onclick="searchAdminStudents()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
                     <button onclick="openAddStudentModal()" class="btn btn-primary">+ Ajouter un étudiant</button>
-                    <button onclick="openImportModal('student')" class="btn btn-secondary" title="Format CSV/Excel&#10;Colonnes : apogee, name, password, ecos_type&#10;ecos_type : standard ou kine">↑ Importer CSV/Excel</button>
+                    <button onclick="openImportModal('student')" class="btn btn-secondary" title="Format CSV/Excel&#10;Colonnes : apogee, name, password, ecos_type, level&#10;level obligatoire pour kine : licence ou master">↑ Importer CSV/Excel</button>
                 </div>
             </div>
 
@@ -174,6 +174,7 @@
                             <th>Code</th>
                             <th>Nom</th>
                             <th>Type d’ECOS</th>
+                            <th>Niveau Kiné</th>
                             <th>Créé le</th>
                             <th>Dernière Connexion</th>
                             <th>Consultations</th>
@@ -293,8 +294,28 @@
                     <input type="password" id="new-student-password" placeholder="Min. 4 caractères" required>
                 </div>
                 <div class="form-group">
-                    <label for="new-student-ecos-type">Affectation exclusive :</label>
-                    <select id="new-student-ecos-type" required><option value="standard">ECOS standard</option><option value="kine">ECOS Kiné</option></select>
+                    <label for="new-student-ecos-type">Type d’espace :</label>
+                    <select id="new-student-ecos-type" required onchange="toggleNewStudentLevel()">
+                        <option value="">Choisir un type d’espace</option>
+                        <option value="standard">ECOS standard</option>
+                        <option value="kine">ECOS Kiné</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="new-student-level-group">
+                    <label for="new-student-level">Niveau Kiné :</label>
+                    <select id="new-student-level">
+                        <option value="">Choisir un niveau</option>
+                        <option value="licence">Licence</option>
+                        <option value="master">Master</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="new-student-group-group">
+                    <label for="new-student-group-name">Groupe (facultatif) :</label>
+                    <input type="text" id="new-student-group-name" placeholder="Ex. Groupe A">
+                </div>
+                <div class="form-group hidden" id="new-student-class-group">
+                    <label for="new-student-class-name">Classe (facultative) :</label>
+                    <input type="text" id="new-student-class-name" placeholder="Ex. L3 Kiné">
                 </div>
                 <div id="add-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
@@ -663,7 +684,24 @@
     function openAddStudentModal() {
         document.getElementById('add-student-form').reset();
         document.getElementById('add-student-error').style.display = 'none';
+        toggleNewStudentLevel();
         openModal('add-student-modal');
+    }
+
+    function toggleNewStudentLevel() {
+        var isKine = document.getElementById('new-student-ecos-type').value === 'kine';
+        var group = document.getElementById('new-student-level-group');
+        var level = document.getElementById('new-student-level');
+        group.classList.toggle('hidden', !isKine);
+        document.getElementById('new-student-group-group').classList.toggle('hidden', !isKine);
+        document.getElementById('new-student-class-group').classList.toggle('hidden', !isKine);
+        level.required = isKine;
+        level.disabled = !isKine;
+        if (!isKine) {
+            level.value = '';
+            document.getElementById('new-student-group-name').value = '';
+            document.getElementById('new-student-class-name').value = '';
+        }
     }
 
     function submitAddStudent(e) {
@@ -674,8 +712,21 @@
             student_code: document.getElementById('new-student-code').value.trim(),
             name: document.getElementById('new-student-name').value.trim(),
             password: document.getElementById('new-student-password').value,
-            ecos_type: document.getElementById('new-student-ecos-type').value
+            ecos_type: document.getElementById('new-student-ecos-type').value,
+            level: document.getElementById('new-student-level').value,
+            group_name: document.getElementById('new-student-group-name').value.trim(),
+            class_name: document.getElementById('new-student-class-name').value.trim()
         };
+        if (!payload.name) {
+            errEl.textContent = 'Le nom complet est obligatoire.';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (payload.ecos_type === 'kine' && !['licence', 'master'].includes(payload.level)) {
+            errEl.textContent = 'Le niveau Licence ou Master est obligatoire pour un étudiant ECOS Kiné.';
+            errEl.style.display = 'block';
+            return;
+        }
         authenticatedFetch('/admin/add-student', {
             method: 'POST',
             body: JSON.stringify(payload)
@@ -693,17 +744,41 @@
         });
     }
 
-    function updateStudentEcosType(id, select) {
-        select.disabled = true;
+    function toggleStudentLevelEditor(id) {
+        var type = document.getElementById('student-ecos-type-' + id).value;
+        var level = document.getElementById('student-level-' + id);
+        var empty = document.getElementById('student-level-empty-' + id);
+        level.classList.toggle('hidden', type !== 'kine');
+        level.disabled = type !== 'kine';
+        level.required = type === 'kine';
+        empty.classList.toggle('hidden', type === 'kine');
+        if (type !== 'kine') level.value = '';
+    }
+
+    function updateStudentEcosType(id) {
+        var typeSelect = document.getElementById('student-ecos-type-' + id);
+        var levelSelect = document.getElementById('student-level-' + id);
+        var errMessage = 'Le niveau Licence ou Master est obligatoire pour un étudiant ECOS Kiné.';
+        if (typeSelect.value === 'kine' && !['licence', 'master'].includes(levelSelect.value)) {
+            alert(errMessage);
+            levelSelect.focus();
+            return;
+        }
+        typeSelect.disabled = true;
+        levelSelect.disabled = true;
         authenticatedFetch('/admin/students/' + id + '/ecos-type', {
-            method: 'PATCH', body: JSON.stringify({ecos_type: select.value})
+            method: 'PATCH',
+            body: JSON.stringify({ecos_type: typeSelect.value, level: levelSelect.value})
         }).then(function(r) { return r.json(); }).then(function(data) {
             if (!data.success) throw new Error(data.error || 'Mise à jour impossible.');
             alert(data.message);
         }).catch(function(error) {
             alert('Erreur : ' + error.message);
             if (typeof loadAdminStudents === 'function') loadAdminStudents();
-        }).finally(function() { select.disabled = false; });
+        }).finally(function() {
+            typeSelect.disabled = false;
+            toggleStudentLevelEditor(id);
+        });
     }
 
     // ── Reset Student Password ─────────────────────────────────────────────
@@ -840,13 +915,13 @@
     var _importSamples = {
         student: {
             title: 'Importer des Étudiants',
-            cols: ['apogee', 'name', 'password', 'ecos_type'],
+            cols: ['apogee', 'name', 'password', 'ecos_type', 'level'],
             rows: [
-                ['1234567', 'Jean Dupont', 'motdepasse123', 'standard'],
-                ['7654321', 'Marie Martin', 'secret456', 'kine'],
-                ['9876543', 'Ahmed Benali', 'pass789', 'standard']
+                ['1234567', 'Jean Dupont', 'motdepasse123', 'standard', ''],
+                ['7654321', 'Marie Martin', 'secret456', 'kine', 'master'],
+                ['9876543', 'Ahmed Benali', 'pass789', 'standard', '']
             ],
-            hint: '<strong>apogee</strong> · <strong>name</strong> · <strong>password</strong> · <strong>ecos_type</strong> (standard ou kine)'
+            hint: '<strong>apogee</strong> · <strong>name</strong> · <strong>password</strong> · <strong>ecos_type</strong> (standard ou kine) · <strong>level</strong> (licence ou master, obligatoire pour kine)'
         },
         teacher: {
             title: 'Importer des Enseignants',

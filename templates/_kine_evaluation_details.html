@@ -1,0 +1,51 @@
+{% if evaluation %}
+<div class="kine-evaluation-details">
+    {% if evaluation.student %}
+    <p><strong>Étudiant :</strong> {{ evaluation.student.name }} · Code Apogée {{ evaluation.student.student_code }} · {{ evaluation.student.level }}{% if evaluation.student.group_name %} · Groupe {{ evaluation.student.group_name }}{% endif %}{% if evaluation.student.class_name %} · Classe {{ evaluation.student.class_name }}{% endif %}</p>
+    {% endif %}
+    <p><strong>{{ evaluation.points_earned|string|replace('.', ',') }}/{{ evaluation.points_total|default(20)|string|replace('.', ',') }} — {{ 'Réussi' if evaluation.passed else 'Non réussi' }}</strong></p>
+    {% if evaluation.eliminatory_error_triggered %}
+    <div class="kine-evaluation-errors">
+        <strong>Erreur(s) éliminatoire(s) — score plafonné à {{ evaluation.elimination_cap|default(8)|int }}/20</strong>
+        {% for error in evaluation.eliminatory_errors or [] %}
+        <article>
+            <h4>{{ error.description or error.id }}</h4>
+            <p>{{ error.justification or 'Erreur établie par une preuve explicite.' }}</p>
+            {% if error.evidence is string %}<blockquote>{{ error.evidence }}</blockquote>{% else %}
+            {% for proof in error.evidence or [] %}
+            <blockquote>« {{ proof.quote }} »<footer>{% if proof.phase %}Phase {{ proof.phase }}{% else %}Phase non enregistrée{% endif %}{% if proof.timestamp %} · <time datetime="{{ proof.timestamp }}">{{ proof.timestamp }}</time>{% endif %}</footer></blockquote>
+            {% endfor %}{% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+    <div class="kine-evaluation-sections">
+        {% for section in evaluation.section_scores or [] %}
+        <article class="kine-evaluation-section">
+            <header><div><h3>{{ section.title or section.criterion }}</h3><p><strong>Critère évalué :</strong> {{ section.criterion }}</p></div><strong>{{ section.points_earned|string|replace('.', ',') }}/{{ section.points_possible|string|replace('.', ',') }} points</strong></header>
+            {% if section.criteria %}
+            <div class="kine-evaluation-criteria">
+                {% for criterion in section.criteria %}
+                <section class="kine-evaluation-criterion">
+                    <h4>{{ criterion.criterion }}</h4>
+                    <p><span class="kine-badge">{{ criterion.status_label }}</span> <strong>{{ criterion.points_earned|string|replace('.', ',') }}/{{ criterion.points_possible|string|replace('.', ',') }} point{% if criterion.points_possible != 1 %}s{% endif %}</strong></p>
+                    <p><strong>Éléments attendus :</strong></p>
+                    <ul>{% for item in criterion.expected_elements or [] %}<li>{{ item }}</li>{% endfor %}</ul>
+                    {% if criterion.detected_elements %}<p><strong>Éléments détectés et comptabilisés :</strong></p><ul>{% for item in criterion.detected_elements %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+                    {% if criterion.evidence %}<p><strong>Phrases exactes utilisées comme preuves :</strong></p>{% for proof in criterion.evidence %}<blockquote>« {{ proof.quote }} »<footer>{% if proof.phase %}Phase {{ proof.phase }}{% else %}Phase non enregistrée{% endif %}{% if proof.timestamp %} · <time datetime="{{ proof.timestamp }}">{{ proof.timestamp }}</time>{% endif %}</footer></blockquote>{% endfor %}{% endif %}
+                    {% if criterion.partial_elements %}<p><strong>Partiellement réalisé :</strong></p><ul>{% for item in criterion.partial_elements %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+                    {% if criterion.missing_elements %}<p><strong>Absent ou restant à réaliser :</strong></p><ul>{% for item in criterion.missing_elements %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+                    <p><strong>Justification :</strong> {{ criterion.justification }}</p>
+                </section>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>{{ section.justification or 'Aucun détail de preuve disponible pour cette ancienne évaluation.' }}</p>
+            {% endif %}
+            <p><strong>Justification de la section :</strong> {{ section.justification }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    {% if evaluation.feedback %}<p><strong>Feedback global :</strong> {{ evaluation.feedback }}</p>{% endif %}
+</div>
+{% endif %}

@@ -404,7 +404,7 @@ def create_app():
             # between inspection and ALTER TABLE.
             additive_columns = {
                 'student': {
-                    'level': "VARCHAR(20) DEFAULT 'licence'",
+                    'level': 'VARCHAR(20)',
                     'group_name': 'VARCHAR(100)',
                     'class_name': 'VARCHAR(100)',
                 },
@@ -556,6 +556,17 @@ def create_app():
                         """))
                 if assignment_columns_added:
                     logger.info("Added exclusive ECOS account assignments: %s", sorted(assignment_columns_added))
+
+                # Preserve every legacy account while bringing pre-existing
+                # Kine rows into the now-required Licence/Master invariant.
+                # Standard accounts keep their historical level untouched.
+                with db.engine.begin() as conn:
+                    conn.execute(text("""
+                        UPDATE student
+                        SET level = 'licence'
+                        WHERE ecos_type = 'kine'
+                          AND lower(trim(coalesce(level, ''))) NOT IN ('licence', 'master')
+                    """))
             except Exception as migration_err:
                 logger.warning(f"Migration note for ECOS account assignment: {migration_err}")
 

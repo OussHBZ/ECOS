@@ -3049,13 +3049,16 @@ async function loadStudentPerformance(searchQuery = '') {
         tableBody.innerHTML = '';
         
         if (data.students.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
         } else {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${student.student_code}</td>
                     <td>${student.name}</td>
+                    <td>${student.ecos_type === 'kine'
+                        ? `ECOS Kiné — ${student.level === 'master' ? 'Master' : 'Licence'}`
+                        : 'ECOS standard'}</td>
                     <td><span class="workout-badge">${student.total_workouts}</span></td>
                     <td><span class="station-badge">${student.unique_stations}</span></td>
                     <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
@@ -3088,7 +3091,7 @@ async function loadStudentPerformance(searchQuery = '') {
     } catch (error) {
         console.error('Error loading student performance:', error);
         document.getElementById('students-performance-table-body').innerHTML = 
-            '<tr><td colspan="7" style="text-align: center;">Erreur lors du chargement</td></tr>';
+            '<tr><td colspan="8" style="text-align: center;">Erreur lors du chargement</td></tr>';
     }
 }
 

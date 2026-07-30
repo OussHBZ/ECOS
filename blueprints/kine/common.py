@@ -10,6 +10,105 @@ from flask_login import current_user
 LEVELS = {'licence', 'master'}
 CASE_LEVELS = LEVELS | {'both'}
 MODES = {'training', 'exam', 'both'}
+VITAL_MOMENTS = ('before', 'during', 'after')
+
+
+def _normalized_label(value):
+    text = str(value or '').strip().lower()
+    replacements = str.maketrans(
+        'àâäéèêëîïôöùûüç', 'aaaeeeeiioouuuc'
+    )
+    return re.sub(r'[^a-z0-9]+', ' ', text.translate(replacements)).strip()
+
+
+def _legacy_vital_moment(value):
+    label = _normalized_label(value)
+    if any(word in label for word in ('apres', 'recuperation', 'post', 'retour')):
+        return 'after'
+    if any(word in label for word in ('avant', 'initial', 'repos', 'baseline', 'pre effort')):
+        return 'before'
+    return 'during'
+
+
+def normalize_vital_parameters(tests):
+    """Return the structured vital rows, converting legacy kinetics when needed."""
+    tests = tests or {}
+    structured = tests.get('vital_parameters') if isinstance(tests, dict) else None
+    normalized = []
+    if isinstance(structured, list):
+        for row in structured:
+            if not isinstance(row, dict):
+                continue
+            values = row.get('values') if isinstance(row.get('values'), dict) else {}
+            item = {
+                'name': str(row.get('name') or row.get('measure') or '').strip(),
+                'unit': str(row.get('unit') or '').strip(),
+                'values': {
+                    moment: values.get(moment, row.get(moment))
+                    for moment in VITAL_MOMENTS
+                },
+            }
+            if item['name'] and any(
+                value not in (None, '') for value in item['values'].values()
+            ):
+                normalized.append(item)
+        if normalized:
+            return normalized
+
+    legacy = tests.get('exertion_kinetics') if isinstance(tests, dict) else None
+    grouped = {}
+    for row in legacy or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get('measure') or row.get('name') or '').strip()
+        unit = str(row.get('unit') or '').strip()
+        if not name:
+            continue
+        key = (_normalized_label(name), _normalized_label(unit))
+        item = grouped.setdefault(key, {
+            'name': name, 'unit': unit,
+            'values': {moment: None for moment in VITAL_MOMENTS},
+        })
+        item['values'][_legacy_vital_moment(row.get('time') or row.get('moment'))] = row.get('value')
+    return [
+        item for item in grouped.values()
+        if any(value not in (None, '') for value in item['values'].values())
+    ]
+
+
+def validate_vital_parameter_rows(rows):
+    """Reject populated structured rows without their shared parameter name."""
+    for row in rows or []:
+        if not isinstance(row, dict):
+            raise ValueError('Chaque paramètre vital doit être une ligne structurée.')
+        values = row.get('values') if isinstance(row.get('values'), dict) else row
+        has_value = any(values.get(moment) not in (None, '') for moment in VITAL_MOMENTS)
+        if has_value and not str(row.get('name') or row.get('measure') or '').strip():
+            raise ValueError(
+                'Le nom du paramètre est obligatoire lorsqu’une valeur de séance est renseignée.'
+            )
+
+
+def legacy_vital_parameters(rows):
+    """Build the legacy kinetics representation for older integrations."""
+    labels = {
+        'before': 'Avant la séance',
+        'during': 'Pendant la séance',
+        'after': 'Après la séance',
+    }
+    legacy = []
+    for row in rows or []:
+        values = row.get('values') or {}
+        for moment in VITAL_MOMENTS:
+            value = values.get(moment)
+            if value not in (None, ''):
+                legacy.append({
+                    'time': labels[moment],
+                    'measure': row.get('name'),
+                    'value': value,
+                    'unit': row.get('unit'),
+                })
+    return legacy
 
 
 def prune_empty(value):
@@ -95,6 +194,10 @@ def canonicalize_medical_tests(value):
             result[category] = normalized_items
         else:
             result.pop(category, None)
+    vital_parameters = normalize_vital_parameters(result)
+    if vital_parameters:
+        result['vital_parameters'] = vital_parameters
+        result['exertion_kinetics'] = legacy_vital_parameters(vital_parameters)
     return deduplicate_nested(result)
 
 

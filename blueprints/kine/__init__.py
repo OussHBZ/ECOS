@@ -18,4 +18,4 @@ def kine_home():
     return redirect(url_for('auth.login'))
 
 # Route modules register handlers on the shared blueprint.
-from . import routes_admin, routes_dashboard, routes_student, routes_teacher  # noqa: E402,F401
+from . import routes_admin, routes_dashboard, routes_student, routes_teacher, routes_import  # noqa: E402,F401

@@ -30,15 +30,16 @@ def _append_kine_evaluation(elements, evaluation_results, styles):
     threshold = evaluation_results.get('validation_threshold', 12)
     passed = bool(evaluation_results.get('passed', False))
     has_error = bool(evaluation_results.get('eliminatory_error_triggered', False))
+    number = lambda value: str(value).replace('.', ',')
 
     elements.append(Paragraph(f"<b>Grille {escape(level)} — {escape(str(grid_name))}</b>", subtitle_style))
     outcome_color = '#1a7f37' if passed else '#b42318'
     outcome = 'RÉUSSI' if passed else 'NON RÉUSSI'
     summary = [
         [Paragraph('<b>Niveau</b>', normal_style), Paragraph(escape(level), normal_style)],
-        [Paragraph('<b>Score brut</b>', normal_style), Paragraph(f'{raw_score}/{total}', normal_style)],
-        [Paragraph('<b>Score final</b>', normal_style), Paragraph(f'{final_score}/{total}', normal_style)],
-        [Paragraph('<b>Seuil de validation</b>', normal_style), Paragraph(f'{threshold}/{total}', normal_style)],
+        [Paragraph('<b>Score brut</b>', normal_style), Paragraph(f'{number(raw_score)}/{number(total)}', normal_style)],
+        [Paragraph('<b>Score final</b>', normal_style), Paragraph(f'{number(final_score)}/{number(total)}', normal_style)],
+        [Paragraph('<b>Seuil de validation</b>', normal_style), Paragraph(f'{number(threshold)}/{number(total)}', normal_style)],
         [Paragraph('<b>Résultat</b>', normal_style), Paragraph(f"<font color='{outcome_color}'><b>{outcome}</b></font>", normal_style)],
         [Paragraph('<b>Erreur éliminatoire</b>', normal_style), Paragraph('OUI' if has_error else 'NON', normal_style)],
     ]
@@ -58,7 +59,7 @@ def _append_kine_evaluation(elements, evaluation_results, styles):
     for section in sections:
         section_data.append([
             Paragraph(escape(str(section.get('title') or section.get('criterion') or section.get('id', 'Section'))), normal_style),
-            Paragraph(f"{section.get('points_earned', 0)}/{section.get('points_possible', 0)}", normal_style),
+            Paragraph(f"{number(section.get('points_earned', 0))}/{number(section.get('points_possible', 0))}", normal_style),
             Paragraph(escape(str(section.get('justification') or '—')), normal_style),
         ])
     if len(section_data) > 1:
@@ -71,12 +72,89 @@ def _append_kine_evaluation(elements, evaluation_results, styles):
         ]))
         elements.extend([section_table, Spacer(1, 14)])
 
+    for section in sections:
+        criteria = section.get('criteria') or []
+        if not criteria:
+            continue
+        elements.append(Paragraph(
+            f"<b>{escape(str(section.get('title') or section.get('criterion') or 'Section'))}</b>",
+            subtitle_style,
+        ))
+        elements.append(Paragraph(
+            f"<b>Critère évalué :</b> {escape(str(section.get('criterion') or '—'))}",
+            normal_style,
+        ))
+        for criterion in criteria:
+            elements.append(Paragraph(
+                f"<b>{escape(str(criterion.get('criterion') or 'Critère'))}</b> — "
+                f"{escape(str(criterion.get('status_label') or 'Non réalisé'))} — "
+                f"{number(criterion.get('points_earned', 0))}/{number(criterion.get('points_possible', 0))}",
+                normal_style,
+            ))
+            for label, values in (
+                ('Éléments attendus', criterion.get('expected_elements')),
+                ('Éléments détectés et comptabilisés', criterion.get('detected_elements')),
+                ('Partiellement réalisé', criterion.get('partial_elements')),
+                ('Absent ou restant à réaliser', criterion.get('missing_elements')),
+            ):
+                if values:
+                    elements.append(Paragraph(
+                        f"<b>{label} :</b> "
+                        + ' ; '.join(escape(str(value)) for value in values),
+                        normal_style,
+                    ))
+            for proof in criterion.get('evidence') or []:
+                metadata = (
+                    f"Phase {proof.get('phase')}"
+                    if proof.get('phase') else 'Phase non enregistrée'
+                )
+                if proof.get('timestamp'):
+                    metadata += f" · {proof['timestamp']}"
+                elements.append(Paragraph(
+                    f"<b>Preuve étudiante :</b> « {escape(str(proof.get('quote') or ''))} »"
+                    f"<br/><font color='#555555'>{escape(metadata)}</font>",
+                    normal_style,
+                ))
+            elements.append(Paragraph(
+                f"<b>Justification :</b> "
+                f"{escape(str(criterion.get('justification') or '—'))}",
+                normal_style,
+            ))
+            elements.append(Spacer(1, 5))
+        elements.append(Paragraph(
+            f"<b>Justification de la section :</b> "
+            f"{escape(str(section.get('justification') or '—'))}",
+            normal_style,
+        ))
+        elements.append(Spacer(1, 12))
+
     errors = evaluation_results.get('eliminatory_errors', [])
     if errors:
         elements.append(Paragraph("<font color='#b42318'><b>Erreurs éliminatoires détectées</b></font>", subtitle_style))
         error_data = [[Paragraph('<b>Règle</b>', normal_style), Paragraph('<b>Justification / preuve</b>', normal_style)]]
         for error in errors:
-            details = ' — '.join(filter(None, [str(error.get('justification') or ''), str(error.get('evidence') or '')]))
+            evidence = error.get('evidence') or []
+            if isinstance(evidence, list):
+                proof_parts = []
+                for item in evidence:
+                    phase_text = (
+                        f"phase {item.get('phase')}"
+                        if item.get('phase') else 'phase non enregistrée'
+                    )
+                    timestamp_text = (
+                        f" · {item.get('timestamp')}"
+                        if item.get('timestamp') else ''
+                    )
+                    proof_parts.append(
+                        f"« {item.get('quote', '')} » "
+                        f"({phase_text}{timestamp_text})"
+                    )
+                proof_text = ' ; '.join(proof_parts)
+            else:
+                proof_text = str(evidence)
+            details = ' — '.join(filter(None, [
+                str(error.get('justification') or ''), proof_text,
+            ]))
             error_data.append([
                 Paragraph(escape(str(error.get('description') or error.get('id', 'Erreur'))), normal_style),
                 Paragraph(escape(details or 'Détectée dans la transcription'), normal_style),
@@ -303,6 +381,22 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         # Add date
         current_date = datetime.now().strftime('%d/%m/%Y %H:%M')
         elements.append(Paragraph(f"Date: {current_date}", normal_style))
+        student = evaluation_results.get('student') or {}
+        if student:
+            student_details = [
+                f"<b>Étudiant :</b> {escape(str(student.get('name') or 'Non renseigné'))}",
+                f"<b>Code Apogée :</b> {escape(str(student.get('student_code') or 'Non renseigné'))}",
+                f"<b>Niveau :</b> {escape(str(student.get('level') or 'Non renseigné'))}",
+            ]
+            if student.get('group_name'):
+                student_details.append(
+                    f"<b>Groupe :</b> {escape(str(student['group_name']))}"
+                )
+            if student.get('class_name'):
+                student_details.append(
+                    f"<b>Classe :</b> {escape(str(student['class_name']))}"
+                )
+            elements.append(Paragraph('<br/>'.join(student_details), normal_style))
         elements.append(Spacer(1, 20))
         
         # Add score summary at the top
@@ -407,6 +501,32 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
             ]))
             elements.append(review_table)
+            elements.append(Spacer(1, 15))
+
+        vital_measurements = evaluation_results.get('vital_measurements') or []
+        if vital_measurements:
+            vital_data = [[
+                Paragraph('<b>Paramètre</b>', normal_style),
+                Paragraph('<b>Moment</b>', normal_style),
+                Paragraph('<b>Valeur</b>', normal_style),
+            ]]
+            for item in vital_measurements:
+                value = str(item.get('value', ''))
+                if item.get('unit'):
+                    value = f"{value} {item['unit']}"
+                vital_data.append([
+                    Paragraph(escape(str(item.get('name') or '')), normal_style),
+                    Paragraph(escape(str(item.get('moment_label') or '')), normal_style),
+                    Paragraph(escape(value), normal_style),
+                ])
+            elements.append(Paragraph('Paramètres vitaux mesurés', subtitle_style))
+            vital_table = Table(vital_data, colWidths=[190, 140, 120], repeatRows=1)
+            vital_table.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), .5, colors.lightgrey),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(vital_table)
             elements.append(Spacer(1, 15))
         
         # STEP 5: Process conversation messages - NOW SAFE!
@@ -993,17 +1113,19 @@ def create_competition_pdf_report(competition_summary, conversations_data):
 
 
 KINE_DASHBOARD_EXPORT_COLUMNS = (
-    ('student_name', 'Student'),
-    ('student_code', 'Student code'),
-    ('student_level', 'Level'),
-    ('group', 'Group'),
-    ('folder_name', 'Pathology folder'),
-    ('case_number', 'Case'),
+    ('student_name', 'Nom complet'),
+    ('student_code', 'Code Apogée'),
+    ('student_level', 'Niveau'),
+    ('group', 'Groupe'),
+    ('class_name', 'Classe'),
+    ('folder_name', 'Dossier pathologique'),
+    ('case_number', 'Cas'),
     ('mode', 'Mode'),
     ('started_at', 'Started at'),
     ('completed_at', 'Completed at'),
     ('duration_minutes', 'Duration (min)'),
     ('phase_timings', 'Phase timings'),
+    ('vital_measurements', 'Paramètres vitaux mesurés'),
     ('raw_score', 'Raw score /20'),
     ('score', 'Final score /20'),
     ('passed', 'Passed'),

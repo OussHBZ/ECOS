@@ -38,9 +38,10 @@ class Student(db.Model, UserMixin):
     password_hash = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
-    # Physiotherapy curriculum level. Nullable for backward compatibility with
-    # existing generic OSCE accounts; new accounts default to Licence.
-    level = db.Column(db.String(20), nullable=True, default='licence')
+    # Physiotherapy curriculum level. It remains nullable so legacy and
+    # standard ECOS accounts keep working; Kine write routes require an
+    # explicit Licence or Master value.
+    level = db.Column(db.String(20), nullable=True)
     group_name = db.Column(db.String(100), nullable=True)
     class_name = db.Column(db.String(100), nullable=True)
     # Exclusive platform assignment: generic/Sondar ECOS or physiotherapy ECOS.
@@ -606,8 +607,59 @@ class PathologyFolder(db.Model):
     )
 
 
+class KineCaseImportBatch(db.Model):
+    """Persistent queue for a bulk physiotherapy case import."""
+    __tablename__ = 'kine_case_import_batches'
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='queued')
+    total_files = db.Column(db.Integer, nullable=False, default=0)
+    processed_files = db.Column(db.Integer, nullable=False, default=0)
+    successful_files = db.Column(db.Integer, nullable=False, default=0)
+    incomplete_files = db.Column(db.Integer, nullable=False, default=0)
+    error_files = db.Column(db.Integer, nullable=False, default=0)
+    duplicate_files = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+
+    creator = db.relationship('Teacher', backref=db.backref('kine_case_import_batches', lazy=True))
+    drafts = db.relationship(
+        'KineCaseDraft', back_populates='batch', lazy=True,
+        cascade='all, delete-orphan', order_by='KineCaseDraft.id',
+    )
+
+
+class KineCaseDraft(db.Model):
+    """One extracted document awaiting explicit teacher validation."""
+    __tablename__ = 'kine_case_drafts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey('kine_case_import_batches.id'), nullable=False, index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    source_filename = db.Column(db.String(255), nullable=False)
+    source_path = db.Column(db.Text, nullable=False)
+    source_sha256 = db.Column(db.String(64), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    extracted_data = db.Column(db.JSON)
+    validation_issues = db.Column(db.JSON, nullable=False, default=list)
+    duplicate_reason = db.Column(db.Text)
+    error_message = db.Column(db.Text)
+    extraction_method = db.Column(db.String(50))
+    extracted_at = db.Column(db.DateTime)
+    reviewed_at = db.Column(db.DateTime)
+    validated_case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    batch = db.relationship('KineCaseImportBatch', back_populates='drafts')
+    creator = db.relationship('Teacher', backref=db.backref('kine_case_drafts', lazy=True))
+    validated_case = db.relationship('PatientCase', backref=db.backref('source_import_drafts', lazy=True))
+
+
 class PatientRecord(db.Model):
-    """Structured medical record displayed before a kine simulation."""
+    """Complete structured record used by the Kine teaching and simulation tools."""
     __tablename__ = 'patient_records'
 
     id = db.Column(db.Integer, primary_key=True)

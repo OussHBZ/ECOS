@@ -1,0 +1,34 @@
+{% extends "kine_base.html" %}
+{% block title %}Lot d’import #{{ batch.id }} — ECOS Kiné{% endblock %}
+{% block content %}
+<div class="kine-page-heading">
+    <div><span class="kine-eyebrow">File de validation enseignant</span><h1>Lot d’import #{{ batch.id }}</h1><p>Les documents sont traités indépendamment, par petits lots persistants.</p></div>
+    <a class="btn btn-secondary" href="{{ url_for('kine.case_imports') }}">Nouvel import</a>
+</div>
+<section class="kine-card" data-import-batch data-process-url="{{ batch_data.process_url }}" data-retry-url="{{ batch_data.retry_url }}" data-batch-url="{{ batch_data.detail_url }}" data-batch-status="{{ batch.status }}">
+    <div class="kine-section-title"><div><h2>Progression globale</h2><p data-batch-status>{{ batch_data.status_label }}</p></div><button class="btn btn-secondary" type="button" data-retry-errors {% if not batch.error_files %}hidden{% endif %}>Relancer uniquement les échecs</button></div>
+    <div class="kine-import-progress"><span data-progress-bar style="width:{{ batch_data.progress_percentage }}%"></span></div>
+    <p><strong data-progress-label>{{ batch.processed_files }}/{{ batch.total_files }} documents traités — {{ batch_data.progress_percentage }} %</strong></p>
+    <div class="kine-metrics">
+        <article class="kine-metric"><span>Prêts</span><strong data-count="successful">{{ batch.successful_files }}</strong></article>
+        <article class="kine-metric"><span>Incomplets</span><strong data-count="incomplete">{{ batch.incomplete_files }}</strong></article>
+        <article class="kine-metric"><span>Erreurs</span><strong data-count="error">{{ batch.error_files }}</strong></article>
+        <article class="kine-metric"><span>Doublons</span><strong data-count="duplicate">{{ batch.duplicate_files }}</strong></article>
+    </div>
+</section>
+<section class="kine-card">
+    <h2>Brouillons à contrôler</h2>
+    <div class="kine-table-wrap"><table class="kine-table">
+        <thead><tr><th>Document</th><th>Cas proposé</th><th>État</th><th>Extraction</th><th>Information</th><th>Actions</th></tr></thead>
+        <tbody>{% for draft in batch.drafts %}<tr>
+            <td><strong>{{ draft.source_filename }}</strong></td>
+            <td>{% if draft.extracted_data %}{{ draft.extracted_data.case_number or '—' }} — {{ draft.extracted_data.title or 'Sans titre' }}{% else %}—{% endif %}</td>
+            <td><span class="kine-badge {% if draft.status in ('error','duplicate') %}kine-badge--major{% endif %}">{{ {'pending':'À extraire','processing':'Traitement en cours','ready':'Prêt à valider','incomplete':'Incomplet','error':'Erreur','duplicate':'Doublon','validated':'Validé','rejected':'Rejeté'}.get(draft.status, draft.status) }}</span></td>
+            <td>{{ draft.extraction_method or '—' }}{% if draft.extracted_at %}<small>{{ draft.extracted_at }}</small>{% endif %}</td>
+            <td>{{ draft.error_message or draft.duplicate_reason or (draft.validation_issues or [])|join(' ') or 'Extraction complète.' }}</td>
+            <td><a href="{{ url_for('kine.case_import_draft_source', draft_id=draft.id) }}">Source</a>{% if draft.status not in ('pending','processing','rejected') %} · <a href="{{ url_for('kine.case_import_draft', draft_id=draft.id) }}">Consulter / Corriger</a>{% endif %}{% if draft.validated_case_id %} · <a href="{{ url_for('kine.case_item', case_id=draft.validated_case_id) }}">Cas validé</a>{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/kine-case-imports.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}

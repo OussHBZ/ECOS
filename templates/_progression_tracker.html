@@ -1,39 +1,44 @@
-{% set tracker_mode = simulation_mode|default('training') %}
-{% set tracker_phase = current_phase|default(1)|int %}
-{% set phases = [
-    ('Accueil et présentation', 'Accueillir le patient, se présenter et établir une relation thérapeutique.'),
-    ('Anamnèse', 'Explorer le motif, l’histoire, les traitements, les symptômes, les habitudes, les limitations et les objectifs du patient.'),
-    ('Antécédents et risques', 'Analyser les antécédents, les comorbidités et les facteurs de risque sans demander le diagnostic au patient.'),
-    ('Bilan kinésithérapique', 'Choisir et annoncer les tests pertinents : EVA, Borg, TUG, 6MWT, Sit To Stand, FC, SpO₂, PA, auscultation…'),
-    ('Raisonnement clinique', 'Présenter votre analyse et votre raisonnement clinique sans attendre que le patient donne le diagnostic.'),
-    ('Objectifs thérapeutiques', 'Définir des objectifs thérapeutiques adaptés et formulés selon la méthode SMART.'),
-    ('Programme de rééducation', 'Construire le programme FITT : exercices, intensité, fréquence, progression, surveillance et séance type.'),
-    ('Incidents cliniques', 'Identifier et gérer uniquement les incidents prévus dans le dossier clinique.'),
-    ('Éducation thérapeutique', 'Informer, conseiller et vérifier la compréhension du patient.'),
-    ('Fin de prise en charge', 'Conclure la séance, sécuriser le patient et résumer la suite de la prise en charge.'),
-    ('Évaluation et feedback', 'Terminer la simulation pour obtenir l’évaluation et le feedback.')
+{% set tracker_mode = progression.mode if progression is defined else simulation_mode|default('training') %}
+{% set tracker_phase = progression.current_phase if progression is defined else current_phase|default(1)|int %}
+{% set tracker_percentage = progression.progress_percentage if progression is defined else ((tracker_phase / 9) * 100)|round|int %}
+{% set tracker_phases = progression.phases if progression is defined else [
+    {'number':1,'label':'Accueil et présentation','guidance':'Accueillir le patient, se présenter et établir une relation thérapeutique.'},
+    {'number':2,'label':'Anamnèse','guidance':'Explorer le motif, l’histoire, les traitements, les symptômes, les habitudes, les limitations et les objectifs du patient.'},
+    {'number':3,'label':'Analyse des antécédents et facteurs de risque','guidance':'Analyser les antécédents, les comorbidités et les facteurs de risque sans demander le diagnostic au patient.'},
+    {'number':4,'label':'Bilan kinésithérapique','guidance':'Choisir et annoncer les tests pertinents.'},
+    {'number':5,'label':'Analyse et raisonnement clinique','guidance':'Présenter votre analyse et votre raisonnement clinique.'},
+    {'number':6,'label':'Objectifs thérapeutiques','guidance':'Définir des objectifs thérapeutiques adaptés selon la méthode SMART.'},
+    {'number':7,'label':'Programme de rééducation','guidance':'Construire le programme FITT et la surveillance.'},
+    {'number':8,'label':'Incidents cliniques','guidance':'Identifier et gérer uniquement les incidents prévus dans le dossier clinique.'},
+    {'number':9,'label':'Éducation thérapeutique','guidance':'Informer, conseiller et vérifier la compréhension du patient.'}
 ] %}
+{% set current_item = tracker_phases[tracker_phase - 1] %}
 <section class="kine-tracker" data-kine-tracker
          data-mode="{{ tracker_mode }}" data-current-phase="{{ tracker_phase }}"
          data-progress-url="{{ progress_url|default('') }}" aria-label="Progression de la consultation">
     <div class="kine-tracker__summary">
-        <div><strong>Phase {{ tracker_phase }}/11</strong> <span data-tracker-phase-label>{{ phases[tracker_phase - 1][0] }}</span></div>
-        <div><span data-tracker-percentage>{{ ((tracker_phase / 11) * 100)|round|int }}</span>%</div>
+        <div><strong>Phase {{ tracker_phase }}/{{ tracker_phases|length }}</strong> <span data-tracker-phase-label>{{ current_item.label }}</span></div>
+        <div><span data-tracker-percentage>{{ tracker_percentage }}</span>%</div>
     </div>
-    <div class="kine-tracker__bar" role="progressbar" aria-label="Progression globale" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ ((tracker_phase / 11) * 100)|round|int }}">
-        <span data-tracker-bar style="width:{{ ((tracker_phase / 11) * 100)|round|int }}%"></span>
+    <div class="kine-tracker__bar" role="progressbar" aria-label="Progression globale"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ tracker_percentage }}">
+        <span data-tracker-bar style="width:{{ tracker_percentage }}%"></span>
     </div>
     <ol class="kine-tracker__steps">
-        {% for phase in phases %}
-        <li class="kine-tracker__step{% if loop.index < tracker_phase %} is-complete{% elif loop.index == tracker_phase %} is-current{% else %} is-remaining{% endif %}" data-phase="{{ loop.index }}">
-            <button type="button" data-phase-button="{{ loop.index }}"
-                    aria-label="Phase {{ loop.index }} : {{ phase[0] }}"
-                    {% if loop.index == tracker_phase %}aria-current="step"{% endif %}
-                    {% if tracker_mode == 'exam' and (loop.index < tracker_phase or loop.index > tracker_phase + 1) %}disabled title="Étape verrouillée en mode Examen"{% endif %}>
-                <span>{{ loop.index }}</span><small>{{ phase[0] }}</small>
+        {% for phase in tracker_phases %}
+        <li class="kine-tracker__step{% if phase.number < tracker_phase %} is-complete{% elif phase.number == tracker_phase %} is-current{% else %} is-remaining{% endif %}"
+            data-phase="{{ phase.number }}" data-phase-label="{{ phase.label }}"
+            data-phase-guidance="{{ phase.guidance }}">
+            <button type="button" data-phase-button="{{ phase.number }}"
+                    aria-label="Phase {{ phase.number }} : {{ phase.label }}"
+                    {% if phase.number == tracker_phase %}aria-current="step"{% endif %}
+                    {% if phase.locked|default(false) %}disabled title="{{ phase.lock_reason|default('Phase non débloquée.') }}"{% endif %}>
+                <span>{{ phase.number }}</span><small>{{ phase.label }}</small>
             </button>
         </li>
         {% endfor %}
     </ol>
-    <div class="kine-tracker__guidance" aria-live="polite"><strong>À réaliser :</strong> <span data-tracker-guidance>{{ phases[tracker_phase - 1][1] }}</span></div>
+    <div class="kine-tracker__guidance" aria-live="polite"><strong>À réaliser :</strong> <span data-tracker-guidance>{{ current_item.guidance }}</span></div>
+    <p class="kine-tracker__requirements" data-tracker-requirements aria-live="polite">{{ progression.requirements_message if progression is defined else '' }}</p>
+    <p class="kine-tracker__error hidden" data-tracker-error role="alert"></p>
 </section>

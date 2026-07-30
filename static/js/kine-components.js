@@ -1,24 +1,24 @@
 (function () {
     'use strict';
 
-    const PHASES = [
-        {label:'Accueil et présentation', guidance:'Accueillir le patient, se présenter et établir une relation thérapeutique.'},
-        {label:'Anamnèse', guidance:'Explorer le motif, l’histoire, les traitements, les symptômes, les habitudes, les limitations et les objectifs du patient.'},
-        {label:'Antécédents et risques', guidance:'Analyser les antécédents, les comorbidités et les facteurs de risque sans demander le diagnostic au patient.'},
-        {label:'Bilan kinésithérapique', guidance:'Choisir et annoncer les tests pertinents : EVA, Borg, TUG, 6MWT, Sit To Stand, FC, SpO₂, PA, auscultation…'},
-        {label:'Raisonnement clinique', guidance:'Présenter votre analyse et votre raisonnement clinique sans attendre que le patient donne le diagnostic.'},
-        {label:'Objectifs thérapeutiques', guidance:'Définir des objectifs adaptés et formulés selon la méthode SMART.'},
-        {label:'Programme de rééducation', guidance:'Construire le programme FITT : exercices, intensité, fréquence, progression, surveillance et séance type.'},
-        {label:'Incidents cliniques', guidance:'Identifier et gérer uniquement les incidents prévus dans le dossier clinique.'},
-        {label:'Éducation thérapeutique', guidance:'Informer, conseiller et vérifier la compréhension du patient.'},
-        {label:'Fin de prise en charge', guidance:'Conclure la séance, sécuriser le patient et résumer la suite de la prise en charge.'},
-        {label:'Évaluation et feedback', guidance:'Terminer la simulation pour obtenir l’évaluation et le feedback.'}
-    ];
+    function trackerPhases(root) {
+        return Array.from(root.querySelectorAll('[data-phase]')).map(step => ({
+            number: Number(step.dataset.phase),
+            label: step.dataset.phaseLabel || '',
+            guidance: step.dataset.phaseGuidance || '',
+            step,
+        }));
+    }
 
-    function updateTracker(root, phase) {
-        const current = Math.max(1, Math.min(PHASES.length, Number(phase) || 1));
+    function updateTracker(root, progress) {
+        const phases = trackerPhases(root);
+        if (!phases.length) return;
+        const state = typeof progress === 'object' && progress !== null ? progress : {};
+        const phase = state.current_phase ?? progress;
+        const current = Math.max(1, Math.min(phases.length, Number(phase) || 1));
+        const currentPhase = phases[current - 1];
         root.dataset.currentPhase = String(current);
-        const percentage = Math.round(current / PHASES.length * 100);
+        const percentage = Number(state.progress_percentage ?? Math.round(current / phases.length * 100));
         const bar = root.querySelector('[data-tracker-bar]');
         const progressbar = root.querySelector('[role="progressbar"]');
         if (bar) bar.style.width = `${percentage}%`;
@@ -26,20 +26,24 @@
         const percentageNode = root.querySelector('[data-tracker-percentage]');
         const label = root.querySelector('[data-tracker-phase-label]');
         if (percentageNode) percentageNode.textContent = String(percentage);
-        if (label) label.textContent = PHASES[current - 1].label;
+        if (label) label.textContent = currentPhase.label;
         const guidance = root.querySelector('[data-tracker-guidance]');
-        if (guidance) guidance.textContent = PHASES[current - 1].guidance;
+        if (guidance) guidance.textContent = currentPhase.guidance;
         const phaseCounter = root.querySelector('.kine-tracker__summary strong');
-        if (phaseCounter) phaseCounter.textContent = `Phase ${current}/${PHASES.length}`;
-        root.querySelectorAll('[data-phase]').forEach((step) => {
-            const number = Number(step.dataset.phase);
+        if (phaseCounter) phaseCounter.textContent = `Phase ${current}/${phases.length}`;
+        const requirements = root.querySelector('[data-tracker-requirements]');
+        if (requirements && state.requirements_message) requirements.textContent = state.requirements_message;
+        phases.forEach(({number, step}) => {
             step.classList.toggle('is-current', number === current);
             step.classList.toggle('is-complete', number < current);
             step.classList.toggle('is-remaining', number > current);
             const button = step.querySelector('button');
             if (button) {
-                const locked = root.dataset.mode === 'exam' && (number < current || number > current + 1);
-                button.disabled = locked;
+                const serverPhase = (state.phases || []).find(item => Number(item.number) === number);
+                if (serverPhase) {
+                    button.disabled = Boolean(serverPhase.locked);
+                    button.title = serverPhase.lock_reason || '';
+                }
                 if (number === current) button.setAttribute('aria-current', 'step');
                 else button.removeAttribute('aria-current');
             }
@@ -55,9 +59,23 @@
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 credentials: 'same-origin', body: JSON.stringify({phase})
             });
-            if (!response.ok) throw new Error('Échec de la mise à jour de la progression');
-            const data = await response.json();
-            phase = data.current_phase || phase;
+            const data = await response.json().catch(() => ({}));
+            const errorNode = root.querySelector('[data-tracker-error]');
+            if (!response.ok) {
+                const message = data.error || 'La phase demandée reste verrouillée.';
+                if (errorNode) {
+                    errorNode.textContent = message;
+                    errorNode.classList.remove('hidden');
+                }
+                throw new Error(message);
+            }
+            if (errorNode) {
+                errorNode.textContent = '';
+                errorNode.classList.add('hidden');
+            }
+            updateTracker(root, data);
+            root.dispatchEvent(new CustomEvent('kine:phasechange', {bubbles: true, detail: data}));
+            return;
         }
         updateTracker(root, phase);
         root.dispatchEvent(new CustomEvent('kine:phasechange', {bubbles: true, detail: {phase}}));
@@ -73,7 +91,7 @@
             });
         });
         window.addEventListener('kine:progress', (event) => {
-            document.querySelectorAll('[data-kine-tracker]').forEach((root) => updateTracker(root, event.detail.current_phase));
+            document.querySelectorAll('[data-kine-tracker]').forEach((root) => updateTracker(root, event.detail));
         });
     }
 
@@ -155,6 +173,7 @@
             identity_name: identity.name, identity_age: identity.age, identity_gender: identity.gender,
             family_situation: identity.family_situation, occupation: identity.occupation,
             height_cm: identity.height_cm, weight_kg: identity.weight_kg, bmi: identity.bmi,
+            social_context: identity.social_context,
             diagnosis: context.main_diagnosis || data.diagnosis,
             illness_history: context.illness_history || context.admission_reason,
             history_cardiovascular: history.cardiovascular,
@@ -164,12 +183,14 @@
             medical_prescription: prescriptions.medical,
             physiotherapy_prescription: prescriptions.physiotherapy,
             pedagogical_objectives: data.pedagogical_objectives || data.directives,
+            directives: data.directives,
         };
         Object.entries(mappings).forEach(([name, value]) => { filled += setField(form, name, value); });
 
         filled += fillRepeater('procedures', data.procedures || []);
         filled += fillRepeater('medications', data.medications || [], {precautions: 'physiotherapy_precautions'});
         filled += fillRepeater('incidents', data.incidents || []);
+        filled += fillRepeater('evaluation_checklist', data.evaluation_checklist || []);
 
         const tests = [];
         Object.entries(data.tests || {}).forEach(([category, entries]) => {
@@ -189,10 +210,31 @@
 
         const assessment = data.physiotherapy_assessment || {};
         Object.entries(assessment).forEach(([domain, entries]) => {
-            filled += domain === 'exertion_kinetics'
-                ? fillRepeater('kinetics', entries || [])
-                : fillRepeater(`assessment_${domain}`, entries || []);
+            if (domain !== 'exertion_kinetics') {
+                filled += fillRepeater(`assessment_${domain}`, entries || []);
+            }
         });
+        let vitalParameters = data.vital_parameters || [];
+        if (!vitalParameters.length && Array.isArray(assessment.exertion_kinetics)) {
+            const grouped = new Map();
+            assessment.exertion_kinetics.forEach((item) => {
+                const name = item.measure || item.name || '';
+                if (!name) return;
+                const key = `${name.toLowerCase()}|${(item.unit || '').toLowerCase()}`;
+                const row = grouped.get(key) || {name, unit: item.unit || ''};
+                const moment = /avant|initial|repos/i.test(item.time || '') ? 'before'
+                    : (/après|apres|récup|recup|post/i.test(item.time || '') ? 'after' : 'during');
+                row[moment] = item.value;
+                grouped.set(key, row);
+            });
+            vitalParameters = Array.from(grouped.values());
+        }
+        filled += fillRepeater('vital_parameters', vitalParameters.map((item) => ({
+            ...item,
+            before: item.values?.before ?? item.before,
+            during: item.values?.during ?? item.during,
+            after: item.values?.after ?? item.after,
+        })));
         return filled;
     }
 
@@ -218,6 +260,27 @@
         });
         document.querySelectorAll('[data-repeater]').forEach((container) => {
             if (!container.children.length) addRepeaterRow(container.dataset.repeater);
+        });
+    }
+
+    function initVitalParameterValidation() {
+        const form = document.querySelector('[data-kine-case-form]');
+        if (!form) return;
+        form.addEventListener('submit', (event) => {
+            form.querySelectorAll('.kine-vital-parameter-row').forEach((row) => {
+                const name = row.querySelector('[data-vital-parameter-name]');
+                const values = ['before', 'during', 'after'].map((moment) =>
+                    row.querySelector(`[name$="[${moment}]"]`)?.value.trim()
+                );
+                name.required = values.some(Boolean);
+                name.setCustomValidity(name.required && !name.value.trim()
+                    ? 'Le nom du paramètre est obligatoire.'
+                    : '');
+            });
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                form.reportValidity();
+            }
         });
     }
 
@@ -309,7 +372,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        initTrackers(); initRepeaters(); initConfirmations(); initDocumentExtraction(); initDashboardCharts();
+        initTrackers(); initRepeaters(); initVitalParameterValidation(); initConfirmations(); initDocumentExtraction(); initDashboardCharts();
         initExistingCaseForm(); initLocalDateTimes();
     });
 })();

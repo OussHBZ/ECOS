@@ -5,16 +5,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 ACTION_LABELS = {
-    'simulation_started': 'Simulation started',
-    'student_message': 'Student message',
-    'test_requested': 'Test requested',
-    'incident_triggered': 'Incident triggered',
-    'phase_change': 'Phase changed',
-    'phase_navigation_denied': 'Phase navigation denied',
-    'exam_auto_closed': 'Exam automatically closed',
-    'simulation_completed': 'Simulation completed',
-    'simulation_paused': 'Simulation paused',
-    'simulation_resumed': 'Simulation resumed',
+    'simulation_started': 'Simulation commencée',
+    'student_message': 'Message de l’étudiant',
+    'test_requested': 'Test demandé',
+    'incident_triggered': 'Incident déclenché',
+    'phase_change': 'Changement de phase',
+    'phase_navigation_denied': 'Navigation de phase refusée',
+    'exam_auto_closed': 'Examen clôturé automatiquement',
+    'simulation_completed': 'Simulation terminée',
+    'simulation_paused': 'Simulation mise en pause',
+    'simulation_resumed': 'Simulation reprise',
 }
 
 
@@ -73,6 +73,12 @@ def format_timeline(timeline, timezone_name='Africa/Casablanca'):
         parsed = _parse_timestamp(event.get('timestamp'))
         event['sequence'] = position + 1
         event['action_label'] = ACTION_LABELS.get(event.get('action'), str(event.get('action') or 'Action').replace('_', ' ').title())
+        if str(event.get('phase')) in (
+            '10', '11', 'end_of_care', 'evaluation_feedback',
+        ):
+            event['phase_label'] = 'Clôture technique historique'
+        elif event.get('phase') is not None:
+            event['phase_label'] = f"Phase {event['phase']}"
         event['timezone'] = timezone_name
         event['display_time'] = parsed.astimezone(display_timezone).strftime('%H:%M:%S') if parsed else '—'
         event['display_datetime'] = parsed.astimezone(display_timezone).strftime('%d/%m/%Y %H:%M:%S') if parsed else '—'

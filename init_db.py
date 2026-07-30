@@ -69,11 +69,17 @@ def seed_default_accounts():
 
 def apply_additive_schema_updates():
     """Add kine columns to legacy SQLite tables without deleting data."""
+    # These new queue tables are isolated from legacy and standard-ECOS
+    # tables. ``checkfirst`` makes this migration idempotent on SQLite.
+    for table_name in ('kine_case_import_batches', 'kine_case_drafts'):
+        table = db.metadata.tables.get(table_name)
+        if table is not None:
+            table.create(bind=db.engine, checkfirst=True)
     inspector = db.inspect(db.engine)
     existing_tables = set(inspector.get_table_names())
     additions = {
         'student': {
-            'level': "VARCHAR(20) DEFAULT 'licence'",
+            'level': 'VARCHAR(20)',
             'group_name': 'VARCHAR(100)',
             'class_name': 'VARCHAR(100)',
             'ecos_type': "VARCHAR(20) NOT NULL DEFAULT 'standard'",
@@ -117,6 +123,17 @@ def apply_additive_schema_updates():
                     connection.exec_driver_sql(
                         f'ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}'
                     )
+        if 'student' in existing_tables:
+            columns = {
+                column['name'] for column in db.inspect(db.engine).get_columns('student')
+            }
+            if {'ecos_type', 'level'} <= columns:
+                connection.exec_driver_sql("""
+                    UPDATE student
+                    SET level = 'licence'
+                    WHERE ecos_type = 'kine'
+                      AND lower(trim(coalesce(level, ''))) NOT IN ('licence', 'master')
+                """)
 
 
 def seed_pathology_folders():
@@ -169,7 +186,9 @@ def init_database():
                 'simulation_sessions',
                 'exams',
                 'exam_cases',
-                'exam_students'
+                'exam_students',
+                'kine_case_import_batches',
+                'kine_case_drafts',
             ]
             
             inspector = db.inspect(db.engine)

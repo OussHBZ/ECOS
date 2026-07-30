@@ -69,7 +69,7 @@ def update_student_level(student_id):
     student = Student.query.filter_by(id=student_id, ecos_type='kine').first_or_404()
     level = str(payload().get('level') or '').lower()
     if level not in LEVELS:
-        return error("Level must be 'licence' or 'master'")
+        return error("Le niveau doit être « licence » ou « master ».")
     student.level = level
     if payload().get('group_name') is not None:
         student.group_name = str(payload().get('group_name') or '').strip() or None

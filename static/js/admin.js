@@ -1252,7 +1252,7 @@ async function loadAdminStudents(searchQuery = '') {
         tableBody.innerHTML = '';
         
         if (data.students.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
         } else {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
@@ -1263,15 +1263,29 @@ async function loadAdminStudents(searchQuery = '') {
                         <div class="code-type-label">N° Apogée</div>
                     </td>
                     <td>${student.name}</td>
-                    <td><select aria-label="Type d’ECOS de ${student.name}" onchange="updateStudentEcosType(${student.id},this)">
+                    <td><select id="student-ecos-type-${student.id}" aria-label="Type d’ECOS de ${student.name}" onchange="toggleStudentLevelEditor(${student.id})">
                         <option value="standard" ${student.ecos_type === 'standard' ? 'selected' : ''}>ECOS standard</option>
-                        <option value="kine" ${student.ecos_type === 'kine' ? 'selected' : ''}>Kiné</option>
+                        <option value="kine" ${student.ecos_type === 'kine' ? 'selected' : ''}>ECOS Kiné</option>
                     </select></td>
+                    <td>
+                        <select id="student-level-${student.id}" aria-label="Niveau Kiné de ${student.name}"
+                                class="${student.ecos_type === 'kine' ? '' : 'hidden'}"
+                                ${student.ecos_type === 'kine' ? 'required' : 'disabled'}>
+                            <option value="">Choisir</option>
+                            <option value="licence" ${student.level === 'licence' ? 'selected' : ''}>Licence</option>
+                            <option value="master" ${student.level === 'master' ? 'selected' : ''}>Master</option>
+                        </select>
+                        <span id="student-level-empty-${student.id}" class="${student.ecos_type === 'kine' ? 'hidden' : ''}">—</span>
+                        ${student.ecos_type === 'kine' && (student.group_name || student.class_name)
+                            ? `<small>${student.group_name || 'Sans groupe'} · ${student.class_name || 'Sans classe'}</small>`
+                            : ''}
+                    </td>
                     <td>${student.created_at}</td>
                     <td>${student.last_login || 'Jamais'}</td>
                     <td><span class="workout-badge">${student.total_consultations}</span></td>
                     <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
                     <td>
+                        <button class="btn btn-primary" style="font-size:12px;padding:4px 8px;" onclick="updateStudentEcosType(${student.id})">Enregistrer</button>
                         <button class="detail-button" onclick="viewStudentDetails(${student.id}, '${safeName}', '${student.student_code}')">Détails</button>
                         <button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;margin-left:4px;" onclick="openResetStudentPasswordModal(${student.id},'${safeName}')">Réinit. MdP</button>
                         <button class="btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;margin-left:4px;" onclick="deleteStudent(${student.id},'${safeName}')">Supprimer</button>
@@ -1284,7 +1298,7 @@ async function loadAdminStudents(searchQuery = '') {
     } catch (error) {
         console.error('Error loading admin students:', error);
         document.getElementById('admin-students-table-body').innerHTML = 
-            '<tr><td colspan="8" style="text-align: center;">Erreur lors du chargement</td></tr>';
+            '<tr><td colspan="9" style="text-align: center;">Erreur lors du chargement</td></tr>';
     }
 }
 

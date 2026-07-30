@@ -590,6 +590,8 @@ def teacher_students_performance():
                 'student_id': student.id,
                 'student_code': student.student_code,
                 'name': student.name,
+                'ecos_type': student.ecos_type or 'standard',
+                'level': student.level if student.ecos_type == 'kine' else None,
                 'total_workouts': total_workouts,
                 'unique_stations': unique_stations,
                 'average_score': round(average_score),

@@ -23,6 +23,7 @@
                 <span class="kine-role-badge">Enseignant</span>
                 <a class="btn btn-secondary" href="{{ url_for('kine.teacher_dashboard') }}">Tableau de bord</a>
                 <a class="btn btn-secondary" href="{{ url_for('kine.teacher_dashboard') }}#tous-les-cas">Tous les cas</a>
+                <a class="btn btn-secondary" href="{{ url_for('kine.case_imports') }}">Imports Word</a>
                 <a class="btn btn-primary" href="{{ url_for('kine.new_case_form') }}">+ Nouveau cas</a>
                 {% elif session.get('user_type') == 'student' %}
                 <span class="kine-role-badge">Étudiant</span>

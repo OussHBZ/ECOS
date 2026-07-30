@@ -14,7 +14,11 @@ from models import (
 )
 
 from . import kine_bp
-from .common import CASE_LEVELS, MODES, canonicalize_medical_tests, error, parse_datetime, parse_indexed_form, payload, teacher_id, wants_json
+from .common import (
+    CASE_LEVELS, MODES, canonicalize_medical_tests, error,
+    normalize_vital_parameters, parse_datetime, parse_indexed_form, payload,
+    teacher_id, validate_vital_parameter_rows, wants_json,
+)
 
 
 @kine_bp.route('/teacher')
@@ -43,9 +47,6 @@ def _case_form_payload(case):
         for key in ('cardiac', 'vascular', 'biological', 'imaging', 'other')
     }
     assessment = stored_tests.get('physiotherapy_assessment') or {}
-    if stored_tests.get('exertion_kinetics'):
-        assessment = dict(assessment)
-        assessment['exertion_kinetics'] = stored_tests['exertion_kinetics']
     return {
         **_case_payload(case),
         'patient_info': record.identity or {} if record else {},
@@ -62,6 +63,7 @@ def _case_form_payload(case):
             'effect': item.effect, 'physiotherapy_precautions': item.physiotherapy_precautions,
         } for item in (record.medications if record else [])],
         'tests': categorized_tests,
+        'vital_parameters': normalize_vital_parameters(stored_tests),
         'reference_vitals': record.reference_vitals or {} if record else {},
         'prescriptions': {
             'medical': record.medical_prescription if record else None,
@@ -99,7 +101,10 @@ def _extracted_form_data():
 
 def _record_data(data):
     if request.is_json:
-        return data.get('patient_record') or {}
+        record_data = data.get('patient_record') or {}
+        tests = record_data.get('tests') or {}
+        validate_vital_parameter_rows(tests.get('vital_parameters') or [])
+        return record_data
     extracted = _extracted_form_data()
     prescriptions = extracted.get('prescriptions') or {}
     base = {
@@ -119,6 +124,10 @@ def _record_data(data):
         assessment[domain] = parse_indexed_form(f'assessment_{domain}')
     tests = _repeatable(data, 'tests')
     parameters = _repeatable(data, 'parameters')
+    # Unlike legacy extracted repeaters, an empty structured list is meaningful:
+    # it means the teacher deleted every vital-parameter row.
+    vital_parameters = parse_indexed_form('vital_parameters')
+    validate_vital_parameter_rows(vital_parameters)
     form_record = {
         'identity': {
             'name': data.get('identity_name'), 'age': data.get('identity_age'),
@@ -135,8 +144,11 @@ def _record_data(data):
             'surgical': data.get('history_surgical'), 'allergies': data.get('history_allergies'),
             'risk_factors': data.get('risk_factors'),
         },
-        'tests': {'items': tests, 'physiotherapy_assessment': assessment,
-                  'exertion_kinetics': _repeatable(data, 'kinetics')},
+        'tests': {
+            'items': tests,
+            'physiotherapy_assessment': assessment,
+            'vital_parameters': vital_parameters,
+        },
         'reference_vitals': {item.get('name'): {'value': item.get('value'), 'unit': item.get('unit')} for item in parameters if item.get('name')},
         'medical_prescription': data.get('medical_prescription'),
         'physiotherapy_prescription': data.get('physiotherapy_prescription'),
@@ -156,8 +168,8 @@ def _record_data(data):
         base['tests'] = categorized
     if any(assessment.values()):
         base.setdefault('tests', {})['physiotherapy_assessment'] = assessment
-    if form_tests.get('exertion_kinetics'):
-        base.setdefault('tests', {})['exertion_kinetics'] = form_tests['exertion_kinetics']
+    if form_tests.get('vital_parameters'):
+        base.setdefault('tests', {})['vital_parameters'] = form_tests['vital_parameters']
     base['tests'] = canonicalize_medical_tests(base.get('tests') or {})
     for field in ('medical_prescription', 'physiotherapy_prescription'):
         if form_record.get(field):
@@ -187,6 +199,9 @@ def _apply_case(case, data):
     case.diagnosis = data.get('diagnosis') or nested_record.get('medical_context', {}).get('main_diagnosis') or case.diagnosis
     case.diagnosis = case.diagnosis or (extracted.get('medical_context') or {}).get('main_diagnosis') or extracted.get('diagnosis')
     case.directives = data.get('directives')
+    checklist = _repeatable(data, 'evaluation_checklist')
+    if checklist:
+        case.evaluation_checklist = checklist
 
 
 def _apply_record(case, data, replace_children=True):
@@ -425,6 +440,16 @@ def _exam_payload(exam):
             'start_at': exam.start_at.isoformat() + 'Z', 'end_at': exam.end_at.isoformat() + 'Z',
             'max_duration_minutes': exam.max_duration_minutes,
             'case_ids': [case.id for case in exam.cases], 'student_ids': [student.id for student in exam.students],
+            'students': [{
+                'id': student.id,
+                'name': (student.name or '').strip() or f"Étudiant {student.student_code}",
+                'student_code': student.student_code,
+                'level': student.level,
+                'group_name': student.group_name,
+                'class_name': student.class_name,
+            } for student in sorted(
+                exam.students, key=lambda item: ((item.name or '').lower(), item.student_code)
+            )],
             'group_names': exam.group_names or [],
             'locked': _exam_is_locked(exam)}
 
@@ -452,16 +477,16 @@ def exams_collection():
 def _apply_exam(exam, data):
     exam.name = str(data.get('name') or exam.name or '').strip()
     if not exam.name:
-        raise ValueError('Exam name is required')
+        raise ValueError("Le nom de l’examen est obligatoire.")
     exam.instructions = data.get('instructions')
     browser_offset = data.get('timezone_offset_minutes')
     exam.start_at = parse_datetime(data.get('start_at') or exam.start_at, 'start_at', browser_offset)
     exam.end_at = parse_datetime(data.get('end_at') or exam.end_at, 'end_at', browser_offset)
     if exam.end_at <= exam.start_at:
-        raise ValueError('Exam end must be after start')
+        raise ValueError("La fermeture de l’examen doit être postérieure à son ouverture.")
     exam.max_duration_minutes = int(data.get('max_duration_minutes') or exam.max_duration_minutes or 0)
     if exam.max_duration_minutes <= 0:
-        raise ValueError('Exam duration must be positive')
+        raise ValueError("La durée de l’examen doit être positive.")
     get_list = data.getlist if hasattr(data, 'getlist') else lambda key: data.get(key)
     case_ids = get_list('case_ids')
     student_ids = get_list('student_ids')
@@ -470,8 +495,8 @@ def _apply_exam(exam, data):
     if student_ids is not None and not isinstance(student_ids, list): student_ids = [student_ids]
     if group_names is not None and not isinstance(group_names, list): group_names = [group_names]
     try:
-        case_ids = [int(value) for value in case_ids or []]
-        student_ids = [int(value) for value in student_ids or []]
+        case_ids = list(dict.fromkeys(int(value) for value in case_ids or []))
+        student_ids = list(dict.fromkeys(int(value) for value in student_ids or []))
     except (TypeError, ValueError):
         raise ValueError('La sélection des cas ou des étudiants est invalide.')
     selected_cases = PatientCase.query.filter(

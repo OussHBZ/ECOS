@@ -12,7 +12,7 @@ from progression_tracker import NavigationLockedError, ProgressionTracker
 from timeline_logger import append_timeline_event, format_timeline
 
 from . import kine_bp
-from .common import canonicalize_medical_tests, error, payload, prune_empty, wants_json
+from .common import error, payload, prune_empty, wants_json
 
 
 def _student_can_access_case(case):
@@ -25,6 +25,11 @@ def _student_has_exam_access(exam, student):
 
 def _session_or_404(session_id):
     return SimulationSession.query.filter_by(id=session_id, student_id=current_user.id).first_or_404()
+
+
+def _progression(simulation):
+    """Build progression exclusively from the persisted session Student."""
+    return ProgressionTracker(simulation, student=simulation.student)
 
 
 def _expire_exam_session(simulation):
@@ -60,7 +65,7 @@ def auto_close_expired_exam_sessions():
         db.session.commit()
 
 
-def _record_json(record, level):
+def _medications_json(record, level):
     medications = []
     for medication in record.medications:
         item = {'therapeutic_class': medication.therapeutic_class}
@@ -68,6 +73,11 @@ def _record_json(record, level):
             item.update({'inn': medication.inn, 'effect': medication.effect,
                          'physiotherapy_precautions': medication.physiotherapy_precautions})
         medications.append(item)
+    return medications
+
+
+def _full_record_json(record, level):
+    """Serialize the complete record for internal evaluation only."""
     return {
         'identity': record.identity, 'medical_context': record.medical_context,
         'medical_history': record.medical_history, 'comorbidities': record.comorbidities,
@@ -77,7 +87,31 @@ def _record_json(record, level):
         'available_documents': record.available_documents,
         'interventions': [{'type': item.intervention_type, 'date': item.intervention_date.isoformat() if item.intervention_date else None,
                            'complications': item.complications} for item in record.interventions],
-        'medications': medications,
+        'medications': _medications_json(record, level),
+    }
+
+
+def _student_initial_record_json(record, level):
+    """Expose only information authorized before the student simulation.
+
+    Test results, reference values and the physiotherapy assessment remain
+    server-side. They are consumed by the patient engine after an explicit
+    test announcement and by the final evaluation.
+    """
+    return {
+        'identity': record.identity,
+        'medical_context': record.medical_context,
+        'medical_history': record.medical_history,
+        'comorbidities': record.comorbidities,
+        'medical_prescription': record.medical_prescription,
+        'physiotherapy_prescription': record.physiotherapy_prescription,
+        'available_documents': record.available_documents,
+        'interventions': [{
+            'intervention_type': item.intervention_type,
+            'intervention_date': item.intervention_date.isoformat() if item.intervention_date else None,
+            'complications': item.complications,
+        } for item in record.interventions],
+        'medications': _medications_json(record, level),
     }
 
 
@@ -127,7 +161,8 @@ def _evaluation_case_data(simulation):
     return {
         'case_number': case.case_number, 'specialty': 'kine',
         'diagnosis': case.diagnosis, 'student': simulation.student,
-        'patient_record': _record_json(record, simulation.student.level or 'licence') if record else {},
+        'timeline': simulation.timeline or [],
+        'patient_record': _full_record_json(record, simulation.student.level or 'licence') if record else {},
     }
 
 
@@ -138,18 +173,34 @@ def _complete_simulation(simulation, completed_at=None, auto_closed=False, commi
         simulation.conversation or [], _evaluation_case_data(simulation),
         current_app.config.get('GROQ_CLIENT'),
     )
+    evaluation['student'] = {
+        'name': (simulation.student.name or '').strip()
+        or f"Étudiant {simulation.student.student_code}",
+        'student_code': simulation.student.student_code,
+        'level': {'licence': 'Licence', 'master': 'Master'}.get(
+            simulation.student.level,
+            simulation.student.level or 'Non renseigné',
+        ),
+        'group_name': simulation.student.group_name or '',
+        'class_name': simulation.student.class_name or '',
+    }
+    evaluation['vital_measurements'] = list(
+        (simulation.runtime_state or {}).get('obtained_vital_parameters') or []
+    )
     simulation.evaluation_results = evaluation
     simulation.eliminatory_error_triggered = evaluation.get('eliminatory_error_triggered', False)
     simulation.eliminatory_error = '; '.join(
         error.get('description') or error.get('id', '')
         for error in evaluation.get('eliminatory_errors', [])
     ) or None
-    simulation.status = 'completed'
-    simulation.current_phase = 11
     simulation.completed_at = completed_at or datetime.utcnow()
+    tracker = _progression(simulation)
+    completed_phase = tracker.to_frontend()['current_phase']
+    tracker.finalize_current_phase(simulation.completed_at)
+    simulation.status = 'completed'
     if auto_closed:
         append_timeline_event(simulation, 'exam_auto_closed', actor='system', timestamp=simulation.completed_at)
-    append_timeline_event(simulation, 'simulation_completed', actor='system', phase=11,
+    append_timeline_event(simulation, 'simulation_completed', actor='system', phase=completed_phase,
                           details={'score': evaluation.get('points_earned'), 'passed': evaluation.get('passed')},
                           timestamp=simulation.completed_at)
     if commit:
@@ -165,22 +216,11 @@ def patient_record_view(case_id):
         return error('This case is not available for your level', 403)
     if not case.patient_record:
         return error('Patient record is not configured', 404)
+    display_record = prune_empty(_student_initial_record_json(
+        case.patient_record, current_user.level or 'licence'
+    )) or {}
     if wants_json():
-        return jsonify(_record_json(case.patient_record, current_user.level or 'licence'))
-    record = case.patient_record
-    display_record = {
-        'identity': prune_empty(record.identity or {}) or {},
-        'medical_context': prune_empty(record.medical_context or {}) or {},
-        'medical_history': prune_empty(record.medical_history or {}) or {},
-        'comorbidities': prune_empty(record.comorbidities or []) or [],
-        'tests': prune_empty(canonicalize_medical_tests(record.tests or {})) or {},
-        'reference_vitals': prune_empty(record.reference_vitals or {}) or {},
-        'medical_prescription': prune_empty(record.medical_prescription),
-        'physiotherapy_prescription': prune_empty(record.physiotherapy_prescription),
-        'available_documents': prune_empty(record.available_documents or []) or [],
-        'interventions': record.interventions,
-        'medications': record.medications,
-    }
+        return jsonify(display_record)
     return render_template(
         'patient_record.html', clinical_case=case, patient_record=display_record,
         student_level=current_user.level or 'licence',
@@ -241,7 +281,7 @@ def start_simulation():
             409,
         )
     result = {'simulation_id': simulation.id, 'case_id': case.id, 'mode': mode,
-              'progress': ProgressionTracker(simulation).to_frontend()}
+              'progress': _progression(simulation).to_frontend()}
     if exam:
         deadline = min(exam.end_at, simulation.started_at + timedelta(minutes=exam.max_duration_minutes))
         result['deadline'] = deadline.isoformat() + 'Z'
@@ -255,7 +295,7 @@ def start_simulation():
 def simulation_chat(session_id):
     simulation = _session_or_404(session_id)
     _expire_exam_session(simulation)
-    display_phase = 11 if simulation.status == 'completed' and simulation.current_phase == 10 else simulation.current_phase
+    progress_state = _progression(simulation).to_frontend()
     deadline = None
     if simulation.mode == 'exam' and simulation.exam:
         deadline = min(simulation.exam.end_at,
@@ -263,7 +303,11 @@ def simulation_chat(session_id):
     return render_template(
         'chat_kine.html', simulation=simulation, clinical_case=simulation.clinical_case,
         conversation=simulation.conversation or [], evaluation=simulation.evaluation_results,
-        simulation_mode=simulation.mode, current_phase=display_phase,
+        obtained_vital_parameters=list(
+            (simulation.runtime_state or {}).get('obtained_vital_parameters') or []
+        ),
+        simulation_mode=simulation.mode, current_phase=progress_state['current_phase'],
+        progression=progress_state,
         progress_url=url_for('kine.simulation_progress', session_id=simulation.id),
         message_url=url_for('kine.simulation_message', session_id=simulation.id),
         test_url=url_for('kine.simulation_test_request', session_id=simulation.id),
@@ -283,32 +327,55 @@ def _process_message(simulation, message):
         return error('Exam time has expired', 409)
     if not message:
         return error('Message is required')
+    recorded_at = datetime.utcnow()
+    phase_state = _progression(simulation).to_frontend()
+    display_phase = phase_state['current_phase']
     conversation = list(simulation.conversation or [])
-    conversation.append({'role': 'human', 'content': message, 'timestamp': datetime.utcnow().isoformat()})
+    conversation.append({
+        'role': 'human', 'content': message,
+        'timestamp': recorded_at.isoformat(),
+        'phase': display_phase,
+        'phase_key': phase_state['current_phase_key'],
+    })
     runtime_state = dict(simulation.runtime_state or {})
     engine = KinePatientEngine(
         simulation.clinical_case, simulation.clinical_case.patient_record,
         current_app.config.get('GROQ_CLIENT'), runtime_state,
+        student=simulation.student,
     )
     response = engine.respond(message, simulation.current_phase, conversation[:-1])
-    conversation.append({'role': 'assistant', 'content': response['content'],
-                         'type': response['type'], 'timestamp': datetime.utcnow().isoformat()})
-    append_timeline_event(simulation, 'student_message', phase=simulation.current_phase, details=message)
+    conversation.append({
+        'role': 'assistant', 'content': response['content'],
+        'type': response['type'], 'timestamp': datetime.utcnow().isoformat(),
+        'phase': display_phase, 'phase_key': phase_state['current_phase_key'],
+    })
+    append_timeline_event(
+        simulation, 'student_message', phase=display_phase, details=message,
+        outcome=response['type'], timestamp=recorded_at,
+    )
     if response['type'] in ('test_result', 'test_result_unavailable'):
-        append_timeline_event(simulation, 'test_requested', phase=simulation.current_phase,
+        append_timeline_event(simulation, 'test_requested', phase=display_phase,
                               details=response.get('test') or {'available': False})
     if response['type'] == 'incident':
         append_timeline_event(simulation, 'incident_triggered', actor='system',
-                              phase=simulation.current_phase,
+                              phase=display_phase,
                               incident_id=response.get('incident_id'), severity=response.get('severity'))
     if response['type'] == 'safety_guardrail':
         append_timeline_event(simulation, 'safety_guardrail_triggered', actor='system',
-                              phase=simulation.current_phase,
+                              phase=display_phase,
                               details={'reason': response.get('guardrail')})
+    if simulation.mode == 'exam':
+        tracker = _progression(simulation)
+        if tracker.current_requirements_met and not tracker.to_frontend()['is_last_phase']:
+            tracker.next_phase()
     simulation.conversation = conversation
     simulation.runtime_state = runtime_state
     db.session.commit()
-    return jsonify({'response': response, 'progress': ProgressionTracker(simulation).to_frontend()})
+    return jsonify({
+        'response': response,
+        'progress': _progression(simulation).to_frontend(),
+        'vital_measurements': runtime_state.get('obtained_vital_parameters') or [],
+    })
 
 
 @kine_bp.route('/simulation/<int:session_id>/message', methods=['POST'])
@@ -336,7 +403,10 @@ def pause_simulation(session_id):
     if simulation.status != 'in_progress':
         return error('Only an active simulation can be paused', 409)
     simulation.status = 'paused'; simulation.paused_at = datetime.utcnow()
-    append_timeline_event(simulation, 'simulation_paused', phase=simulation.current_phase)
+    append_timeline_event(
+        simulation, 'simulation_paused',
+        phase=_progression(simulation).to_frontend()['current_phase'],
+    )
     db.session.commit()
     return jsonify({'status': simulation.status, 'paused_at': simulation.paused_at.isoformat()})
 
@@ -353,7 +423,10 @@ def resume_simulation(session_id):
             0, round((now - simulation.paused_at).total_seconds())
         )
     simulation.paused_at = None; simulation.status = 'in_progress'
-    append_timeline_event(simulation, 'simulation_resumed', phase=simulation.current_phase)
+    append_timeline_event(
+        simulation, 'simulation_resumed',
+        phase=_progression(simulation).to_frontend()['current_phase'],
+    )
     db.session.commit()
     return jsonify({'status': simulation.status, 'total_paused_seconds': simulation.total_paused_seconds})
 
@@ -373,6 +446,7 @@ def complete_simulation(session_id):
         simulation.paused_at = None
     evaluation = _complete_simulation(simulation)
     return jsonify({'evaluation': evaluation, 'status': simulation.status,
+                    'progress': _progression(simulation).to_frontend(),
                     'timeline_url': url_for('kine.simulation_timeline', session_id=simulation.id)})
 
 
@@ -382,17 +456,38 @@ def simulation_progress(session_id):
     simulation = _session_or_404(session_id)
     if _expire_exam_session(simulation):
         return error('Exam time has expired', 409)
-    tracker = ProgressionTracker(simulation)
+    tracker = _progression(simulation)
     if request.method == 'POST':
         if simulation.status != 'in_progress':
             return error('Progression is available only while the simulation is active', 409)
+        if simulation.mode == 'exam':
+            append_timeline_event(
+                simulation, 'phase_navigation_denied',
+                phase=tracker.to_frontend()['current_phase'],
+                details={
+                    'requested_phase': payload().get('phase'),
+                    'reason': (
+                        "En mode examen, l’avancement est automatique et suit "
+                        "strictement l’ordre pédagogique."
+                    ),
+                },
+            )
+            db.session.commit()
+            return error(
+                "En mode examen, l’avancement est automatique et suit "
+                "strictement l’ordre pédagogique.",
+                409,
+            )
         try:
             state = tracker.navigate_to(payload().get('phase'))
             db.session.commit()
         except (ValueError, NavigationLockedError) as exc:
             db.session.rollback()
-            append_timeline_event(simulation, 'phase_navigation_denied', phase=simulation.current_phase,
-                                  details={'requested_phase': payload().get('phase'), 'reason': str(exc)})
+            append_timeline_event(
+                simulation, 'phase_navigation_denied',
+                phase=_progression(simulation).to_frontend()['current_phase'],
+                details={'requested_phase': payload().get('phase'), 'reason': str(exc)},
+            )
             db.session.commit()
             return error(str(exc), 409)
         return jsonify(state)
@@ -408,29 +503,42 @@ def simulation_timeline(session_id):
     if wants_json():
         return jsonify({'simulation_id': simulation.id, 'timeline': formatted,
                         'event_count': len(formatted), 'timezone': formatted[0]['timezone'] if formatted else timezone_name,
+                        'progression': _progression(simulation).to_frontend(),
                         'phase_timings': simulation.phase_timings or {},
                         'supplementary_score': simulation.supplementary_score,
                         'teacher_comments': simulation.teacher_comments,
                         'reviewed_at': simulation.reviewed_at.isoformat() + 'Z' if simulation.reviewed_at else None})
-    return render_template('timeline_view.html', simulation=simulation, student=current_user,
-                           timeline=formatted)
+    return render_template(
+        'timeline_view.html', simulation=simulation, student=current_user,
+        timeline=formatted, progression=_progression(simulation).to_frontend(),
+    )
 
 
 @kine_bp.route('/history')
 @student_required
 def simulation_history():
     sessions = SimulationSession.query.filter_by(student_id=current_user.id).order_by(SimulationSession.started_at.desc()).all()
-    history = [{
-        'id': item.id, 'case_id': item.clinical_case_id, 'case_number': item.clinical_case.case_number,
-        'mode': item.mode, 'status': item.status, 'current_phase': item.current_phase,
-        'started_at': item.started_at.isoformat(), 'completed_at': item.completed_at.isoformat() if item.completed_at else None,
-        'evaluation_results': item.evaluation_results,
-        'supplementary_score': item.supplementary_score,
-        'teacher_comments': item.teacher_comments,
-        'reviewed_at': item.reviewed_at.isoformat() + 'Z' if item.reviewed_at else None,
-        'chat_url': url_for('kine.simulation_chat', session_id=item.id),
-        'timeline_url': url_for('kine.simulation_timeline', session_id=item.id),
-    } for item in sessions]
+    history = []
+    for item in sessions:
+        progress = _progression(item).to_frontend()
+        history.append({
+            'id': item.id, 'case_id': item.clinical_case_id,
+            'student_name': (current_user.name or '').strip()
+            or f"Étudiant {current_user.student_code}",
+            'student_code': current_user.student_code,
+            'case_number': item.clinical_case.case_number,
+            'mode': item.mode, 'status': item.status,
+            'current_phase': progress['current_phase'],
+            'total_phases': len(progress['phases']),
+            'started_at': item.started_at.isoformat(),
+            'completed_at': item.completed_at.isoformat() if item.completed_at else None,
+            'evaluation_results': item.evaluation_results,
+            'supplementary_score': item.supplementary_score,
+            'teacher_comments': item.teacher_comments,
+            'reviewed_at': item.reviewed_at.isoformat() + 'Z' if item.reviewed_at else None,
+            'chat_url': url_for('kine.simulation_chat', session_id=item.id),
+            'timeline_url': url_for('kine.simulation_timeline', session_id=item.id),
+        })
     if wants_json():
         return jsonify({'sessions': history})
     return render_template('student_history_kine.html', sessions=history)

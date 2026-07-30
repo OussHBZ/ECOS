@@ -1,0 +1,33 @@
+{% extends "kine_base.html" %}
+{% block title %}Import massif de cas — ECOS Kiné{% endblock %}
+{% block content %}
+<div class="kine-page-heading">
+    <div><span class="kine-eyebrow">File d’import enseignant</span><h1>Importer des cas Kiné depuis Word</h1><p>Chaque document devient un brouillon à contrôler avant toute création de cas.</p></div>
+    <a class="btn btn-secondary" href="{{ url_for('kine.teacher_dashboard') }}">Tableau de bord</a>
+</div>
+<section class="kine-card">
+    <h2>Nouveau lot</h2>
+    <form class="kine-form" method="post" enctype="multipart/form-data" data-case-import-upload>
+        <label>Documents Word ou archive ZIP
+            <input type="file" name="documents" accept=".doc,.docx,.zip" multiple required>
+            <small>Un document correspond par défaut à un cas. Une archive peut contenir jusqu’à 500 fichiers DOCX.</small>
+        </label>
+        <p class="kine-form-status" data-import-upload-status></p>
+        <div class="kine-form-actions"><button class="btn btn-primary" type="submit">Créer les brouillons</button></div>
+    </form>
+</section>
+<section class="kine-card">
+    <div class="kine-section-title"><div><h2>Lots précédents</h2><p>Les traitements interrompus peuvent être repris sans recommencer l’import.</p></div></div>
+    <div class="kine-table-wrap"><table class="kine-table">
+        <thead><tr><th>Lot</th><th>Date</th><th>Progression</th><th>Réussis</th><th>Incomplets</th><th>Erreurs</th><th>Doublons</th><th>Action</th></tr></thead>
+        <tbody>{% for batch in batches %}<tr>
+            <td><strong>#{{ batch.id }}</strong><small>{{ {'queued':'En attente','processing':'Traitement en cours','completed':'Terminé'}.get(batch.status, batch.status) }}</small></td>
+            <td>{{ batch.created_at }}</td>
+            <td>{{ batch.processed_files }}/{{ batch.total_files }}</td>
+            <td>{{ batch.successful_files }}</td><td>{{ batch.incomplete_files }}</td><td>{{ batch.error_files }}</td><td>{{ batch.duplicate_files }}</td>
+            <td><a href="{{ url_for('kine.case_import_batch', batch_id=batch.id) }}">Ouvrir la file</a></td>
+        </tr>{% else %}<tr><td colspan="8">Aucun lot importé.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/kine-case-imports.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}
