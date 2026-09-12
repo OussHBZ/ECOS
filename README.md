@@ -278,6 +278,7 @@ Créez un fichier `.env` à la racine :
 
 ```env
 GROQ_API_KEY=votre_cle_groq
+GROQ_MODELS=openai/gpt-oss-20b,qwen/qwen3.8-27b,openai/gpt-oss-120b
 SECRET_KEY=une_cle_longue_aleatoire
 ADMIN_CODE=un_code_administrateur_secret
 KINE_SPECIALTY=kine
@@ -286,6 +287,7 @@ SEED_DEMO_ACCOUNTS=false
 ```
 
 `GROQ_API_KEY` est obligatoire. Ne versionnez jamais `.env`.
+`GROQ_MODELS` est facultatif et permet de remplacer la chaîne de modèles sans modifier le code.
 
 En production, remplacez toujours les valeurs par défaut de `SECRET_KEY` et `ADMIN_CODE`.
 
@@ -371,6 +373,20 @@ SESSION_COOKIE_PATH=/ecos
 ```
 
 Nginx doit transmettre `Host`, `X-Real-IP`, `X-Forwarded-For` et `X-Forwarded-Proto`, conserver les redirections sous `/ecos/`, autoriser les imports de 25 Mo et utiliser des délais compatibles avec les appels LLM.
+
+Le service Gunicorn doit également laisser assez de temps aux appels LLM :
+
+```ini
+ExecStart=/home/fmpm/ECOS/venv/bin/gunicorn --workers 3 --timeout 120 --bind 127.0.0.1:8000 wsgi:app
+```
+
+Et dans le bloc `location` Nginx :
+
+```nginx
+proxy_connect_timeout 15s;
+proxy_read_timeout 120s;
+proxy_send_timeout 120s;
+```
 
 Un certificat auto-signé provoque un avertissement du navigateur. Pour une production sécurisée, utilisez un nom de domaine et un certificat reconnu. HTTP peut être utilisé sur un réseau interne/VPN, mais ne protège pas directement les identifiants et les données entre le navigateur et le serveur.
 

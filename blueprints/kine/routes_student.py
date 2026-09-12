@@ -343,7 +343,16 @@ def _process_message(simulation, message):
         current_app.config.get('GROQ_CLIENT'), runtime_state,
         student=simulation.student,
     )
-    response = engine.respond(message, simulation.current_phase, conversation[:-1])
+    try:
+        response = engine.respond(message, simulation.current_phase, conversation[:-1])
+    except Exception:
+        current_app.logger.exception(
+            'Virtual patient service failed for simulation %s', simulation.id
+        )
+        return error(
+            "Le patient virtuel est temporairement indisponible. Veuillez réessayer dans quelques instants.",
+            503,
+        )
     conversation.append({
         'role': 'assistant', 'content': response['content'],
         'type': response['type'], 'timestamp': datetime.utcnow().isoformat(),

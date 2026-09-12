@@ -31,8 +31,14 @@
     }
     async function post(url, body) {
         const response = await fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'Request failed');
+        const contentType = response.headers.get('content-type') || '';
+        const data = contentType.includes('application/json') ? await response.json().catch(() => ({})) : {};
+        if (!response.ok) {
+            const upstreamError = [502, 503, 504].includes(response.status)
+                ? 'Le patient virtuel est temporairement indisponible. Veuillez réessayer dans quelques instants.'
+                : `Échec de la requête (${response.status})`;
+            throw new Error(data.error || upstreamError);
+        }
         return data;
     }
     function setInputs(disabled) { root.querySelectorAll('[data-chat-form] input,[data-chat-form] button,[data-test-form] input,[data-test-form] button').forEach(node => node.disabled = disabled); }

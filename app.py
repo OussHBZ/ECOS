@@ -34,11 +34,9 @@ from blueprints.kine import kine_bp
 # to the next model in the chain at RUNTIME (not just at startup).
 LLAMA_MODELS = {
     'chain': [
-        'meta-llama/llama-4-maverick-17b-16e-instruct',   # ~500k TPD
-        'meta-llama/llama-4-scout-17b-16e-instruct',      # ~500k TPD
-        'llama-3.3-70b-versatile',                        # ~100k TPD
-        'llama-3.1-8b-instant',                           # ~500k TPD
-        'gemma2-9b-it',                                   # ~500k TPD
+        'openai/gpt-oss-20b',
+        'qwen/qwen3.8-27b',
+        'openai/gpt-oss-120b',
     ],
     'config': {
         'temperature': 0.1,
@@ -133,12 +131,12 @@ class FallbackGroqClient:
         return getattr(self._get_client(self.active_model), name)
 
 
-def create_groq_client(api_key, http_client):
+def create_groq_client(api_key, http_client, models=None):
     """Create Groq client with a runtime fallback chain across multiple models."""
     client = FallbackGroqClient(
         api_key=api_key,
         http_client=http_client,
-        models=LLAMA_MODELS['chain'],
+        models=models or LLAMA_MODELS['chain'],
         config=LLAMA_MODELS['config'],
     )
 
@@ -239,7 +237,7 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = os.environ.get('SESSION_COOKIE_PATH', '/')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
     app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260404v'
+    app.config['APP_VERSION'] = '20260912a'
 
     # Activate server-side session BEFORE any other extension so the session
     # object is upgraded from cookie-based to filesystem-based.
@@ -273,7 +271,10 @@ def create_app():
     
     # Error handlers - return JSON for AJAX, HTML template otherwise
     def _is_ajax():
-        return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        # fetch() calls from the frontend send Content-Type: application/json
+        # but no X-Requested-With header, so JSON requests must also be
+        # treated as AJAX to receive JSON error responses.
+        return request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json
 
     @app.errorhandler(404)
     def not_found_error(error):
@@ -627,9 +628,16 @@ def create_app():
         logger.error("GROQ_API_KEY not found in environment variables")
         raise ValueError("GROQ_API_KEY not found in environment variables")
 
+    configured_models = [
+        model.strip()
+        for model in os.getenv('GROQ_MODELS', '').split(',')
+        if model.strip()
+    ]
+    groq_models = configured_models or LLAMA_MODELS['chain']
+
     # Initialize ChatGroq client
     try:
-        client, active_model = create_groq_client(api_key, http_client)
+        client, active_model = create_groq_client(api_key, http_client, groq_models)
         app.config['ACTIVE_MODEL'] = active_model
         logger.info(f"ChatGroq client initialized successfully with model: {active_model}")
     except Exception as e:
@@ -641,7 +649,7 @@ def create_app():
     document_client = FallbackGroqClient(
         api_key=api_key,
         http_client=http_client,
-        models=LLAMA_MODELS['chain'],
+        models=groq_models,
         config=DOCUMENT_EXTRACTION_CONFIG,
     )
     document_agent = DocumentExtractionAgent(llm_client=document_client)

@@ -1285,6 +1285,32 @@ def test_kine_conversation_route_rewrites_current_physio_reference(app):
     assert 'mon kiné' not in repeated['content'].lower()
 
 
+def test_kine_conversation_route_returns_json_when_llm_fails(app):
+    class FailingLLM:
+        def invoke(self, messages):
+            raise RuntimeError('provider unavailable')
+
+    client = app.test_client()
+    teacher_login(client)
+    folder_id = client.post(
+        '/kine/folders', json={'name': 'Provider failure'}
+    ).get_json()['id']
+    case_id = create_case(client, folder_id)
+    app.config['GROQ_CLIENT'] = FailingLLM()
+    student_login(client)
+    session_id = client.post('/kine/simulation/start', json={
+        'case_id': case_id, 'mode': 'training',
+    }).get_json()['simulation_id']
+
+    response = client.post(f'/kine/simulation/{session_id}/message', json={
+        'message': 'Bonjour',
+    })
+
+    assert response.status_code == 503
+    assert response.is_json
+    assert 'temporairement indisponible' in response.get_json()['error']
+
+
 def test_timeline_logger_order_and_formatting():
     class State: timeline = []
     state = State(); state.timeline = []
