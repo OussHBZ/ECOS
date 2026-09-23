@@ -53,3 +53,11 @@ node --check static/js/kine-chat.js
 5. Vérifier une conversation réelle, la soumission d'un cas avec un numéro déjà utilisé et l'affichage sur les navigateurs employés par les enseignants.
 
 L'accès au serveur, la base de production, le comportement réel du fournisseur IA et un parcours dans un navigateur graphique n'ont pas été vérifiés pendant cette intervention. Les tests JavaScript utilisent un DOM simulé, pas un navigateur complet. Ce rapport décrit les défauts corrigés et leur couverture ; il ne garantit pas l'absence de tout autre défaut.
+
+## Complément après le premier déploiement
+
+Le journal communiqué par l'utilisateur confirme le déploiement du commit `1c7a192`, les 71 tests réussis sur le serveur et le service `ecos` actif. Une nouvelle capture a révélé une formulation non couverte : « je veux realiser le test FEVG ».
+
+Le correctif complémentaire reconnaît notamment « je veux », « je voudrais », « j'aimerais » et « laissez-moi ». La demande utilise la valeur du dossier sans appeler le modèle ; si elle manque, le résultat est explicitement indisponible. Un « pourquoi » après ce test ne génère plus une justification clinique inventée, et le patient ne peut pas reprendre à son compte la décision clinique de l'étudiant.
+
+Validation complémentaire : **85 tests Python réussis**, dont 14 nouveaux scénarios couvrant ces formulations, les négations, les questions, les résultats absents et la conversation reproduite par l'API du chat. Ce correctif complémentaire reste local et doit être déployé à son tour.

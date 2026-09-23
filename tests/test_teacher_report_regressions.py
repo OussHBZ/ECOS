@@ -166,6 +166,75 @@ def test_labeled_legacy_measurements_are_returned_exactly():
     assert engine.respond('Je vais réaliser le test FEVG.', 1)['content'] == '40 %'
 
 
+@pytest.mark.parametrize('message', [
+    'je veux realiser le test FEVG', 'Je voudrais réaliser le test FEVG.',
+    'J’aimerais réaliser le test FEVG.', 'Je souhaite réaliser le test FEVG.',
+    'Nous allons réaliser le test FEVG.', 'Laissez-moi réaliser le test FEVG.',
+    'Je vais vous mesurer la FEVG.',
+])
+def test_natural_measurement_requests_bypass_llm(message):
+    class LLM:
+        def invoke(self, messages):
+            pytest.fail('A measurement must use the recorded value, not the LLM')
+    record = {'tests': {'cardiac': [{'name': 'FEVG', 'value': 40, 'unit': '%'}]}}
+    engine = KinePatientEngine({}, record, LLM())
+    assert engine.respond(message, 1)['content'] == '40 %'
+    assert KinePatientEngine({}, {}, LLM()).respond(message, 1)['type'] == 'test_result_unavailable'
+
+
+@pytest.mark.parametrize('message', [
+    'Je ne veux pas réaliser le test FEVG.',
+    'Pourquoi réaliser le test FEVG ?',
+    'Vous voulez réaliser le test FEVG ?',
+])
+def test_questions_and_negated_tests_do_not_unlock_measurements(message):
+    assert not KinePatientEngine._is_measurement_intent(message)
+
+
+@pytest.mark.parametrize('available', [True, False])
+def test_why_after_a_test_does_not_invent_a_clinical_reason(available):
+    class LLM:
+        def invoke(self, messages):
+            pytest.fail('Test follow-ups must not invent a clinical rationale')
+    record = {'tests': {'cardiac': [{'name': 'FEVG', 'value': 40, 'unit': '%'}]}} if available else {}
+    engine = KinePatientEngine({}, record, LLM())
+    message = 'je veux realiser le test FEVG'
+    response = engine.respond(message, 1)
+    followup = engine.respond('pourquoi', 1, [
+        {'role': 'human', 'content': message},
+        {'role': 'assistant', **response},
+    ])
+    assert ('Pouvez-vous me l’expliquer' if available else "pas renseigné") in followup['content']
+
+
+def test_patient_cannot_adopt_students_test_as_own_clinical_decision():
+    class LLM:
+        def invoke(self, messages):
+            return SimpleNamespace(content='Je veux faire ce test pour vérifier ma fonction respiratoire.')
+    response = KinePatientEngine({}, {}, LLM()).respond('Expliquez votre choix.', 1)
+    assert response['guardrail'] == 'unsafe_model_output'
+
+
+def test_screenshot_measurement_request_through_chat_endpoint(app):
+    client = app.test_client()
+    teacher_login(client)
+    folder = client.post('/kine/folders', json={'name': 'Demande FEVG'}).get_json()['id']
+    case_id = create_case(client, folder)
+    with app.app_context():
+        record = db.session.get(PatientCase, case_id).patient_record
+        record.tests = {'cardiac': [{'name': 'FEVG', 'value': 40, 'unit': '%'}]}
+        db.session.commit()
+    student_login(client)
+    session_id = client.post('/kine/simulation/start', json={'case_id': case_id, 'mode': 'training'}).get_json()['simulation_id']
+    route = f'/kine/simulation/{session_id}/message'
+    response = client.post(route, json={'message': 'je veux realiser le test FEVG'})
+    assert response.status_code == 200
+    assert response.get_json()['response']['content'] == '40 %'
+    assert response.get_json()['vital_measurements'][0]['value'] == 40
+    followup = client.post(route, json={'message': 'pourquoi'})
+    assert 'Pouvez-vous me l’expliquer' in followup.get_json()['response']['content']
+
+
 def test_ordinary_patient_sentence_is_not_blocked_by_common_french_words():
     class LLM:
         def invoke(self, messages):
