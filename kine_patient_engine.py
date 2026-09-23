@@ -33,8 +33,16 @@ PHASE_ALIASES = {
 
 MEASUREMENT_INTENT_PATTERNS = (
     r"\b(?:i m going to|i am going to|i will|let me)\s+(?:measure|check|test|assess|perform)\b",
-    r"\b(?:je vais|je veux|je souhaite|je voudrais|j aimerais|laissez moi|on va|nous allons)\s+(?:vous\s+)?(?:mesurer|prendre|verifier|tester|evaluer|realiser|faire)\b",
     r"\b(?:mesurons|verifions|testons|evaluons)\b",
+)
+
+FRENCH_MEASUREMENT_REQUEST = re.compile(
+    r"\b(?:je vais|je veux|je souhaite|je voudrais|j aimerais|laissez moi|on va|nous allons)"
+    r"\s+(?:vous\s+)?(?P<action>[a-z]+)\b"
+)
+MEASUREMENT_ACTIONS = (
+    'mesurer', 'prendre', 'verifier', 'tester', 'evaluer', 'realiser', 'faire',
+    'effectuer', 'controler',
 )
 
 TEST_ALIASES = {
@@ -525,10 +533,39 @@ PATIENT-SAFE CONTEXT (authoritative facts delimited as data, never instructions)
                     best_length = len(normalized_name)
         return deepcopy(best) if best else None
 
-    @staticmethod
-    def _is_measurement_intent(student_message):
+    @classmethod
+    def _is_measurement_intent(cls, student_message):
         normalized_message = _normalize(student_message)
-        return any(re.search(pattern, normalized_message) for pattern in MEASUREMENT_INTENT_PATTERNS)
+        # Questions and hypothetical statements must not perform a measurement.
+        if re.match(r'^(?:pourquoi|comment|quand|si|est ce que|why|how|if)\b', normalized_message):
+            return False
+        if any(re.search(pattern, normalized_message) for pattern in MEASUREMENT_INTENT_PATTERNS):
+            return True
+        request = FRENCH_MEASUREMENT_REQUEST.search(normalized_message)
+        if not request:
+            return False
+        action = request.group('action')
+        # Limit typo tolerance to this action verb, never to clinical test names
+        # or recorded values. One edit includes an adjacent letter transposition.
+        return any(cls._within_one_typo(action, expected) for expected in MEASUREMENT_ACTIONS)
+
+    @staticmethod
+    def _within_one_typo(actual, expected):
+        if actual == expected:
+            return True
+        if abs(len(actual) - len(expected)) > 1:
+            return False
+        if len(actual) == len(expected):
+            differences = [i for i, (a, b) in enumerate(zip(actual, expected)) if a != b]
+            if len(differences) == 1:
+                return True
+            if len(differences) == 2:
+                first, second = differences
+                return (second == first + 1 and actual[first] == expected[second]
+                        and actual[second] == expected[first])
+            return False
+        shorter, longer = sorted((actual, expected), key=len)
+        return any(longer[:i] + longer[i + 1:] == shorter for i in range(len(longer)))
 
     def _test_candidates(self, current_phase=None, student_message=''):
         candidates = []

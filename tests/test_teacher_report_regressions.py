@@ -166,11 +166,25 @@ def test_labeled_legacy_measurements_are_returned_exactly():
     assert engine.respond('Je vais réaliser le test FEVG.', 1)['content'] == '40 %'
 
 
+def test_action_typo_tolerance_does_not_guess_test_names():
+    record = {'tests': {'cardiac': [{'name': 'FEVG', 'value': 40, 'unit': '%'}]}}
+    engine = KinePatientEngine({}, record)
+    assert engine.respond('je vais relaiser le test FEGV', 1)['type'] == 'test_result_unavailable'
+    assert not engine.runtime_state.get('obtained_vital_parameters')
+
+
 @pytest.mark.parametrize('message', [
     'je veux realiser le test FEVG', 'Je voudrais réaliser le test FEVG.',
     'J’aimerais réaliser le test FEVG.', 'Je souhaite réaliser le test FEVG.',
     'Nous allons réaliser le test FEVG.', 'Laissez-moi réaliser le test FEVG.',
     'Je vais vous mesurer la FEVG.',
+    'je vais relaiser le test FEVG',
+    'Je veux réalsier le test FEVG.',
+    'Je voudrais realser le test FEVG.',
+    'Je vais mesuer la FEVG.',
+    'Je vais realizer le test FEVG.',
+    'Je souhaite effectuer le test FEVG.',
+    'Je vais contrôler la FEVG.',
 ])
 def test_natural_measurement_requests_bypass_llm(message):
     class LLM:
@@ -186,6 +200,12 @@ def test_natural_measurement_requests_bypass_llm(message):
     'Je ne veux pas réaliser le test FEVG.',
     'Pourquoi réaliser le test FEVG ?',
     'Vous voulez réaliser le test FEVG ?',
+    'Je vais annuler le test FEVG.',
+    'Je veux éviter le test FEVG.',
+    'Je ne vais pas relaiser le test FEVG.',
+    'Je vais pas relaiser le test FEVG.',
+    'Pourquoi je vais réaliser le test FEVG ?',
+    'Si je vais réaliser le test FEVG, que se passe-t-il ?',
 ])
 def test_questions_and_negated_tests_do_not_unlock_measurements(message):
     assert not KinePatientEngine._is_measurement_intent(message)
@@ -215,7 +235,8 @@ def test_patient_cannot_adopt_students_test_as_own_clinical_decision():
     assert response['guardrail'] == 'unsafe_model_output'
 
 
-def test_screenshot_measurement_request_through_chat_endpoint(app):
+@pytest.mark.parametrize('message', ['je veux realiser le test FEVG', 'je vais relaiser le test FEVG'])
+def test_screenshot_measurement_request_through_chat_endpoint(app, message):
     client = app.test_client()
     teacher_login(client)
     folder = client.post('/kine/folders', json={'name': 'Demande FEVG'}).get_json()['id']
@@ -227,7 +248,7 @@ def test_screenshot_measurement_request_through_chat_endpoint(app):
     student_login(client)
     session_id = client.post('/kine/simulation/start', json={'case_id': case_id, 'mode': 'training'}).get_json()['simulation_id']
     route = f'/kine/simulation/{session_id}/message'
-    response = client.post(route, json={'message': 'je veux realiser le test FEVG'})
+    response = client.post(route, json={'message': message})
     assert response.status_code == 200
     assert response.get_json()['response']['content'] == '40 %'
     assert response.get_json()['vital_measurements'][0]['value'] == 40

@@ -61,3 +61,11 @@ Le journal communiqué par l'utilisateur confirme le déploiement du commit `1c7
 Le correctif complémentaire reconnaît notamment « je veux », « je voudrais », « j'aimerais » et « laissez-moi ». La demande utilise la valeur du dossier sans appeler le modèle ; si elle manque, le résultat est explicitement indisponible. Un « pourquoi » après ce test ne génère plus une justification clinique inventée, et le patient ne peut pas reprendre à son compte la décision clinique de l'étudiant.
 
 Validation complémentaire : **85 tests Python réussis**, dont 14 nouveaux scénarios couvrant ces formulations, les négations, les questions, les résultats absents et la conversation reproduite par l'API du chat. Ce correctif complémentaire reste local et doit être déployé à son tour.
+
+## Tolérance aux fautes de frappe dans les demandes
+
+Le journal suivant confirme le déploiement de `e3fd366` et 85 tests réussis. La demande « je vais relaiser le test FEVG » révélait encore une reconnaissance trop stricte du verbe d'action.
+
+La détection accepte désormais une lettre manquante, ajoutée, remplacée ou deux lettres voisines inversées dans le verbe d'action. Elle reconnaît aussi « effectuer » et « contrôler ». Cette tolérance ne s'applique pas au nom du test ni aux valeurs médicales. Les négations, les questions explicatives et les hypothèses testées ne déclenchent pas de mesure.
+
+Validation : défaut reproduit avant correction, puis **100 tests Python réussis**, dont le parcours API avec la phrase exacte « je vais relaiser le test FEVG ». La valeur est celle du dossier si elle existe ; aucun résultat absent n'est inventé. Cette dernière correction reste locale, sans modification du serveur.
