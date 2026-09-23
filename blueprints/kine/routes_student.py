@@ -373,12 +373,12 @@ def _process_message(simulation, message):
         append_timeline_event(simulation, 'safety_guardrail_triggered', actor='system',
                               phase=display_phase,
                               details={'reason': response.get('guardrail')})
+    simulation.conversation = conversation
+    simulation.runtime_state = runtime_state
     if simulation.mode == 'exam':
         tracker = _progression(simulation)
         if tracker.current_requirements_met and not tracker.to_frontend()['is_last_phase']:
             tracker.next_phase()
-    simulation.conversation = conversation
-    simulation.runtime_state = runtime_state
     db.session.commit()
     return jsonify({
         'response': response,

@@ -3,6 +3,7 @@ import os
 import tempfile
 from datetime import datetime
 from io import BytesIO
+from sqlalchemy.exc import IntegrityError
 
 from flask import current_app, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -43,8 +44,8 @@ def _case_form_payload(case):
     record = case.patient_record
     stored_tests = canonicalize_medical_tests(record.tests or {}) if record else {}
     categorized_tests = {
-        key: list(stored_tests.get(key) or [])
-        for key in ('cardiac', 'vascular', 'biological', 'imaging', 'other')
+        key: value for key, value in stored_tests.items()
+        if key not in ('physiotherapy_assessment', 'vital_parameters', 'exertion_kinetics')
     }
     assessment = stored_tests.get('physiotherapy_assessment') or {}
     return {
@@ -74,6 +75,7 @@ def _case_form_payload(case):
         'incidents': [_incident_payload(item) for item in case.incidents],
         'diagnosis': case.diagnosis,
         'directives': case.directives,
+        'evaluation_checklist': case.evaluation_checklist or [],
     }
 
 
@@ -82,7 +84,7 @@ def _repeatable(data, name):
     if isinstance(value, list):
         return value
     rows = parse_indexed_form(name)
-    if rows:
+    if rows or request.form.get('form_version') == '2':
         return rows
     extracted = _extracted_form_data()
     return extracted.get(name, []) if isinstance(extracted.get(name), list) else []
@@ -154,10 +156,14 @@ def _record_data(data):
         'physiotherapy_prescription': data.get('physiotherapy_prescription'),
         'available_documents': [file.filename for file in request.files.getlist('documents') if file and file.filename],
     }
+    authoritative_form = data.get('form_version') == '2'
     for section in ('identity', 'medical_context', 'medical_history', 'reference_vitals'):
-        base.setdefault(section, {}).update({key: value for key, value in form_record[section].items() if value not in (None, '')})
+        if authoritative_form and section == 'reference_vitals':
+            base[section] = form_record[section]
+        else:
+            base.setdefault(section, {}).update({key: value for key, value in form_record[section].items() if authoritative_form or value not in (None, '')})
     form_tests = form_record['tests']
-    if tests:
+    if tests or authoritative_form:
         categorized = {key: [] for key in ('cardiac', 'vascular', 'biological', 'imaging', 'other')}
         for item in tests:
             if not isinstance(item, dict):
@@ -165,14 +171,22 @@ def _record_data(data):
                 continue
             category = item.get('category') if item.get('category') in categorized else 'other'
             categorized[category].append({key: value for key, value in item.items() if key != 'category'})
-        base['tests'] = categorized
-    if any(assessment.values()):
+        # Legacy result lists (e.g. functional) are also displayed by the form.
+        # Remove their old copies before saving the edited visible rows.
+        if authoritative_form:
+            base['tests'] = {key: value for key, value in base['tests'].items() if not isinstance(value, list)}
+        # Preserve values outside the visible medical-result categories.
+        for category in categorized:
+            base['tests'][category] = categorized[category]
+        base['tests'].pop('items', None)
+    if any(assessment.values()) or authoritative_form:
         base.setdefault('tests', {})['physiotherapy_assessment'] = assessment
-    if form_tests.get('vital_parameters'):
+    if form_tests.get('vital_parameters') or authoritative_form:
         base.setdefault('tests', {})['vital_parameters'] = form_tests['vital_parameters']
+        base['tests'].pop('exertion_kinetics', None)
     base['tests'] = canonicalize_medical_tests(base.get('tests') or {})
     for field in ('medical_prescription', 'physiotherapy_prescription'):
-        if form_record.get(field):
+        if form_record.get(field) or authoritative_form:
             base[field] = form_record[field]
     if form_record['available_documents']:
         base['available_documents'] = list(dict.fromkeys((base.get('available_documents') or []) + form_record['available_documents']))
@@ -182,10 +196,16 @@ def _record_data(data):
 def _apply_case(case, data):
     case.case_number = str(data.get('case_number') or case.case_number or '').strip()
     if not case.case_number:
-        raise ValueError('Case number is required')
+        raise ValueError('Le numéro du cas est obligatoire.')
+    with db.session.no_autoflush:
+        duplicate = PatientCase.query.filter_by(case_number=case.case_number).first()
+    if duplicate and duplicate.id != case.id:
+        raise ValueError('Ce numéro de cas existe déjà. Choisissez un autre numéro.')
     case.specialty = 'kine'
     case.title = str(data.get('title') or case.title or '').strip() or None
     case.folder_id = int(data.get('folder_id')) if data.get('folder_id') else None
+    if case.folder_id and not PathologyFolder.query.filter_by(id=case.folder_id, specialty='kine', is_archived=False).first():
+        raise ValueError('Sélectionnez un dossier pathologique actif de kinésithérapie.')
     case.level = str(data.get('level') or case.level or 'both').lower()
     case.mode_availability = str(data.get('mode_availability') or case.mode_availability or 'both').lower()
     if case.level not in CASE_LEVELS:
@@ -198,9 +218,11 @@ def _apply_case(case, data):
     extracted = _extracted_form_data()
     case.diagnosis = data.get('diagnosis') or nested_record.get('medical_context', {}).get('main_diagnosis') or case.diagnosis
     case.diagnosis = case.diagnosis or (extracted.get('medical_context') or {}).get('main_diagnosis') or extracted.get('diagnosis')
+    if data.get('form_version') == '2':
+        case.diagnosis = data.get('diagnosis') or None
     case.directives = data.get('directives')
     checklist = _repeatable(data, 'evaluation_checklist')
-    if checklist:
+    if checklist or data.get('form_version') == '2' or 'evaluation_checklist' in data:
         case.evaluation_checklist = checklist
 
 
@@ -245,7 +267,7 @@ def cases_collection():
         return jsonify({'cases': [_case_payload(case) for case in cases]})
     data = payload()
     if PatientCase.query.filter_by(case_number=str(data.get('case_number') or '').strip()).first():
-        return error('Case number already exists', 409)
+        return error('Ce numéro de cas existe déjà. Choisissez un autre numéro.', 409)
     case = PatientCase()
     try:
         _apply_case(case, data)
@@ -261,8 +283,11 @@ def cases_collection():
     except (TypeError, ValueError) as exc:
         db.session.rollback()
         return error(str(exc))
+    except IntegrityError:
+        db.session.rollback()
+        return error('Enregistrement impossible : le numéro du cas existe déjà ou une référence est invalide.', 409)
     if wants_json():
-        return jsonify(_case_payload(case)), 201
+        return jsonify(_case_payload(case) | {'redirect_url': url_for('kine.case_item', case_id=case.id)}), 201
     return redirect(url_for('kine.case_item', case_id=case.id))
 
 
@@ -324,6 +349,10 @@ def case_item(case_id):
                                initial_case_data=_case_form_payload(case),
                                download_url=url_for('kine.download_case', case_id=case.id))
     if request.method == 'DELETE':
+        if case.simulation_sessions:
+            return error('Ce cas possède des simulations et doit être archivé plutôt que supprimé.', 409)
+        for exam in list(case.kine_exams):
+            exam.cases.remove(case)
         db.session.delete(case)
         db.session.commit()
         return ('', 204)
@@ -343,8 +372,11 @@ def case_item(case_id):
     except (TypeError, ValueError) as exc:
         db.session.rollback()
         return error(str(exc))
+    except IntegrityError:
+        db.session.rollback()
+        return error('Enregistrement impossible : le numéro du cas existe déjà ou une référence est invalide.', 409)
     if wants_json():
-        return jsonify(_case_payload(case))
+        return jsonify(_case_payload(case) | {'redirect_url': url_for('kine.case_item', case_id=case.id)})
     return redirect(url_for('kine.case_item', case_id=case.id))
 
 

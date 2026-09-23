@@ -25,14 +25,16 @@
     function appendMessage(role, content, type) {
         const article = document.createElement('article');
         article.className = `kine-message kine-message--${role}`;
-        const title = document.createElement('strong'); title.textContent = role === 'student' ? (root.dataset.studentName || 'Étudiant') : (type === 'incident' ? 'Incident patient' : 'Patient');
+        const title = document.createElement('strong'); title.textContent = type === 'error' ? 'Service indisponible' : (role === 'student' ? (root.dataset.studentName || 'Étudiant') : (type === 'incident' ? 'Incident patient' : 'Patient'));
         const paragraph = document.createElement('p'); paragraph.textContent = content;
         article.append(title, paragraph); messages.append(article); messages.scrollTop = messages.scrollHeight;
+        return article;
     }
     async function post(url, body) {
         const response = await fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         const contentType = response.headers.get('content-type') || '';
         const data = contentType.includes('application/json') ? await response.json().catch(() => ({})) : {};
+        if (!contentType.includes('application/json')) throw new Error('Votre session a expiré ou le serveur est indisponible. Reconnectez-vous puis réessayez.');
         if (!response.ok) {
             const upstreamError = [502, 503, 504].includes(response.status)
                 ? 'Le patient virtuel est temporairement indisponible. Veuillez réessayer dans quelques instants.'
@@ -105,15 +107,15 @@
     }
     chatForm?.addEventListener('submit', async event => {
         event.preventDefault(); const input = chatForm.elements.message; const value = input.value.trim(); if (!value) return;
-        appendMessage('student', value); input.value=''; setInputs(true);
+        const pendingMessage = appendMessage('student', value); input.value=''; setInputs(true);
         try { const data=await post(root.dataset.messageUrl,{message:value}); appendMessage('patient',data.response.content,data.response.type); renderVitalMeasurements(data.vital_measurements); window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress})); }
-        catch(error){ appendMessage('patient',error.message,'error'); } finally { if(root.dataset.status==='in_progress') setInputs(false); }
+        catch(error){ pendingMessage.remove(); input.value=value; appendMessage('patient',error.message,'error'); } finally { if(root.dataset.status==='in_progress') setInputs(false); }
     });
     testForm?.addEventListener('submit', async event => {
         event.preventDefault(); const input=testForm.elements.test; const value=input.value.trim(); if(!value)return;
-        appendMessage('student',`Je vais réaliser le test ${value}.`); input.value=''; setInputs(true);
+        const pendingMessage = appendMessage('student',`Je vais réaliser le test ${value}.`); input.value=''; setInputs(true);
         try { const data=await post(root.dataset.testUrl,{test:value}); appendMessage('patient',data.response.content,data.response.type); renderVitalMeasurements(data.vital_measurements); window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress})); }
-        catch(error){ appendMessage('patient',error.message,'error'); } finally { if(root.dataset.status==='in_progress') setInputs(false); }
+        catch(error){ pendingMessage.remove(); input.value=value; appendMessage('patient',error.message,'error'); } finally { if(root.dataset.status==='in_progress') setInputs(false); }
     });
     root.querySelector('[data-pause-toggle]')?.addEventListener('click', async event => {
         try {

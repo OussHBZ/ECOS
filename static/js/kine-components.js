@@ -291,6 +291,41 @@
         });
     }
 
+    function initCaseSave() {
+        const form = document.querySelector('[data-kine-case-form]');
+        const status = form?.querySelector('[data-case-save-status]');
+        if (!status) return;
+        let saving = false;
+        form.addEventListener('submit', async (event) => {
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            if (saving || !form.reportValidity()) return;
+            saving = true;
+            const body = new FormData(form);
+            const buttons = form.querySelectorAll('button[type="submit"]');
+            buttons.forEach(button => button.disabled = true);
+            status.classList.remove('hidden');
+            status.textContent = 'Enregistrement en cours…';
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: {'Accept': 'application/json'}, body,
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || `Impossible d’enregistrer le cas (${response.status}).`);
+                if (!data.redirect_url) throw new Error('La session a expiré ou la réponse est invalide. Reconnectez-vous dans un autre onglet puis réessayez.');
+                window.location.assign(data.redirect_url);
+            } catch (error) {
+                status.textContent = `${error.message} Vos saisies sont conservées dans ce formulaire.`;
+                status.focus();
+                status.scrollIntoView({behavior: 'smooth', block: 'center'});
+            } finally {
+                saving = false;
+                buttons.forEach(button => button.disabled = false);
+            }
+        });
+    }
+
     function initDocumentExtraction() {
         const form = document.querySelector('[data-kine-case-form]');
         const button = form?.querySelector('[data-extract-document]');
@@ -373,6 +408,6 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         initTrackers(); initRepeaters(); initVitalParameterValidation(); initConfirmations(); initDocumentExtraction(); initDashboardCharts();
-        initExistingCaseForm(); initLocalDateTimes();
+        initExistingCaseForm(); initLocalDateTimes(); initCaseSave();
     });
 })();

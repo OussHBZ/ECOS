@@ -76,6 +76,7 @@ def login():
                     return _ecos_access_denied('student', assigned_type)
                 student.last_login = datetime.utcnow()
                 db.session.commit()
+                session.clear()
                 login_user(student)
                 session['user_type'] = 'student'
                 session['workspace'] = assigned_type
@@ -92,7 +93,9 @@ def login():
                 flash('Email et mot de passe obligatoires.', 'error')
                 return login_redirect('teacher')
 
-            teacher = Teacher.query.filter_by(email=teacher_email).first()
+            matches = Teacher.matching_identifier(teacher_email).all()
+            # Do not pick an arbitrary account when old identifiers collide.
+            teacher = matches[0] if len(matches) == 1 else None
 
             if teacher and teacher.check_password(password):
                 assigned_type = account_ecos_type(teacher)
@@ -100,6 +103,7 @@ def login():
                     return _ecos_access_denied('teacher', assigned_type)
                 teacher.last_login = datetime.utcnow()
                 db.session.commit()
+                session.clear()
                 login_user(teacher)
                 session['user_type'] = 'teacher'
                 session['teacher_authenticated'] = True
@@ -115,6 +119,8 @@ def login():
             access_code = request.form.get('access_code', '').strip()
 
             if access_code == ADMIN_ACCESS_CODE:
+                logout_user()
+                session.clear()
                 session['user_type'] = 'admin'
                 session['admin_authenticated'] = True
 

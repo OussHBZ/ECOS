@@ -40,7 +40,7 @@ LLAMA_MODELS = {
     ],
     'config': {
         'temperature': 0.1,
-        'max_tokens': 150,
+        'max_tokens': 2048,
         'timeout': 30
     }
 }
@@ -236,8 +236,8 @@ def create_app():
     # reverse-proxy prefix can set SESSION_COOKIE_PATH=/ecos.
     app.config['SESSION_COOKIE_PATH'] = os.environ.get('SESSION_COOKIE_PATH', '/')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
-    app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['APP_VERSION'] = '20260912a'
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+    app.config['APP_VERSION'] = '20260923a'
 
     # Activate server-side session BEFORE any other extension so the session
     # object is upgraded from cookie-based to filesystem-based.
@@ -1300,4 +1300,4 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True)
+    app.run(debug=os.environ.get('FLASK_DEBUG', 'false').lower() in ('1', 'true'))

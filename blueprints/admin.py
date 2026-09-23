@@ -1663,7 +1663,7 @@ def add_teacher():
             return jsonify({'success': False, 'error': 'Le nom est obligatoire.'}), 400
         if len(password) < 4:
             return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 4 caractères.'}), 400
-        if Teacher.query.filter_by(email=email).first():
+        if Teacher.matching_identifier(email).first():
             return jsonify({'success': False, 'error': 'Cet email est déjà utilisé.'}), 400
 
         teacher = Teacher(email=email, login=email, name=name, ecos_type=ecos_type)
@@ -1722,6 +1722,11 @@ def delete_teacher(teacher_id):
     try:
         teacher = Teacher.query.get_or_404(teacher_id)
         name = teacher.name
+        # Reviews have no reverse relationship on Teacher. Detach attribution
+        # explicitly so foreign-key enforcement cannot break account deletion.
+        SimulationSession.query.filter_by(reviewed_by=teacher_id).update(
+            {'reviewed_by': None}, synchronize_session='fetch'
+        )
         db.session.delete(teacher)
         db.session.commit()
         return jsonify({'success': True, 'message': f'Enseignant {name} supprimé.'})
@@ -1836,7 +1841,7 @@ def import_users():
                     errors.append(f'Ligne {i}: données incomplètes (email, name, password requis).')
                     continue
 
-                if Teacher.query.filter_by(email=email).first():
+                if Teacher.matching_identifier(email).first():
                     skipped.append(f'Ligne {i}: Email {email} déjà existant.')
                     continue
 

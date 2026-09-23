@@ -179,6 +179,15 @@ class Teacher(db.Model, UserMixin):
     def get_id(self):
         return f"teacher_{self.id}"
 
+    @classmethod
+    def matching_identifier(cls, identifier):
+        """Support email and legacy logins without case/whitespace surprises."""
+        identifier = str(identifier or '').strip().lower()
+        return cls.query.filter(db.or_(
+            db.func.lower(db.func.trim(cls.email)) == identifier,
+            db.func.lower(db.func.trim(cls.login)) == identifier,
+        ))
+
     def __repr__(self):
         return f'<Teacher {self.email or self.login}: {self.name}>'
 

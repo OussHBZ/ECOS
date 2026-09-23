@@ -901,7 +901,7 @@
 
     // ── Delete Teacher ─────────────────────────────────────────────────────
     function confirmDeleteTeacher(id, name) {
-        if (!confirm('Supprimer l\'enseignant "' + name + '" ? Cette action est irréversible.')) return;
+        if (!confirm('Supprimer le compte de l\'enseignant "' + name + '" ? Ses cas, dossiers, imports, examens et commentaires seront conservés. La suppression du compte est irréversible.')) return;
         authenticatedFetch('/admin/teachers/' + id + '/delete', {method: 'DELETE'})
             .then(function(r) { return r.json(); })
             .then(function(data) {
