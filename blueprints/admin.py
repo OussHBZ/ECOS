@@ -617,7 +617,7 @@ def admin_station_details(case_number):
         },
         'interventions': [{
             'type': item.intervention_type,
-            'date': item.intervention_date.isoformat() if item.intervention_date else None,
+            'date': item.timing,
             'complications': item.complications,
         } for item in (record.interventions if record else [])],
         'medications': [{

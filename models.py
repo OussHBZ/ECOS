@@ -697,10 +697,33 @@ class Intervention(db.Model):
     patient_record_id = db.Column(db.Integer, db.ForeignKey('patient_records.id'), nullable=False)
     intervention_type = db.Column(db.String(200), nullable=False)
     intervention_date = db.Column(db.Date)
+    intervention_date_text = db.Column(db.Text)
     complications = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     patient_record = db.relationship('PatientRecord', back_populates='interventions')
+
+    @property
+    def timing(self):
+        """Exact date or the scenario's original relative timing."""
+        return self.intervention_date_text or (
+            self.intervention_date.isoformat() if self.intervention_date else None
+        )
+
+    @timing.setter
+    def timing(self, value):
+        self.intervention_date = None
+        self.intervention_date_text = None
+        text = str(value).strip() if value is not None else ''
+        if not text:
+            return
+        try:
+            self.intervention_date = datetime.fromisoformat(text.replace('Z', '+00:00')).date()
+        except ValueError:
+            try:
+                self.intervention_date = datetime.strptime(text, '%d/%m/%Y').date()
+            except ValueError:
+                self.intervention_date_text = text
 
 
 class Medication(db.Model):

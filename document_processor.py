@@ -454,11 +454,18 @@ RÈGLES D'EXTRACTION:
 - Classez les antécédents séparément: cardiovasculaires, médicaux, chirurgicaux,
   allergies, facteurs de risque et habitudes de vie.
 - Une procédure contient son type, sa date et ses complications éventuelles.
+  Dans date, conservez aussi les délais relatifs tels que « il y a 2 mois »,
+  sans les convertir en date calendaire.
 - Une mesure ou un test contient au minimum son nom, sa valeur, son unité et,
   si présents, sa date, son contexte et son interprétation explicitement écrite.
 - Regroupez les paramètres vitaux de séance dans vital_parameters : une seule ligne
   par nom et unité, avec les valeurs before, during et after. N'inventez aucun moment.
+  Conservez les intervalles tels que « 140 à 155 » comme texte, sans les réduire
+  à une valeur unique.
 - Classez le bilan kinésithérapique par domaine sans déplacer ni déduire de données.
+  Pour chaque entrée, description contient le nom du test ou de la mesure et value
+  son résultat chiffré ou son observation complète (par exemple « Absentes » ou
+  « 15 répétitions en 30 s »). L'unité est facultative : ne l'inventez pas.
 - Un incident n'est extrait que s'il est décrit. Relevez son déclencheur/condition,
   la réaction attendue du patient et sa gravité uniquement si elle est précisée.
 - N'ajoutez aucun incident probable ou comportement patient de votre initiative.

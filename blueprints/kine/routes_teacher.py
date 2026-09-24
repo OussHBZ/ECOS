@@ -56,7 +56,7 @@ def _case_form_payload(case):
         'comorbidities': record.comorbidities or [] if record else [],
         'procedures': [{
             'type': item.intervention_type,
-            'date': item.intervention_date.isoformat() if item.intervention_date else None,
+            'date': item.timing,
             'complications': item.complications,
         } for item in (record.interventions if record else [])],
         'medications': [{
@@ -247,7 +247,7 @@ def _apply_record(case, data, replace_children=True):
             date_value = item.get('date')
             record.interventions.append(Intervention(
                 intervention_type=item.get('type') or item.get('intervention_type') or 'Procedure',
-                intervention_date=parse_datetime(date_value, 'procedure date').date() if date_value else None,
+                timing=date_value,
                 complications=item.get('complications'),
             ))
         record.medications.clear()

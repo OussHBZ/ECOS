@@ -85,7 +85,7 @@ def _full_record_json(record, level):
         'medical_prescription': record.medical_prescription,
         'physiotherapy_prescription': record.physiotherapy_prescription,
         'available_documents': record.available_documents,
-        'interventions': [{'type': item.intervention_type, 'date': item.intervention_date.isoformat() if item.intervention_date else None,
+        'interventions': [{'type': item.intervention_type, 'date': item.timing,
                            'complications': item.complications} for item in record.interventions],
         'medications': _medications_json(record, level),
     }
@@ -108,7 +108,7 @@ def _student_initial_record_json(record, level):
         'available_documents': record.available_documents,
         'interventions': [{
             'intervention_type': item.intervention_type,
-            'intervention_date': item.intervention_date.isoformat() if item.intervention_date else None,
+            'intervention_date': item.timing,
             'complications': item.complications,
         } for item in record.interventions],
         'medications': _medications_json(record, level),

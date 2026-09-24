@@ -78,6 +78,9 @@ def apply_additive_schema_updates():
     inspector = db.inspect(db.engine)
     existing_tables = set(inspector.get_table_names())
     additions = {
+        'interventions': {
+            'intervention_date_text': 'TEXT',
+        },
         'student': {
             'level': 'VARCHAR(20)',
             'group_name': 'VARCHAR(100)',

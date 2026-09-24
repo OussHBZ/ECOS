@@ -404,6 +404,9 @@ def create_app():
             # Gunicorn worker startup safe when another worker adds a column
             # between inspection and ALTER TABLE.
             additive_columns = {
+                'interventions': {
+                    'intervention_date_text': 'TEXT',
+                },
                 'student': {
                     'level': 'VARCHAR(20)',
                     'group_name': 'VARCHAR(100)',

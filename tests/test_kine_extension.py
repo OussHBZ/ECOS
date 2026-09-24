@@ -885,6 +885,72 @@ def test_vital_parameters_convert_legacy_kinetics_and_follow_session_moment():
     ] == [('before', 96), ('during', 90), ('after', 94)]
 
 
+def test_case_form_preserves_relative_dates_ranges_and_observations(app):
+    from blueprints.kine.routes_teacher import _case_form_payload
+    from blueprints.kine.routes_student import _student_initial_record_json, _full_record_json
+
+    client = app.test_client()
+    teacher_login(client)
+    data = {
+        'form_version': '2', 'case_number': 'KINE-FREE-TEXT',
+        'title': 'Résultats et observations',
+        'procedures[0][type]': 'Fermeture de CIA',
+        'procedures[0][date]': 'il y a 2 mois',
+        'vital_parameters[0][name]': 'FC',
+        'vital_parameters[0][unit]': 'bpm',
+        'vital_parameters[0][during]': '140 à 155',
+        'assessment_muscular[0][description]': 'Sit To Stand',
+        'assessment_muscular[0][value]': '15 répétitions en 30 s',
+        'assessment_muscular[0][unit]': '',
+        'assessment_joint[0][description]': 'Raideurs',
+        'assessment_joint[0][value]': 'Absentes',
+        'evaluation_checklist[0][description]': 'Anamnèse : âge',
+        'evaluation_checklist[0][points]': '0.5',
+    }
+    assert client.post('/kine/cases', data=data).status_code == 302
+    with app.app_context():
+        case = PatientCase.query.filter_by(case_number='KINE-FREE-TEXT').one()
+        case_id = case.id
+        record = case.patient_record
+        procedure = record.interventions[0]
+        assert procedure.intervention_date is None
+        assert procedure.intervention_date_text == 'il y a 2 mois'
+        assert _case_form_payload(case)['procedures'][0]['date'] == 'il y a 2 mois'
+        assert _student_initial_record_json(record, 'licence')['interventions'][0]['intervention_date'] == 'il y a 2 mois'
+        assert _full_record_json(record, 'licence')['interventions'][0]['date'] == 'il y a 2 mois'
+        assert case.evaluation_checklist == [{'description': 'Anamnèse : âge', 'points': '0.5'}]
+        engine = KinePatientEngine(case, record, student=SimpleNamespace(level='licence'))
+        assert engine.respond('Je vais mesurer la FC.', 4)['content'] == '140 à 155 bpm'
+        assert engine.respond('Je vais réaliser le test Sit To Stand.', 4)['content'] == '15 répétitions en 30 s'
+        assert engine.respond('Je vais mesurer les raideurs.', 4)['content'] == 'Absentes'
+
+    # Reopening/editing switches freely between relative, exact and absent dates.
+    for entered, expected in [('24/09/2026', '2026-09-24'), ('2026-01-01', '2026-01-01'),
+                              ('il y a 3 semaines', 'il y a 3 semaines'), ('', None)]:
+        data['procedures[0][date]'] = entered
+        assert client.post(f'/kine/cases/{case_id}', data=data).status_code == 302
+        with app.app_context():
+            case = db.session.get(PatientCase, case_id)
+            assert _case_form_payload(case)['procedures'][0]['date'] == expected
+
+
+def test_procedure_timing_migration_preserves_existing_dates(app):
+    from init_db import apply_additive_schema_updates
+    from models import Intervention
+
+    client = app.test_client()
+    teacher_login(client)
+    folder_id = client.post('/kine/folders', json={'name': 'Migration'}).get_json()['id']
+    create_case(client, folder_id)
+    with app.app_context():
+        # Reproduce the old schema, then run the additive migration twice.
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql('ALTER TABLE interventions DROP COLUMN intervention_date_text')
+        apply_additive_schema_updates()
+        apply_additive_schema_updates()
+        assert Intervention.query.one().timing == '2026-01-01'
+
+
 def test_case_form_creates_and_updates_structured_vital_parameters(app):
     client = app.test_client()
     teacher_login(client)
@@ -1624,6 +1690,7 @@ def test_teacher_modifies_validates_and_rejects_import_drafts(app, tmp_path):
         'BROUILLON-VALIDE', 'Brouillon corrigé'
     )
     corrected['folder_id'] = folder_id
+    corrected['procedures'] = [{'type': 'Fermeture de CIA', 'date': 'il y a 2 mois'}]
     saved = client.patch(first['detail_url'], json={
         'action': 'save', 'extracted_data': corrected,
     })
@@ -1637,6 +1704,7 @@ def test_teacher_modifies_validates_and_rejects_import_drafts(app, tmp_path):
     with app.app_context():
         case = db.session.get(PatientCase, case_id)
         assert case.title == 'Brouillon corrigé' and case.level == 'master'
+        assert case.patient_record.interventions[0].timing == 'il y a 2 mois'
         assert case.evaluation_checklist[0]['description'] == 'Surveille les constantes'
         assert case.patient_record.tests['vital_parameters'][0]['values']['during'] == 105
         assert case.patient_record.tests['physiotherapy_assessment']['dyspnea'][0]['value'] == 2
