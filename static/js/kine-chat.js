@@ -8,6 +8,20 @@
     const testForm = root.querySelector('[data-test-form]');
     const vitalsBody = root.querySelector('[data-vitals-body]');
 
+    const recordToggle = root.querySelector('[data-record-toggle]');
+    recordToggle?.addEventListener('click', () => {
+        const sidebar = root.querySelector('[data-record-sidebar]');
+        const expanded = recordToggle.getAttribute('aria-expanded') !== 'true';
+        sidebar.hidden = !expanded;
+        recordToggle.setAttribute('aria-expanded', String(expanded));
+        recordToggle.textContent = expanded ? 'Réduire le dossier' : 'Ouvrir le dossier';
+        root.querySelector('.kine-chat-layout').classList.toggle('record-collapsed', !expanded);
+    });
+    function refreshRecord() {
+        const frame = root.querySelector('[data-record-frame]');
+        if (frame) frame.src = frame.src;
+    }
+
     function renderVitalMeasurements(items) {
         if (!vitalsBody) return;
         vitalsBody.replaceChildren();
@@ -30,8 +44,16 @@
         article.append(title, paragraph); messages.append(article); messages.scrollTop = messages.scrollHeight;
         return article;
     }
+    function renderScenarioMeasurements(response) {
+        for (const event of response.events || []) {
+            for (const m of event.measurements || []) {
+                const article = appendMessage('system', `${m.name} : ${m.value} ${m.unit || ''}`, 'scenario_measurement');
+                article.querySelector('strong').textContent = 'Mesure du scénario';
+            }
+        }
+    }
     async function post(url, body) {
-        const response = await fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        const response = await secureFetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         const contentType = response.headers.get('content-type') || '';
         const data = contentType.includes('application/json') ? await response.json().catch(() => ({})) : {};
         if (!contentType.includes('application/json')) throw new Error('Votre session a expiré ou le serveur est indisponible. Reconnectez-vous puis réessayez.');
@@ -75,12 +97,13 @@
         }
         const score=document.createElement('p'); const strong=document.createElement('strong');
         const number=value=>String(value??0).replace('.',',');
-        strong.textContent=`${number(evaluation.points_earned)}/${number(evaluation.points_total??20)} — ${evaluation.passed?'Réussi':'Non réussi'}`; score.append(strong); content.append(score);
+        strong.textContent=evaluation.status_label ? `${evaluation.points_earned == null ? '' : (evaluation.score_display || evaluation.points_earned) + '/20 — '}${evaluation.status_label}` : `${number(evaluation.points_earned)}/${number(evaluation.points_total??20)} — ${evaluation.passed?'Réussi':'Non réussi'}`; score.append(strong); content.append(score);
         if (evaluation.eliminatory_error_triggered) {
             const warning=document.createElement('div'); warning.className='kine-evaluation-errors';
             const title=document.createElement('strong'); title.textContent=`Erreur${(evaluation.eliminatory_errors||[]).length>1?'s':''} éliminatoire${(evaluation.eliminatory_errors||[]).length>1?'s':''} — score plafonné à ${evaluation.elimination_cap??8}/20`; warning.append(title);
             (evaluation.eliminatory_errors||[]).forEach(item=>{const article=document.createElement('article');const heading=document.createElement('h4');heading.textContent=item.description||item.id||'Erreur éliminatoire';const reason=document.createElement('p');reason.textContent=item.justification||'Erreur établie par une preuve explicite.';article.append(heading,reason);appendEvidence(article,Array.isArray(item.evidence)?item.evidence:[]);warning.append(article);}); content.append(warning);
         }
+        (evaluation.criteria || []).forEach(row => { const block=document.createElement('section'); const heading=document.createElement('h4'); heading.textContent=`${row.title} — ${row.status_label}`; const detail=document.createElement('p'); detail.textContent=row.justification; block.append(heading,detail); if(row.expected){const expected=document.createElement('p');expected.textContent='Attendu : '+row.expected;block.append(expected);} appendEvidence(block,row.evidence||[]);content.append(block); });
         const sections=document.createElement('div'); sections.className='kine-evaluation-sections';
         (evaluation.section_scores||[]).forEach(item=>{
             const article=document.createElement('article'); article.className='kine-evaluation-section';
@@ -108,13 +131,13 @@
     chatForm?.addEventListener('submit', async event => {
         event.preventDefault(); const input = chatForm.elements.message; const value = input.value.trim(); if (!value) return;
         const pendingMessage = appendMessage('student', value); input.value=''; setInputs(true);
-        try { const data=await post(root.dataset.messageUrl,{message:value}); appendMessage('patient',data.response.content,data.response.type); renderVitalMeasurements(data.vital_measurements); window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress})); }
+        try { const key=await window.kardioxDelivery.key(root.dataset.messageUrl,value); const data=await post(root.dataset.messageUrl,{message:value,request_id:key}); window.kardioxDelivery.clear(root.dataset.messageUrl); appendMessage('patient',data.response.content,data.response.type); renderScenarioMeasurements(data.response); renderVitalMeasurements(data.vital_measurements); refreshRecord(); window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress})); }
         catch(error){ pendingMessage.remove(); input.value=value; appendMessage('patient',error.message,'error'); } finally { if(root.dataset.status==='in_progress') setInputs(false); }
     });
     testForm?.addEventListener('submit', async event => {
         event.preventDefault(); const input=testForm.elements.test; const value=input.value.trim(); if(!value)return;
         const pendingMessage = appendMessage('student',`Je vais réaliser le test ${value}.`); input.value=''; setInputs(true);
-        try { const data=await post(root.dataset.testUrl,{test:value}); appendMessage('patient',data.response.content,data.response.type); renderVitalMeasurements(data.vital_measurements); window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress})); }
+        try { const key=await window.kardioxDelivery.key(root.dataset.testUrl,value); const data=await post(root.dataset.testUrl,{test:value,request_id:key}); window.kardioxDelivery.clear(root.dataset.testUrl); appendMessage('patient',data.response.content,data.response.type); renderScenarioMeasurements(data.response); renderVitalMeasurements(data.vital_measurements); refreshRecord(); window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress})); }
         catch(error){ pendingMessage.remove(); input.value=value; appendMessage('patient',error.message,'error'); } finally { if(root.dataset.status==='in_progress') setInputs(false); }
     });
     root.querySelector('[data-pause-toggle]')?.addEventListener('click', async event => {
@@ -132,6 +155,7 @@
             const evaluation=data.evaluation; const panel=root.querySelector('[data-evaluation-panel]'); panel.classList.remove('hidden');
             const content=panel.querySelector('[data-evaluation-content]'); renderEvaluation(content,evaluation);
             if(data.progress) window.dispatchEvent(new CustomEvent('kine:progress',{detail:data.progress}));
+            window.location.reload(); // Use the same authorized server-rendered feedback on every entry point.
         } catch(error){ if(!automatic) window.alert(error.message); }
         finally { root.dataset.completionPending='false'; }
     }
@@ -140,7 +164,25 @@
     if(clock && root.dataset.deadline){
         const deadline=new Date(root.dataset.deadline).getTime();
         let expirationTriggered=false;
-        const tick=()=>{const seconds=Math.max(0,Math.floor((deadline-Date.now())/1000));clock.textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;if(seconds===0&&!expirationTriggered){expirationTriggered=true;setInputs(true);statusNode.textContent='Clôture automatique…';completeSimulation(true);}};
+        const tick=()=>{const seconds=Math.max(0,Math.floor((deadline-Date.now())/1000));clock.textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;if(seconds===0&&!expirationTriggered&&root.dataset.status==='in_progress'){expirationTriggered=true;setInputs(true);statusNode.textContent='Clôture automatique…';completeSimulation(true);}};
         tick(); setInterval(tick,1000);
     }
+    root.querySelector('[data-abandon]')?.addEventListener('click', async () => {
+        if (!window.confirm('Abandon définitif, sans résultat ni reprise. Confirmer ?')) return;
+        try { const data = await post(root.dataset.abandonUrl, {}); root.dataset.status=data.status; window.location.reload(); }
+        catch(error) { window.alert(error.message); }
+    });
+    const connection = root.querySelector('[data-connection-status]');
+    window.addEventListener('offline', () => {
+        if(connection) connection.textContent='Connexion perdue. Les échanges déjà enregistrés sont conservés. Reconnectez-vous ; le chrono d’examen continue.';
+        setInputs(true);
+    });
+    window.addEventListener('online', async () => {
+        if(root.dataset.status !== 'in_progress') return;
+        try { await post(root.dataset.reconnectUrl, {}); setInputs(false); if(connection) connection.textContent='Connexion rétablie. Le chrono n’a pas été interrompu.'; }
+        catch(error) { if(connection) connection.textContent=error.message; }
+    });
+    window.addEventListener('beforeunload', event => {
+        if(root.dataset.status === 'in_progress') { event.preventDefault(); event.returnValue=''; }
+    });
 })();

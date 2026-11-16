@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 import tempfile
 import uuid
 import zipfile
@@ -13,9 +14,11 @@ from flask import (
 )
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
+from storage_paths import upload_path
 
-from auth import teacher_required
+from kine_permissions import kine_permission_required, is_pedagogical_admin
 from document_processor import DocumentExtractionAgent
+from case_versions import save_draft
 from models import (
     Incident, KineCaseDraft, KineCaseImportBatch, PathologyFolder, PatientCase,
     db,
@@ -27,11 +30,11 @@ from .common import (
     prune_empty, teacher_id, wants_json,
 )
 from .routes_teacher import (
-    _apply_case, _apply_record, _record_data, _repeatable,
+    _apply_case, _apply_record, _record_data, _repeatable, _structured_content,
 )
 
 
-IMPORT_EXTENSIONS = {'.docx', '.doc'}
+IMPORT_EXTENSIONS = {'.pdf', '.docx', '.doc', '.jpg', '.jpeg', '.png'}
 MAX_ARCHIVE_DOCUMENTS = 500
 MAX_PROCESS_BATCH = 10
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
@@ -52,15 +55,34 @@ STATUS_LABELS = {
 
 
 def _owned_batch(batch_id):
-    return KineCaseImportBatch.query.filter_by(
-        id=batch_id, created_by=teacher_id()
-    ).first_or_404()
+    query = KineCaseImportBatch.query.filter_by(id=batch_id)
+    if not is_pedagogical_admin():
+        query = query.filter_by(created_by=teacher_id())
+    return query.first_or_404()
 
 
 def _owned_draft(draft_id):
-    return KineCaseDraft.query.filter_by(
-        id=draft_id, created_by=teacher_id()
-    ).first_or_404()
+    query = KineCaseDraft.query.filter_by(id=draft_id)
+    if not is_pedagogical_admin():
+        query = query.filter_by(created_by=teacher_id())
+    return query.first_or_404()
+
+
+def _visible_drafts():
+    query = KineCaseDraft.query
+    return query if is_pedagogical_admin() else query.filter_by(created_by=teacher_id())
+
+
+def _visible_import_message(message):
+    """Old stored warnings may name a draft the current actor cannot read."""
+    if not message or is_pedagogical_admin():
+        return message
+    references = {int(value) for value in re.findall(r'brouillon #(\d+)', str(message))}
+    if references:
+        visible = {item.id for item in _visible_drafts().filter(KineCaseDraft.id.in_(references))}
+        if references - visible:
+            return 'Signalement antérieur à vérifier.'
+    return message
 
 
 def _storage_root():
@@ -89,7 +111,7 @@ def _write_source(batch_id, filename, content):
 
 
 def _filename_duplicate(filename, digest, current_id=None):
-    query = KineCaseDraft.query.filter(
+    query = _visible_drafts().filter(
         KineCaseDraft.status != 'rejected',
         db.or_(
             func.lower(KineCaseDraft.source_filename) == filename.lower(),
@@ -121,7 +143,7 @@ def _case_duplicate(data, current_draft_id=None):
         if existing_case:
             return f'Correspond au cas existant {existing_case.case_number}.'
 
-    draft_query = KineCaseDraft.query.filter(
+    draft_query = _visible_drafts().filter(
         KineCaseDraft.id != current_draft_id,
         KineCaseDraft.status.notin_(['rejected', 'error']),
         KineCaseDraft.extracted_data.isnot(None),
@@ -195,6 +217,12 @@ def _validation_issues(data):
             issues.append(message)
     if not data.get('folder_id'):
         issues.append('Dossier pathologique à confirmer.')
+    uncertainties = data.get('extraction_uncertainties') or []
+    if isinstance(uncertainties, list):
+        issues.extend(
+            f'Incertitude d’extraction à vérifier : {str(item).strip()}'
+            for item in uncertainties if str(item).strip()
+        )
     return issues
 
 
@@ -228,9 +256,9 @@ def _draft_payload(draft):
         'status': draft.status,
         'status_label': STATUS_LABELS.get(draft.status, draft.status),
         'extracted_data': draft.extracted_data,
-        'validation_issues': draft.validation_issues or [],
-        'duplicate_reason': draft.duplicate_reason,
-        'error_message': draft.error_message,
+        'validation_issues': [_visible_import_message(item) for item in draft.validation_issues or []],
+        'duplicate_reason': _visible_import_message(draft.duplicate_reason),
+        'error_message': _visible_import_message(draft.error_message),
         'extraction_method': draft.extraction_method,
         'extracted_at': (
             draft.extracted_at.isoformat() + 'Z' if draft.extracted_at else None
@@ -296,7 +324,7 @@ def _process_one_draft(draft_id):
     try:
         extension = os.path.splitext(draft.source_filename)[1].lower()
         extracted = _agent_for_file().process_file(
-            draft.source_path, extension,
+            upload_path(draft.source_path), extension,
             os.path.splitext(draft.source_filename)[0], 'kine',
         )
         draft = db.session.get(KineCaseDraft, draft_id)
@@ -327,16 +355,24 @@ def _process_one_draft(draft_id):
 
 def _draft_data_from_form(draft):
     original = dict(draft.extracted_data or {})
+    if request.form.get('confirm_extraction_uncertainties') == 'yes':
+        original['extraction_uncertainties'] = []
     record = _record_data(request.form)
     tests = canonicalize_medical_tests(record.get('tests') or {})
     assessment = tests.pop('physiotherapy_assessment', {})
     vitals = tests.pop('vital_parameters', [])
+    effort = tests.pop('effort_tests', [])
     original.update({
         'case_number': str(request.form.get('case_number') or '').strip(),
         'title': str(request.form.get('title') or '').strip(),
         'folder_id': int(request.form['folder_id']) if request.form.get('folder_id') else None,
         'level': request.form.get('level') or 'both',
         'mode_availability': request.form.get('mode_availability') or 'both',
+        'difficulty': request.form.get('difficulty'),
+        'subpathology': request.form.get('subpathology'),
+        'rehabilitation_phase': request.form.get('rehabilitation_phase'),
+        'planned_sessions': request.form.get('planned_sessions'),
+        'pedagogical_summary': request.form.get('pedagogical_summary'),
         'emotional_state': request.form.get('emotional_state') or 'coopératif',
         'pedagogical_objectives': request.form.get('pedagogical_objectives'),
         'diagnosis': request.form.get('diagnosis'),
@@ -354,12 +390,14 @@ def _draft_data_from_form(draft):
         'available_documents': record.get('available_documents') or [],
         'physiotherapy_assessment': assessment,
         'vital_parameters': vitals,
+        'effort_tests': effort,
         'procedures': _repeatable(request.form, 'procedures'),
         'medications': _repeatable(request.form, 'medications'),
         'incidents': _repeatable(request.form, 'incidents'),
         'evaluation_checklist': _repeatable(
             request.form, 'evaluation_checklist'
         ),
+        'structured_content': _structured_content(request.form),
     })
     return prune_empty(original) or {}
 
@@ -375,18 +413,25 @@ def _create_case_from_draft(draft):
         data.get('physiotherapy_assessment') or {}
     )
     tests['vital_parameters'] = data.get('vital_parameters') or []
+    tests['effort_tests'] = data.get('effort_tests') or tests.get('effort_tests') or []
     prescriptions = data.get('prescriptions') or {}
     case_data = {
+        'form_version': '3',
+        'wizard_page': 8,
         'case_number': data.get('case_number'),
         'title': data.get('title'),
         'folder_id': data.get('folder_id'),
         'level': data.get('level'),
         'mode_availability': data.get('mode_availability'),
+        'difficulty': data.get('difficulty'),
+        'subpathology': data.get('subpathology'),
+        'rehabilitation_phase': data.get('rehabilitation_phase'),
+        'planned_sessions': data.get('planned_sessions'),
+        'pedagogical_summary': data.get('pedagogical_summary'),
+        'structured_content': data.get('structured_content') or {},
         'pedagogical_objectives': data.get('pedagogical_objectives'),
         'emotional_state': data.get('emotional_state'),
-        'diagnosis': data.get('diagnosis') or (
-            data.get('medical_context') or {}
-        ).get('main_diagnosis'),
+        'diagnosis': data.get('diagnosis'),
         'directives': data.get('directives'),
         'patient_record': {
             'identity': data.get('patient_info') or {},
@@ -421,16 +466,15 @@ def _create_case_from_draft(draft):
                 if item.get('severity') in ('minor', 'major') else 'minor'
             ),
         ))
+    save_draft(case)
     return case
 
 
 @kine_bp.route('/case-imports', methods=['GET', 'POST'])
-@teacher_required
+@kine_permission_required('cases.manage')
 def case_imports():
     if request.method == 'GET':
-        batches = KineCaseImportBatch.query.filter_by(
-            created_by=teacher_id()
-        ).order_by(KineCaseImportBatch.created_at.desc()).all()
+        batches = (KineCaseImportBatch.query if is_pedagogical_admin() else KineCaseImportBatch.query.filter_by(created_by=teacher_id())).order_by(KineCaseImportBatch.created_at.desc()).all()
         if wants_json():
             return jsonify({
                 'batches': [
@@ -470,7 +514,7 @@ def case_imports():
                     entries = [
                         entry for entry in archive.infolist()
                         if not entry.is_dir()
-                        and os.path.splitext(entry.filename)[1].lower() == '.docx'
+                        and os.path.splitext(entry.filename)[1].lower() in IMPORT_EXTENSIONS
                     ]
                     if len(entries) > MAX_ARCHIVE_DOCUMENTS:
                         raise ValueError(
@@ -496,10 +540,10 @@ def case_imports():
             else:
                 raise ValueError(
                     f'Format non pris en charge pour « {filename} ». '
-                    'Utilisez DOCX, DOC ou ZIP.'
+                    'Utilisez PDF, DOCX, DOC, JPG, JPEG, PNG ou ZIP.'
                 )
         if not candidates:
-            raise ValueError("Aucun document DOCX n’a été trouvé.")
+            raise ValueError("Aucun document clinique pris en charge n’a été trouvé.")
         if len(candidates) > MAX_ARCHIVE_DOCUMENTS:
             raise ValueError(
                 f'Un lot ne peut pas dépasser {MAX_ARCHIVE_DOCUMENTS} documents.'
@@ -529,7 +573,7 @@ def case_imports():
 
 
 @kine_bp.route('/case-imports/<int:batch_id>')
-@teacher_required
+@kine_permission_required('cases.manage')
 def case_import_batch(batch_id):
     batch = _owned_batch(batch_id)
     if wants_json():
@@ -541,7 +585,7 @@ def case_import_batch(batch_id):
 
 
 @kine_bp.route('/case-imports/<int:batch_id>/process', methods=['POST'])
-@teacher_required
+@kine_permission_required('cases.manage')
 def process_case_import_batch(batch_id):
     batch = _owned_batch(batch_id)
     requested = (request.get_json(silent=True) or request.form).get('limit', 3)
@@ -563,7 +607,7 @@ def process_case_import_batch(batch_id):
 
 
 @kine_bp.route('/case-imports/<int:batch_id>/retry', methods=['POST'])
-@teacher_required
+@kine_permission_required('cases.manage')
 def retry_case_import_batch(batch_id):
     batch = _owned_batch(batch_id)
     failures = KineCaseDraft.query.filter_by(
@@ -579,14 +623,14 @@ def retry_case_import_batch(batch_id):
 
 
 @kine_bp.route('/case-import-drafts/<int:draft_id>', methods=['GET', 'POST', 'PATCH'])
-@teacher_required
+@kine_permission_required('cases.manage')
 def case_import_draft(draft_id):
     draft = _owned_draft(draft_id)
     if request.method == 'GET':
         if wants_json():
             return jsonify(_draft_payload(draft))
         return render_template(
-            'case_form_kine.html', clinical_case=None, draft=draft,
+            'case_form_kine.html', clinical_case=None, draft=_draft_payload(draft),
             folders=PathologyFolder.query.filter_by(
                 specialty='kine', is_archived=False
             ).all(),
@@ -598,6 +642,11 @@ def case_import_draft(draft_id):
             cancel_url=url_for(
                 'kine.case_import_batch', batch_id=draft.batch_id
             ),
+            wizard_page=1,
+            publication_issues=[
+                _visible_import_message(item)
+                for item in (draft.validation_issues or [])
+            ],
         )
 
     if request.is_json:
@@ -652,7 +701,7 @@ def case_import_draft(draft_id):
 
 
 @kine_bp.route('/case-import-drafts/<int:draft_id>/reject', methods=['POST'])
-@teacher_required
+@kine_permission_required('cases.manage')
 def reject_case_import_draft(draft_id):
     draft = _owned_draft(draft_id)
     if draft.status == 'validated':
@@ -667,12 +716,21 @@ def reject_case_import_draft(draft_id):
 
 
 @kine_bp.route('/case-import-drafts/<int:draft_id>/source')
-@teacher_required
+@kine_permission_required('cases.manage')
 def case_import_draft_source(draft_id):
     draft = _owned_draft(draft_id)
-    if not os.path.isfile(draft.source_path):
+    path = upload_path(draft.source_path)
+    root = os.path.abspath(os.path.join(_storage_root(), str(draft.batch_id)))
+    try:
+        contained = os.path.commonpath((root, path)) == root
+    except ValueError:
+        contained = False
+    if not contained or not os.path.isfile(path):
         return error('Document source introuvable.', 404)
+    with open(path, 'rb') as stream:
+        if hashlib.sha256(stream.read()).hexdigest() != draft.source_sha256:
+            return error('Intégrité du document source invalide.', 409)
     return send_file(
-        draft.source_path, as_attachment=True,
+        path, as_attachment=True,
         download_name=draft.source_filename,
     )

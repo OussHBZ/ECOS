@@ -2,19 +2,27 @@ import os
 import tempfile
 import zipfile
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 
 from flask import flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
-from auth import teacher_required
-from models import Exam, PathologyFolder, PatientCase, SimulationSession, Student, db
+from kine_permissions import (kine_permission_required, student_scope, scoped_students,
+                              scoped_exams, scoped_simulations, require_student, require_simulation)
+from case_versions import (availability_audience, simulation_case, simulation_student,
+                           version_metadata, version_view)
+from information_access import disclosed_ids
+from models import (Exam, KineCaseAvailability, KineCaseVersion, PathologyFolder,
+                    PatientCase, SimulationSession, Student, db)
 from progression_tracker import ProgressionTracker
 from simple_pdf_generator import create_simple_consultation_pdf, export_kine_dashboard_csv, export_kine_dashboard_excel
 from timeline_logger import append_timeline_event, format_timeline
 
+from kine_reporting import aggregate, matches, result_status, duration_minutes, selected_criteria, COMPETENCIES
+from evaluation_lifecycle import feedback_allowed
+
 from . import kine_bp
-from .common import error, kine_staff_required, wants_json
+from .common import error, wants_json
 
 
 def _dashboard_query():
@@ -22,7 +30,7 @@ def _dashboard_query():
         Student, SimulationSession.student_id == Student.id
     ).join(PatientCase, SimulationSession.clinical_case_id == PatientCase.id).outerjoin(
         PathologyFolder, PatientCase.folder_id == PathologyFolder.id
-    ).filter(PatientCase.specialty == 'kine', Student.ecos_type == 'kine')
+    ).filter(PatientCase.specialty == 'kine', student_scope())
     if request.args.get('q'):
         term = f"%{request.args['q'].strip()}%"
         query = query.filter(db.or_(
@@ -33,6 +41,8 @@ def _dashboard_query():
         query = query.filter(PatientCase.folder_id == int(request.args['folder_id']))
     if request.args.get('case_id'):
         query = query.filter(PatientCase.id == int(request.args['case_id']))
+    if request.args.get('mode') and request.args['mode'] not in ('training', 'exam'):
+        raise ValueError('Mode invalide')
     if request.args.get('mode') in ('training', 'exam'):
         query = query.filter(SimulationSession.mode == request.args['mode'])
     if request.args.get('group'):
@@ -42,15 +52,20 @@ def _dashboard_query():
     if request.args.get('from'):
         query = query.filter(SimulationSession.started_at >= datetime.fromisoformat(request.args['from']))
     if request.args.get('to'):
-        query = query.filter(SimulationSession.started_at < datetime.fromisoformat(request.args['to']).replace(hour=23, minute=59, second=59))
+        query = query.filter(SimulationSession.started_at < datetime.fromisoformat(request.args['to']).replace(hour=0, minute=0, second=0) + timedelta(days=1))
     return query.order_by(SimulationSession.started_at.desc())
 
 
 def _export_row(simulation, student, case, folder):
+    if simulation.case_version:
+        case, student = simulation_case(simulation), simulation_student(simulation)
+        folder = case.pathology_folder
     result = simulation.evaluation_results or {}
-    duration = max(0, ((simulation.completed_at or datetime.utcnow()) - simulation.started_at).total_seconds()
-                   - (simulation.total_paused_seconds or 0)) / 60
+    duration = duration_minutes(simulation)
     return {
+        **version_metadata(simulation),
+        'id': simulation.id, 'student_id': simulation.student_id, 'case_id': simulation.clinical_case_id,
+        'result_status': result_status(result), 'evaluation': result,
         'student_name': student.name, 'student_code': student.student_code,
         'student_level': student.level, 'group': student.group_name or '',
         'class_name': student.class_name or '',
@@ -58,15 +73,26 @@ def _export_row(simulation, student, case, folder):
         'mode': simulation.mode, 'started_at': simulation.started_at,
         'completed_at': simulation.completed_at, 'duration_minutes': round(duration, 1),
         'phase_timings': simulation.phase_timings or {},
+        'revealed_information_ids': sorted(disclosed_ids(simulation)),
         'vital_measurements': result.get(
             'vital_measurements',
             (simulation.runtime_state or {}).get('obtained_vital_parameters', []),
         ),
         'raw_score': result.get('raw_points_earned', ''), 'score': result.get('points_earned', ''),
         'passed': result.get('passed', ''),
+        'criteria': selected_criteria(result, request.args),
+        'pending_criteria': [r['id'] for r in selected_criteria(result, request.args) if r.get('review_required')],
         'eliminatory_error_triggered': simulation.eliminatory_error_triggered or result.get('eliminatory_error_triggered', False),
         'eliminatory_errors': result.get('eliminatory_errors', []), 'status': simulation.status,
     }
+
+
+def _dashboard_records():
+    return [record for record in _dashboard_query().all() if matches(_export_row(*record), request.args)]
+
+
+def _public_export(row):
+    return {k: v for k, v in row.items() if k != 'evaluation'}
 
 
 def _student_report_identity(student):
@@ -85,7 +111,10 @@ def _student_report_identity(student):
 def _report_evaluation(simulation):
     report = dict(simulation.evaluation_results or {})
     report.update({
-        'student': _student_report_identity(simulation.student),
+        'case_reference': version_metadata(simulation),
+        'mode': simulation.mode, 'simulation_status': simulation.status,
+        'started_at': simulation.started_at.isoformat(),
+        'student': _student_report_identity(simulation_student(simulation)),
         'supplementary_score': simulation.supplementary_score,
         'teacher_comments': simulation.teacher_comments,
         'vital_measurements': report.get(
@@ -97,22 +126,18 @@ def _report_evaluation(simulation):
 
 
 @kine_bp.route('/dashboard')
-@teacher_required
+@kine_permission_required('results.read')
 def teacher_dashboard():
     try:
-        records = _dashboard_query().all()
+        records = _dashboard_records()
     except (TypeError, ValueError):
         return error('Filtre du tableau de bord invalide.')
     export_rows = [_export_row(*record) for record in records]
     unique_students = {record[1].id: record[1] for record in records}
-    scored = [row['score'] for row in export_rows if isinstance(row['score'], (int, float))]
-    stats = {
-        'student_count': len(unique_students), 'simulation_count': len(records),
-        'average_score': round(sum(scored) / len(scored), 1) if scored else 0,
-        'average_duration': round(sum(row['duration_minutes'] for row in export_rows) / len(export_rows), 1) if export_rows else 0,
-    }
+    report = aggregate(export_rows, request.args)
+    stats = report['stats']
     if wants_json():
-        return jsonify({'stats': stats, 'sessions': export_rows})
+        return jsonify({**report, 'sessions': [_public_export(r) for r in export_rows]})
 
     student_rows = []
     total_cases = PatientCase.query.filter_by(specialty='kine').count()
@@ -139,10 +164,14 @@ def teacher_dashboard():
         })
     session_rows = [{
         'id': simulation.id,
-        'student_name': student.name, 'case_number': case.case_number, 'mode': simulation.mode,
+        'student_name': student.name, 'case_number': simulation_case(simulation).case_number, 'mode': simulation.mode,
         'started_at': simulation.started_at, 'duration': f"{_export_row(simulation, student, case, folder)['duration_minutes']} min",
         'phase_summary': ', '.join((simulation.phase_timings or {}).keys()),
         'score': (simulation.evaluation_results or {}).get('points_earned'), 'status': simulation.status,
+        'result_status': result_status(simulation.evaluation_results or {}),
+        'has_report': simulation.status == 'completed' and bool(simulation.evaluation_results),
+        'feedback_visible': feedback_allowed(simulation),
+        **version_metadata(simulation),
         'passed': (simulation.evaluation_results or {}).get('passed'),
         'message_count': len(simulation.conversation or []),
         'supplementary_score': simulation.supplementary_score,
@@ -165,36 +194,42 @@ def teacher_dashboard():
          'date': simulation.started_at.isoformat()}
         for simulation, student, case, folder in chronological
     ]
-    competency_totals = defaultdict(lambda: [0.0, 0.0])
-    for simulation, _, _, _ in records:
-        for section in (simulation.evaluation_results or {}).get('section_scores', []):
-            key = section.get('title') or section.get('criterion') or section.get('id', 'Competency')
-            competency_totals[key][0] += float(section.get('points_earned') or 0)
-            competency_totals[key][1] += float(section.get('points_possible') or 0)
-    competencies = [
-        {'name': name, 'percentage': round(earned / possible * 100) if possible else 0}
-        for name, (earned, possible) in competency_totals.items()
-    ]
+    competencies = report['competencies']
     comparisons = []
     for student in unique_students.values():
         own_scores = [(record[0].evaluation_results or {}).get('points_earned') for record in records if record[1].id == student.id]
         own_scores = [score for score in own_scores if isinstance(score, (int, float))]
-        comparisons.append({'name': student.name, 'average_score': round(sum(own_scores) / len(own_scores), 1) if own_scores else 0,
+        comparisons.append({'name': student.name, 'average_score': round(sum(own_scores) / len(own_scores), 1) if own_scores else None,
                             'simulations': sum(record[1].id == student.id for record in records)})
     export_args = {key: value for key, value in request.args.items() if key != 'format'}
+    managed_cases = PatientCase.query.filter_by(specialty='kine').order_by(
+        PatientCase.is_archived, PatientCase.case_number).all()
+    published = KineCaseVersion.query.join(PatientCase).filter(
+        PatientCase.specialty == 'kine', KineCaseVersion.status == 'published',
+    ).order_by(KineCaseVersion.case_id, KineCaseVersion.number.desc()).all()
+    versions_by_case = defaultdict(list)
+    exam_versions = []
+    for version in published:
+        versions_by_case[version.case_id].append(version)
+        snapshot = version_view(version)
+        stable_case = next((item for item in managed_cases if item.id == version.case_id), None)
+        if stable_case and not stable_case.is_archived and snapshot.mode_availability in ('exam', 'both'):
+            exam_versions.append({'version': version, 'case': snapshot})
+    availabilities = {
+        item.case_id: {'model': item, 'audience': availability_audience(item)}
+        for item in KineCaseAvailability.query.all()
+    }
+    all_students = scoped_students().order_by(Student.name).all()
     return render_template(
         'teacher_dashboard_kine.html', stats=stats, students=student_rows, sessions=session_rows,
         folders=PathologyFolder.query.filter_by(specialty='kine').all(),
-        cases=PatientCase.query.filter_by(specialty='kine').order_by(PatientCase.is_archived, PatientCase.case_number).all(),
-        active_cases=PatientCase.query.filter(
-            PatientCase.specialty == 'kine', PatientCase.is_archived.is_(False),
-            PatientCase.mode_availability.in_(['exam', 'both']),
-        ).order_by(PatientCase.case_number).all(),
-        all_students=Student.query.filter_by(ecos_type='kine').order_by(Student.name).all(),
-        exams=Exam.query.order_by(Exam.start_at.desc()).all(),
-        groups=[value[0] for value in db.session.query(Student.group_name).filter(Student.ecos_type == 'kine', Student.group_name.isnot(None)).distinct().all()],
-        classes=[value[0] for value in db.session.query(Student.class_name).filter(Student.ecos_type == 'kine', Student.class_name.isnot(None)).distinct().all()],
-        competencies=competencies, comparisons=comparisons,
+        cases=managed_cases, exam_versions=exam_versions,
+        versions_by_case=versions_by_case, availabilities=availabilities,
+        all_students=all_students,
+        exams=scoped_exams().order_by(Exam.start_at.desc()).all(),
+        groups=[value[0] for value in db.session.query(Student.group_name).filter(student_scope(), Student.group_name.isnot(None)).distinct().all()],
+        classes=[value[0] for value in db.session.query(Student.class_name).filter(student_scope(), Student.class_name.isnot(None)).distinct().all()],
+        competencies=competencies, comparisons=comparisons, report=report, competency_options=COMPETENCIES,
         score_series=score_series, duration_series=duration_series, filters=request.args,
         export_csv_url=url_for('kine.dashboard_export', format='csv', **export_args),
         export_excel_url=url_for('kine.dashboard_export', format='xlsx', **export_args),
@@ -202,16 +237,20 @@ def teacher_dashboard():
 
 
 @kine_bp.route('/dashboard/conversations/pdf', methods=['POST'])
-@teacher_required
+@kine_permission_required('results.read')
 def dashboard_conversations_pdf():
     values = request.form.getlist('session_ids') if not request.is_json else (request.get_json(silent=True) or {}).get('session_ids', [])
+    if not isinstance(values, list):
+        return error('Sélection de conversations invalide.')
     try:
         session_ids = [int(value) for value in values]
     except (TypeError, ValueError):
         return error('Sélection de conversations invalide.')
-    simulations = SimulationSession.query.filter(
-        SimulationSession.id.in_(session_ids), SimulationSession.evaluation_results.isnot(None)
+    simulations = scoped_simulations().filter(
+        SimulationSession.id.in_(session_ids), SimulationSession.status == 'completed', SimulationSession.evaluation_results.isnot(None)
     ).all() if session_ids else []
+    if len(simulations) != len(set(session_ids)):
+        return error('Sélection non autorisée ou indisponible.', 404)
     if not simulations:
         return error('Sélectionnez au moins une conversation évaluée.', 400)
     archive = BytesIO()
@@ -219,21 +258,26 @@ def dashboard_conversations_pdf():
         for simulation in simulations:
             report_evaluation = _report_evaluation(simulation)
             filename = create_simple_consultation_pdf(
-                simulation.conversation or [], simulation.clinical_case.case_number,
+                simulation.conversation or [], simulation_case(simulation).case_number,
                 report_evaluation,
             )
+            if not filename:
+                return error('La génération du PDF a échoué.', 500)
             path = os.path.join(tempfile.gettempdir(), filename)
-            if filename and os.path.exists(path):
+            try:
                 bundle.write(path, f"{simulation.student.student_code}_{filename}")
+            finally:
+                if os.path.isfile(path):
+                    os.remove(path)
     archive.seek(0)
     return send_file(archive, mimetype='application/zip', as_attachment=True,
                      download_name=f"conversations_kine_{datetime.now().strftime('%Y%m%d_%H%M')}.zip")
 
 
 @kine_bp.route('/dashboard/simulation/<int:session_id>/review', methods=['POST'])
-@teacher_required
+@kine_permission_required('results.review')
 def dashboard_simulation_review(session_id):
-    simulation = SimulationSession.query.get_or_404(session_id)
+    simulation = require_simulation(session_id)
     if simulation.clinical_case.specialty != 'kine':
         return error('Simulation Kiné introuvable.', 404)
     data = request.get_json(silent=True) or request.form
@@ -249,7 +293,16 @@ def dashboard_simulation_review(session_id):
     else:
         simulation.supplementary_score = None
     simulation.teacher_comments = str(data.get('teacher_comments') or '').strip() or None
-    simulation.reviewed_by = session.get('teacher_id')
+    # A changed exam comment must be published explicitly again.
+    if simulation.mode == 'exam' and simulation.evaluation_results:
+        from copy import deepcopy
+        from evaluation_lifecycle import record_change
+        from .routes_versions import _actor
+        before = deepcopy(simulation.evaluation_results)
+        after = deepcopy(before)
+        after.pop('feedback_published_revision', None)
+        record_change(simulation, before, after, _actor(), 'Modification du commentaire enseignant')
+    simulation.reviewed_by = session.get('teacher_id') if session.get('user_type') == 'teacher' else None
     simulation.reviewed_at = datetime.utcnow()
     append_timeline_event(
         simulation, 'teacher_feedback_saved', actor='teacher',
@@ -260,18 +313,24 @@ def dashboard_simulation_review(session_id):
     )
     db.session.commit()
     if wants_json():
-        return jsonify({'id': simulation.id, 'supplementary_score': simulation.supplementary_score,
+        return jsonify({'id': simulation.id, **version_metadata(simulation), 'supplementary_score': simulation.supplementary_score,
                         'teacher_comments': simulation.teacher_comments,
                         'reviewed_at': simulation.reviewed_at.isoformat() + 'Z'})
-    flash('L’évaluation complémentaire a bien été enregistrée et est maintenant visible par l’étudiant.', 'success')
+    flash('L’évaluation complémentaire a bien été enregistrée. En examen, publiez le bilan pour le rendre visible.', 'success')
     return redirect(url_for('kine.dashboard_simulation', session_id=simulation.id) + '#evaluation-enseignant')
 
 
 @kine_bp.route('/dashboard/export')
-@teacher_required
+@kine_permission_required('results.read')
 def dashboard_export():
     try:
-        rows = [_export_row(*record) for record in _dashboard_query().all()]
+        rows = [_public_export(_export_row(*record)) for record in _dashboard_records()]
+        if request.args.get('dataset') == 'criteria':
+            rows = [{**r, 'criterion_id': c['id'], 'competency': c['step'], 'criterion_title': c['title'],
+                     'classification': c['status_label'], 'review_required': c.get('review_required'),
+                     'criterion_points': c.get('points'), 'criterion_maximum': c.get('max_points'),
+                     'omission': c.get('omission'), 'justification': c.get('justification')}
+                    for r in rows for c in r['criteria']]
     except (TypeError, ValueError):
         return error('Filtre du tableau de bord invalide.')
     export_format = request.args.get('format', 'csv').lower()
@@ -287,29 +346,29 @@ def dashboard_export():
 
 
 @kine_bp.route('/dashboard/student/<int:student_id>')
-@teacher_required
+@kine_permission_required('results.read')
 def dashboard_student(student_id):
-    student = Student.query.get_or_404(student_id)
-    sessions = SimulationSession.query.filter_by(student_id=student.id).order_by(SimulationSession.started_at.desc()).all()
+    student = require_student(student_id)
+    sessions = scoped_simulations().filter(SimulationSession.student_id == student.id).order_by(SimulationSession.started_at.desc()).all()
     return jsonify({'student': {'id': student.id, 'name': student.name, 'level': student.level},
-                    'sessions': [{'id': item.id, 'case_number': item.clinical_case.case_number,
+                    'sessions': [{'id': item.id, 'case_number': simulation_case(item).case_number,
                                   'mode': item.mode, 'status': item.status,
                                   'score': (item.evaluation_results or {}).get('points_earned')} for item in sessions]})
 
 
 @kine_bp.route('/dashboard/simulation/<int:session_id>')
-@kine_staff_required
+@kine_permission_required('results.read')
 def dashboard_simulation(session_id):
-    simulation = SimulationSession.query.get_or_404(session_id)
+    simulation = require_simulation(session_id)
     if simulation.clinical_case.specialty != 'kine':
         return error('Not a kine simulation', 404)
     progression = ProgressionTracker(
-        simulation, student=simulation.student
+        simulation, student=simulation_student(simulation)
     ).to_frontend()
     if wants_json():
         formatted_timeline = format_timeline(simulation.timeline or [], request.args.get('timezone', 'Africa/Casablanca'))
-        return jsonify({'id': simulation.id,
-                        'student': _student_report_identity(simulation.student),
+        return jsonify({'id': simulation.id, **version_metadata(simulation),
+                        'student': _student_report_identity(simulation_student(simulation)),
                         'conversation': simulation.conversation or [],
                         'timeline': formatted_timeline, 'phase_timings': simulation.phase_timings or {},
                         'progression': progression,
@@ -317,22 +376,24 @@ def dashboard_simulation(session_id):
                         'supplementary_score': simulation.supplementary_score,
                         'teacher_comments': simulation.teacher_comments,
                         'reviewed_at': simulation.reviewed_at.isoformat() + 'Z' if simulation.reviewed_at else None})
-    return render_template('timeline_view.html', simulation=simulation, student=simulation.student,
+    return render_template('timeline_view.html', simulation=simulation, student=simulation_student(simulation),
+                           clinical_case=simulation_case(simulation),
                            timeline=format_timeline(simulation.timeline or [], request.args.get('timezone', 'Africa/Casablanca')),
                            progression=progression,
                            pdf_url=url_for('kine.dashboard_simulation_pdf', session_id=simulation.id),
+                           version_reference=version_metadata(simulation),
                            review_url=url_for('kine.dashboard_simulation_review', session_id=simulation.id))
 
 
 @kine_bp.route('/dashboard/simulation/<int:session_id>/pdf')
-@kine_staff_required
+@kine_permission_required('results.read')
 def dashboard_simulation_pdf(session_id):
-    simulation = SimulationSession.query.get_or_404(session_id)
-    if simulation.clinical_case.specialty != 'kine' or not simulation.evaluation_results:
+    simulation = require_simulation(session_id)
+    if simulation.clinical_case.specialty != 'kine' or simulation.status != 'completed' or not simulation.evaluation_results:
         return error('Évaluation Kiné terminée introuvable.', 404)
     report_evaluation = _report_evaluation(simulation)
     filename = create_simple_consultation_pdf(
-        simulation.conversation or [], simulation.clinical_case.case_number,
+        simulation.conversation or [], simulation_case(simulation).case_number,
         report_evaluation,
     )
     if not filename:

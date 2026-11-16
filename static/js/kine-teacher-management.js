@@ -40,7 +40,7 @@
         body.set('timezone_offset_minutes', String(new Date().getTimezoneOffset()));
         button.disabled = true; status.textContent = 'Création de l’examen en cours…';
         try {
-            const response = await fetch(form.dataset.endpoint, {method:'POST', credentials:'same-origin', body, headers:{'Accept':'application/json'}});
+            const response = await secureFetch(form.dataset.endpoint, {method:'POST', credentials:'same-origin', body, headers:{'Accept':'application/json'}});
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Impossible de créer cet examen.');
             status.textContent = 'Examen créé avec succès. Actualisation…';
@@ -54,7 +54,7 @@
         if (!button || !window.confirm('Supprimer cet examen programmé ?')) return;
         button.disabled = true;
         try {
-            const response = await fetch(button.dataset.examDelete, {method:'DELETE', credentials:'same-origin', headers:{'Accept':'application/json'}});
+            const response = await secureFetch(button.dataset.examDelete, {method:'DELETE', credentials:'same-origin', headers:{'Accept':'application/json'}});
             if (!response.ok) throw new Error('Suppression impossible.');
             button.closest('tr')?.remove();
         } catch (error) { window.alert(error.message); button.disabled = false; }

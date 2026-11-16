@@ -1,3 +1,6 @@
+{% if evaluation and (evaluation.engine == 'kardiox_criteria_v1' or evaluation.result_status == 'pending') %}
+{% include '_criteria_result.html' %}
+{% else %}
 {% if evaluation %}
 <div class="kine-evaluation-details">
     {% if evaluation.student %}
@@ -48,4 +51,6 @@
     </div>
     {% if evaluation.feedback %}<p><strong>Feedback global :</strong> {{ evaluation.feedback }}</p>{% endif %}
 </div>
+{% endif %}
+
 {% endif %}

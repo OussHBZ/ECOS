@@ -1,0 +1,63 @@
+{% macro link(endpoint, label, anchor='', active=false) -%}
+<a class="app-nav-link{% if active or (request.endpoint == endpoint and not anchor) %} active{% endif %}" href="{{ url_for(endpoint) }}{{ anchor }}"{% if active or (request.endpoint == endpoint and not anchor) %} aria-current="page"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+{% macro tab(handler, target, label, active=false) -%}
+<button type="button" class="app-nav-link nav-tab{% if active %} active{% endif %}" onclick="{{ handler }}('{{ target }}')" data-app-tab="{{ target }}" aria-controls="{{ target }}"{% if active %} aria-current="page"{% endif %}>{{ label }}</button>
+{%- endmacro %}
+<div class="app-menu-backdrop" data-menu-backdrop hidden></div>
+<aside class="app-sidebar" id="app-navigation" aria-label="Espace {{ role_label }}">
+    <div class="app-sidebar-top">
+        <a class="app-brand" href="{{ url_for('index') }}"><img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="Faculté de Médecine et de Pharmacie de Marrakech"><span><strong>{{ product }}</strong><small>{{ 'Simuler. Raisonner. Rééduquer.' if is_kine else 'Simulation clinique' }}</small></span></a>
+        <button class="app-menu-close" type="button" data-menu-close>Fermer</button>
+    </div>
+    <nav class="app-navigation" aria-label="Navigation principale">
+        {% if role == 'admin' %}
+        <p class="app-nav-heading">Administration</p>
+        <div class="admin-nav-tabs">
+        {% if request.endpoint == 'admin.admin_interface' %}
+            {{ tab('showAdminTab', 'overview-tab', 'Vue d’ensemble', true) }}
+            {{ tab('showAdminTab', 'stations-tab', 'Stations') }}
+            {{ tab('showAdminTab', 'students-tab', 'Étudiants') }}
+            {{ tab('showAdminTab', 'teachers-tab', 'Enseignants') }}
+            {{ tab('showAdminTab', 'competition-sessions-tab', 'Sessions de compétition') }}
+        {% else %}{{ link('admin.admin_interface', 'Administration') }}{% endif %}
+        </div>
+        {% endif %}
+        {% if (role == 'teacher' and is_kine) or (role == 'admin' and admin_profile() == 'pedagogical') %}
+        <p class="app-nav-heading">Suivi pédagogique</p>
+        {{ link('kine.teacher_dashboard', 'Tableau de bord') }}
+        {{ link('kine.teacher_dashboard', 'Résultats et évaluations', '#evaluations', active=request.endpoint in ['kine.dashboard_simulation','kine.teacher_effort_measurement']) }}
+        {{ link('kine.teacher_dashboard', 'Examens', '#gestion-examens') }}
+        <p class="app-nav-heading">Contenu clinique</p>
+        {{ link('kine.teacher_dashboard', 'Cas cliniques', '#tous-les-cas', active=clinical_case is defined and clinical_case and request.endpoint not in ['kine.dashboard_simulation','kine.teacher_effort_measurement']) }}
+        {{ link('kine.new_case_form', 'Créer un cas') }}
+        {{ link('kine.case_imports', 'Imports Word', active=request.endpoint in ['kine.case_import_batch', 'kine.case_import_draft']) }}
+        {{ link('kine.etp_library', 'Bibliothèque ETP', active=request.endpoint == 'kine.etp_revision') }}
+        {% if role == 'admin' %}{{ link('kine.evaluation_thresholds', 'Seuils de réussite') }}{% endif %}
+        {% elif role == 'teacher' %}
+        <p class="app-nav-heading">Espace enseignant</p>
+        <div class="teacher-nav-tabs">
+        {% if request.endpoint == 'teacher.teacher_interface' %}
+            {{ tab('showTeacherTab', 'create-cases-tab', 'Cas cliniques', true) }}
+            {{ tab('showTeacherTab', 'stations-management-tab', 'Stations') }}
+            {{ tab('showTeacherTab', 'student-performance-tab', 'Résultats des étudiants') }}
+        {% else %}{{ link('teacher.teacher_interface', 'Espace enseignant') }}{% endif %}
+        </div>
+        {% elif role == 'student' and is_kine %}
+        <p class="app-nav-heading">Mon parcours</p>
+        {{ link('kine.student_kine_home', 'Mes cas cliniques', active=request.endpoint in ['kine.patient_record_view', 'kine.simulation_chat', 'kine.simulation_patient_record']) }}
+        {{ link('kine.student_kine_home', 'Mes examens', '#mes-examens') }}
+        {{ link('kine.simulation_history', 'Historique et portfolio', active=request.endpoint == 'kine.simulation_timeline') }}
+        {% elif role == 'student' %}
+        <p class="app-nav-heading">Mon parcours</p>
+        <div class="student-nav-tabs">
+        {% if request.endpoint == 'student.student_interface' %}
+            {{ tab('showStudentTab', 'practice-tab', 'Entraînement', true) }}
+            {{ tab('showStudentTab', 'competition-tab', 'Compétitions') }}
+            {{ tab('showStudentTab', 'stats-tab', 'Mes statistiques') }}
+        {% else %}<a class="app-nav-link" href="/student/">Espace étudiant</a>{% endif %}
+        </div>
+        {% endif %}
+    </nav>
+    <div class="app-account"><span class="app-nav-heading">Compte connecté</span><strong>{{ current_user.name if current_user.is_authenticated and current_user.name|default('') else session.get('teacher_name', role_label) }}</strong><small>{{ role_label }}</small><form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary" type="submit">Déconnexion</button></form></div>
+</aside>

@@ -1,0 +1,6 @@
+<details class="kine-card" data-effort-panel data-url="{{ url_for('kine.simulation_effort_tests', session_id=simulation.id) }}" data-event-url="{{ url_for('kine.simulation_effort_event', session_id=simulation.id) }}">
+    <summary>Recueil des tests à l’effort</summary>
+    <form><label>Test / paramètre / moment<select name="measurement" aria-label="Mesure à recueillir"></select></label><button type="submit" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Demander la mesure</button><label>Valeur relevée / calculée<input name="observed_value"></label><button type="submit" data-report {% if simulation.status != 'in_progress' %}disabled{% endif %}>Enregistrer mon relevé</button></form>
+    <form data-effort-event-form><label>Identifiant du test<input name="test_id" required></label><label>Événement du scénario<input name="event" required></label><button {% if simulation.status != 'in_progress' %}disabled{% endif %}>Signaler l’événement</button></form>
+    <p role="status" data-effort-status></p><div class="kine-table-wrap" data-effort-results></div>
+</details>

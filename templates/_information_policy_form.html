@@ -1,0 +1,12 @@
+{% if clinical_case %}
+<details class="kine-card" data-information-editor data-url="{{ url_for('kine.case_information_collection', case_id=clinical_case.id) }}">
+<summary>Accès à chaque information</summary><p>Enregistrez d’abord les données cliniques. Ces réglages s’appliquent au prochain brouillon publié ; les tentatives existantes conservent leurs références.</p>
+<button type="button" data-policy-refresh>Actualiser les informations enregistrées</button>
+<label>Information<select data-policy-item></select></label><pre data-policy-value></pre>
+<div class="kine-form-grid"><label>Libellé<input data-policy-label></label>
+{% for field,label in [('mode','Mode d’accès'),('licence','Remplacement Licence'),('master','Remplacement Master')] %}<label>{{ label }}<select data-policy-{{ field }}>{% if field != 'mode' %}<option value="">Règle commune</option>{% endif %}<option value="initial">Visible au départ</option><option value="question">Sur question</option><option value="deepening">Sur approfondissement</option><option value="examination">Sur examen / mesure</option><option value="evaluation_reserved">Réservée à l’évaluation</option></select></label>{% endfor %}
+<label>Connaissance du patient<select data-policy-knowledge><option value="">Indéterminée</option><option value="true">Connue</option><option value="false">Inconnue</option></select></label>
+<label>Formulations équivalentes (séparées par |)<textarea data-policy-terms></textarea></label><label>Informations préalables à l’approfondissement<select multiple data-policy-requires></select></label></div>
+<button type="button" data-policy-save>Enregistrer la règle d’accès</button><p role="status" data-policy-status></p>
+</details>
+{% endif %}

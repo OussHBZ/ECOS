@@ -1,62 +1,17 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interface Enseignant - ECOS FMPM</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon-32x32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon-16x16.png') }}">
-    <link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='images/favicon-192x192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version }}">
-</head>
-<body>
-    <!-- FMPM Header -->
-    <header class="fmpm-header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo-section">
-                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
-                    <div class="brand-text">
-                        <h1 class="brand-title">Interface Enseignant</h1>
-                        <p class="brand-subtitle">Gestion des cas cliniques et suivi pédagogique</p>
-                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
-                    </div>
-                </div>
-                <div class="header-actions">
-                    <a href="{{ url_for('index') }}" class="btn btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
-                    <div class="user-info">
-                        <div class="user-name">Enseignant</div>
-                        <div class="user-role">Interface Pédagogique</div>
-                    </div>
-                    <a href="{{ url_for('auth.logout') }}" class="btn logout-button">Déconnexion</a>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Navigation Tabs -->
-    <div class="nav-tabs-container">
-        <div class="container">
-            <div class="teacher-nav-tabs">
-                <button class="nav-tab active" onclick="showTeacherTab('create-cases-tab')">Créer/Gérer Cas</button>
-                <button class="nav-tab" onclick="showTeacherTab('stations-management-tab')">Gestion Stations</button>
-                <button class="nav-tab" onclick="showTeacherTab('student-performance-tab')">Performance Étudiants</button>
-            </div>
-        </div>
-    </div>
-
+{% extends "app_base.html" %}
+{% block title %}Espace enseignant · ECOS{% endblock %}
+{% block content %}
     <div class="main-content">
         <!-- Create/Manage Cases Tab -->
         <div id="create-cases-tab" class="teacher-tab-content active">
             <div class="section-header">
-                <h2>Gestion des Cas Cliniques</h2>
+                <h1>Gestion des Cas Cliniques</h1>
             </div>
 
             <div class="method-selection">
                 <h3>Ajouter un nouveau cas ECOS</h3>
                 <p class="method-subtitle">Choisissez comment ajouter un nouveau cas :</p>
-                
+
                 <div class="method-tabs">
                     <button id="manual-tab-btn" class="tab-btn active">
                         Saisie manuelle <span class="recommended-badge">Recommandée</span>
@@ -64,7 +19,7 @@
                     <button id="file-tab-btn" class="tab-btn">Par fichier</button>
                 </div>
             </div>
-            
+
             <!-- Manual Entry Section -->
             <div id="manual-entry-section" class="upload-section">
                 <form id="manual-entry-form">
@@ -78,7 +33,7 @@
                             <input type="text" id="manual-specialty" name="specialty" required>
                         </div>
                     </div>
-                    
+
                     <!-- Patient Information Section -->
                     <div class="form-section">
                         <legend>Informations du patient</legend>
@@ -107,7 +62,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Symptoms Section -->
                     <div class="form-section">
                         <legend>Symptômes et motif de consultation</legend>
@@ -133,9 +88,9 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="button" id="add-symptom" class="btn btn-secondary">+ Ajouter un symptôme</button>
+                        <button type="button" id="add-symptom" class="btn btn-secondary">Ajouter un symptôme</button>
                     </div>
-                    
+
                     <!-- Medical History Section -->
                     <div class="form-section">
                         <legend>Antécédents médicaux</legend>
@@ -164,7 +119,7 @@
                             <textarea id="allergies" name="allergies" rows="2"></textarea>
                         </div>
                     </div>
-                    
+
                     <!-- Images Section -->
                     <div class="form-section">
                         <legend>Images et examens complémentaires</legend>
@@ -176,7 +131,7 @@
                         <div id="manual-images-preview" class="images-preview"></div>
                         <div class="form-group">
                             <label for="image-descriptions">Descriptions des images (une par ligne) :</label>
-                            <textarea id="image-descriptions" name="image_descriptions" rows="3" 
+                            <textarea id="image-descriptions" name="image_descriptions" rows="3"
                                 placeholder="Description image 1&#10;Description image 2&#10;Description image 3"></textarea>
                             <div class="field-help">Entrez une description par ligne, dans le même ordre que les images</div>
                         </div>
@@ -185,12 +140,12 @@
                             <textarea id="lab-results" name="lab_results" rows="3" placeholder="Ex: NFS: Leucocytes 12.000/mm3, CRP 25 mg/L"></textarea>
                         </div>
                     </div>
-                    
+
                     <!-- Evaluation Checklist -->
                     <div class="form-section">
                         <legend>Grille d'évaluation</legend>
                         <div class="field-help">Ajoutez les éléments que l'étudiant devrait aborder/réaliser durant la consultation</div>
-                        
+
                         <div id="checklist-container">
                             <!-- Initial checklist item -->
                             <div class="checklist-item">
@@ -216,9 +171,9 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="button" id="add-checklist-item" class="btn btn-secondary">+ Ajouter un élément</button>
+                        <button type="button" id="add-checklist-item" class="btn btn-secondary">Ajouter un élément</button>
                     </div>
-                    
+
                     <!-- Additional Information Section -->
                     <div class="form-section">
                         <legend>Informations additionnelles</legend>
@@ -242,30 +197,30 @@
                         </div>
                         <div class="form-group">
                             <label for="case-directives">Directives pour l'étudiant:</label>
-                            <textarea id="case-directives" name="case_directives" rows="5" 
+                            <textarea id="case-directives" name="case_directives" rows="5"
                                 placeholder="Ex: 1. Mener l'interrogatoire dans 3 min. 2. Interpréter la radiographie thoracique..."></textarea>
                             <div class="field-help">Instructions que l'étudiant doit suivre pendant la consultation</div>
                         </div>
                     </div>
-                    
+
                     <!-- Custom Sections -->
                     <div class="form-section">
                         <legend>Sections personnalisées</legend>
                         <div class="field-help">Ajoutez des sections personnalisées pour des informations supplémentaires</div>
-                        
+
                         <div id="custom-sections-container">
                             <!-- Custom sections will be added here -->
                         </div>
-                        <button type="button" id="add-custom-section" class="btn btn-secondary">+ Ajouter une section personnalisée</button>
+                        <button type="button" id="add-custom-section" class="btn btn-secondary">Ajouter une section personnalisée</button>
                     </div>
-                    
+
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">Créer le cas</button>
                         <button type="button" class="btn btn-secondary">Annuler</button>
                     </div>
                 </form>
             </div>
-            
+
             <!-- File Upload Section -->
             <div id="file-upload-section" class="upload-section hidden">
                 <form id="upload-form" enctype="multipart/form-data">
@@ -295,7 +250,7 @@
                     </div>
                 </form>
             </div>
-            
+
             <div id="upload-status" class="upload-status hidden">
                 <h3>Statut de l'extraction</h3>
                 <div id="processing-message"></div>
@@ -347,7 +302,7 @@
         <!-- Stations Management Tab -->
         <div id="stations-management-tab" class="teacher-tab-content">
             <div class="section-header">
-                <h2>Gestion des Stations</h2>
+                <h1>Gestion des Stations</h1>
                 <div class="search-container">
                     <input type="text" id="teacher-stations-search" placeholder="Rechercher stations..." class="search-input">
                     <button onclick="searchTeacherStations()" class="btn btn-primary search-btn">Rechercher</button>
@@ -393,7 +348,7 @@
         <!-- Student Performance Tab -->
         <div id="student-performance-tab" class="teacher-tab-content">
             <div class="section-header">
-                <h2>Performance des Étudiants</h2>
+                <h1>Performance des Étudiants</h1>
                 <div class="search-container">
                     <input type="text" id="student-search" placeholder="Rechercher par nom ou code..." class="search-input">
                     <button onclick="searchStudents()" class="btn btn-primary search-btn">Rechercher</button>
@@ -440,7 +395,7 @@
     <!-- Modal for viewing case details -->
     <div id="case-details-modal" class="modal hidden">
         <div class="modal-content">
-            <span class="close-modal">&times;</span>
+            <span class="close-modal">Fermer</span>
             <h3>Détails du Cas</h3>
             <div id="case-details-content"></div>
         </div>
@@ -449,9 +404,9 @@
     <!-- Modal for editing case -->
     <div id="edit-case-modal" class="modal hidden">
         <div class="modal-content" style="max-width: 95%; max-height: 95%; overflow-y: auto;">
-            <span class="close-modal edit-close">&times;</span>
+            <span class="close-modal edit-close">Fermer</span>
             <h3>Modifier le Cas <span id="edit-case-number-title"></span></h3>
-            
+
             <form id="edit-case-form">
                 <!-- Basic Information -->
                 <div class="form-section">
@@ -467,7 +422,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Patient Information -->
                 <div class="form-section">
                     <legend>Informations du patient</legend>
@@ -497,34 +452,34 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Medical History -->
                 <div class="form-section">
                     <legend>Antécédents médicaux</legend>
                     <div id="edit-medical-history-container">
                         <!-- Medical history items will be added here -->
                     </div>
-                    <button type="button" id="edit-add-medical-history" class="btn btn-secondary">+ Ajouter un antécédent</button>
+                    <button type="button" id="edit-add-medical-history" class="btn btn-secondary">Ajouter un antécédent</button>
                 </div>
-                
+
                 <!-- Symptoms -->
                 <div class="form-section">
                     <legend>Symptômes</legend>
                     <div id="edit-symptoms-container">
                         <!-- Symptoms will be added here -->
                     </div>
-                    <button type="button" id="edit-add-symptom" class="btn btn-secondary">+ Ajouter un symptôme</button>
+                    <button type="button" id="edit-add-symptom" class="btn btn-secondary">Ajouter un symptôme</button>
                 </div>
-                
+
                 <!-- Evaluation Checklist -->
                 <div class="form-section">
                     <legend>Grille d'évaluation</legend>
                     <div id="edit-checklist-container">
                         <!-- Checklist items will be added here -->
                     </div>
-                    <button type="button" id="edit-add-checklist-item" class="btn btn-secondary">+ Ajouter un élément</button>
+                    <button type="button" id="edit-add-checklist-item" class="btn btn-secondary">Ajouter un élément</button>
                 </div>
-                
+
                 <!-- Additional Information -->
                 <div class="form-section">
                     <legend>Informations additionnelles</legend>
@@ -545,16 +500,16 @@
                         <textarea id="edit-additional-notes" name="additional_notes" rows="4"></textarea>
                     </div>
                 </div>
-                
+
                 <!-- Custom Sections -->
                 <div class="form-section">
                     <legend>Sections personnalisées</legend>
                     <div id="edit-custom-sections-container">
                         <!-- Custom sections will be added here -->
                     </div>
-                    <button type="button" id="edit-add-custom-section" class="btn btn-secondary">+ Ajouter une section personnalisée</button>
+                    <button type="button" id="edit-add-custom-section" class="btn btn-secondary">Ajouter une section personnalisée</button>
                 </div>
-                
+
                 <!-- Images (read-only for now) -->
                 <div class="form-section">
                     <legend>Images associées</legend>
@@ -563,7 +518,7 @@
                     </div>
                     <div class="field-help">Note: Pour modifier les images, veuillez créer un nouveau cas.</div>
                 </div>
-                
+
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Sauvegarder les modifications</button>
                     <button type="button" class="btn btn-secondary" id="edit-cancel-btn">Annuler</button>
@@ -575,9 +530,9 @@
     <!-- Student Detail Performance Modal -->
     <div id="student-detail-modal" class="modal hidden">
         <div class="modal-content" style="max-width: 90%; max-height: 90%;">
-            <span class="close-modal student-detail-close">&times;</span>
+            <span class="close-modal student-detail-close">Fermer</span>
             <h3>Performance Détaillée - <span id="student-detail-name"></span></h3>
-            
+
             <div class="student-detail-stats">
                 <div class="stat-card">
                     <div class="stat-number" id="detail-total-workouts">-</div>
@@ -615,7 +570,8 @@
         </div>
     </div>
 
+
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/teacher.js') }}?v={{ app_version }}"></script>
-</body>
-</html>
+
+{% endblock %}

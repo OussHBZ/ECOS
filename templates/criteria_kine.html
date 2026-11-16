@@ -1,0 +1,15 @@
+{% extends 'kine_base.html' %}
+{% block content %}
+<h1>Évaluation de {{ clinical_case.title or clinical_case.case_number }}</h1>
+{% set thresholds = evaluation_thresholds_for_case() %}<p>Seuils actuels : Licence {{ thresholds.licence }}/20 ; Master {{ thresholds.master }}/20. Le seuil applicable sera figé au démarrage de la tentative.</p>
+<p>Les critères deviennent utilisables après validation explicite et publication d’une nouvelle version du cas. Les tentatives existantes conservent leur référentiel.</p>
+<form method="post" data-criteria-form>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="criteria_json" data-criteria-value>
+{% for step in steps %}<section class="kine-card" data-criterion-step="{{ step }}"><h2>{{ ['Dossier clinique','Anamnèse','Bilans','Raisonnement clinique','Objectifs thérapeutiques','Prescription','ETP','Vérification finale'][loop.index0] }}</h2></section>{% endfor %}
+<button class="btn btn-primary">Enregistrer le brouillon</button>
+</form>
+<script type="application/json" data-criteria-initial>{{ criteria|tojson }}</script>
+<script type="application/json" data-criteria-suggestions>{{ suggestions|tojson }}</script>
+<script src="{{ url_for('static', filename='js/kine-criteria.js') }}" defer></script>
+{% endblock %}

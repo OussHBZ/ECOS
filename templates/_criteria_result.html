@@ -1,0 +1,18 @@
+<div class="kine-evaluation-details">
+{% if evaluation.student %}<p>{{ evaluation.student.name }} · Code Apogée {{ evaluation.student.student_code }} · {{ evaluation.student.level }}</p>{% endif %}
+<h3>{{ evaluation.status_label }}</h3>
+{% if evaluation.points_earned is not none %}<p><strong>{{ evaluation.score_display|default(evaluation.points_earned) }}/20</strong></p>{% endif %}
+{% if evaluation.rounded_below_threshold %}<p>La note affichée atteint le seuil par arrondi ; la valeur exacte reste inférieure au seuil.</p>{% endif %}
+{% if evaluation.validation_threshold %}<p>Seuil appliqué : {{ evaluation.validation_threshold }}/20</p>{% endif %}
+{% if evaluation.summary %}<p>{{ evaluation.summary.satisfied }} satisfaits · {{ evaluation.summary.partial }} partiels · {{ evaluation.summary.failed }} non satisfaits · {{ evaluation.summary.pending }} à vérifier · {{ evaluation.summary.omissions }} omissions.</p>{% endif %}
+{% if evaluation.criteria %}<p>Débriefing : les éléments de sécurité et de raisonnement sont présentés en priorité. Comparez vos décisions aux attentes propres aux critères évalués.</p>{% endif %}
+{% for row in evaluation.criteria or [] %}{% if row.max_points and row.applicable|default(true) %}<article class="kine-card"><h4>{{ row.title|default(row.id) }} — {{ row.status_label }}</h4>
+{% if row.points is not none %}<p>{{ row.points }}/{{ row.max_points }} points</p>{% endif %}
+<p>{{ row.justification }}</p>
+{% if row.omission %}<p><strong>Élément attendu non retrouvé dans vos réponses.</strong></p>{% endif %}
+{% for proof in row.evidence %}<blockquote>{{ proof.quote }}</blockquote>{% endfor %}
+{% if row.expected %}<p><strong>Attendu :</strong> {{ row.expected }}</p>{% endif %}
+{% if row.alternatives %}<p><strong>Alternatives acceptées :</strong> {{ row.alternatives|join(' ; ') }}</p>{% endif %}
+{% if row.safety_consequence != 'none' %}<p>Sécurité : {{ {'critical':'Critique non éliminatoire','eliminatory':'Éliminatoire','review':'À vérifier'}.get(row.safety_consequence,'') }}</p>{% endif %}
+</article>{% else %}<p>{{ row.title|default(row.id) }} — Non évalué / non applicable</p>{% endif %}{% endfor %}
+</div>

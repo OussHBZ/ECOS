@@ -20,7 +20,7 @@ function setup(fetch) {
     let ready;
     let redirected;
     const context = {
-        console, fetch,
+        console, fetch, secureFetch: fetch,
         FormData: class { constructor() { this.fields = {...fields}; } },
         document: {
             querySelector(selector) { return selector === '[data-kine-case-form]' ? form : null; },

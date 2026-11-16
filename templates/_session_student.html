@@ -1,0 +1,4 @@
+<section class="kine-card" data-session-actions="{{ url_for('kine.session_action', session_id=simulation.id) }}">
+<h2>Déroulement de séance</h2><p>Annoncez l’exercice réalisé et votre décision. Demandez les mesures dans la conversation avec le patient.</p>
+<form data-session-action-form><label>Exercice en cours<input name="exercise_name" maxlength="250"></label><label>Votre action<input name="action" required maxlength="1200"></label><button class="btn btn-secondary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Réaliser l’action</button></form>
+<div data-session-action-result role="status"></div></section>

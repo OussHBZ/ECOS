@@ -1,13 +1,15 @@
 from flask import jsonify, request
 
 from models import PathologyFolder, Student, db
+from account_security import revoke_sessions
+from kine_permissions import kine_permission_required, require_student, actor
 
 from . import kine_bp
-from .common import LEVELS, error, kine_staff_required, payload, teacher_id
+from .common import LEVELS, error, payload, teacher_id
 
 
 @kine_bp.route('/folders', methods=['GET', 'POST'])
-@kine_staff_required
+@kine_permission_required('folders.manage')
 def folders_collection():
     if request.method == 'GET':
         include_archived = request.args.get('include_archived') == '1'
@@ -32,7 +34,7 @@ def folders_collection():
 
 
 @kine_bp.route('/folders/<int:folder_id>', methods=['GET', 'PUT', 'PATCH', 'DELETE'])
-@kine_staff_required
+@kine_permission_required('folders.manage')
 def folder_item(folder_id):
     folder = PathologyFolder.query.filter_by(id=folder_id, specialty='kine').first_or_404()
     if request.method == 'GET':
@@ -64,13 +66,17 @@ def folder_item(folder_id):
 
 
 @kine_bp.route('/students/<int:student_id>/level', methods=['PUT', 'PATCH'])
-@kine_staff_required
+@kine_permission_required('students.level')
 def update_student_level(student_id):
-    student = Student.query.filter_by(id=student_id, ecos_type='kine').first_or_404()
+    student = require_student(student_id)
+    if actor() == 'teacher' and any(key in payload() for key in ('group_name', 'class_name')):
+        return error('Attribution des groupes réservée à l’administration.', 403)
     level = str(payload().get('level') or '').lower()
     if level not in LEVELS:
         return error("Le niveau doit être « licence » ou « master ».")
-    student.level = level
+    if student.level != level:
+        student.level = level
+        revoke_sessions(student)
     if payload().get('group_name') is not None:
         student.group_name = str(payload().get('group_name') or '').strip() or None
     if payload().get('class_name') is not None:

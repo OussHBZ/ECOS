@@ -1,59 +1,13 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interface Étudiant - ECOS FMPM</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon-32x32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon-16x16.png') }}">
-    <link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='images/favicon-192x192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/kine.css') }}?v={{ app_version }}">
-    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-</head>
-<body>
-    <!-- FMPM Header -->
-    <header class="fmpm-header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo-section">
-                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
-                    <div class="brand-text">
-                        <h1 class="brand-title">Interface Étudiant</h1>
-                        <p class="brand-subtitle">Plateforme d'entraînement aux examens cliniques</p>
-                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
-                    </div>
-                </div>
-                <div class="header-actions">
-                    <a href="{{ url_for('index') }}" class="btn btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
-                    <div class="user-info">
-                        <div class="user-name">Bienvenue, {{ student_name }}</div>
-                    </div>
-                    <a href="{{ url_for('auth.logout') }}" class="btn logout-button">Déconnexion</a>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Navigation Tabs -->
-    <div class="nav-tabs-container">
-        <div class="container">
-            <div class="student-nav-tabs">
-                <button class="nav-tab active" onclick="showStudentTab('practice-tab')">Entraînement</button>
-                <button class="nav-tab" onclick="showStudentTab('competition-tab')">Compétitions</button>
-                <button class="nav-tab" onclick="showStudentTab('stats-tab')">Mes Statistiques</button>
-            </div>
-        </div>
-    </div>
-
+{% extends "app_base.html" %}
+{% block title %}Espace étudiant · ECOS{% endblock %}
+{% block content %}
     <div class="main-content">
         <!-- Practice Tab -->
         <div id="practice-tab" class="student-tab-content active">
             <!-- Case Selection Screen -->
             <div id="case-selection" class="case-selection-container">
                 <div class="section-header">
-                    <h2>Sélectionnez un cas clinique</h2>
+                    <h1>Sélectionnez un cas clinique</h1>
                 </div>
 
                 <!-- Filters -->
@@ -113,7 +67,7 @@
                         <span class="timer-label">Temps restant</span>
                         <span id="timer" class="timer">10:00</span>
                     </div>
-                    <button id="end-chat" class="btn end-button">&#9632; Terminer la consultation</button>
+                    <button id="end-chat" class="btn end-button">Terminer la consultation</button>
                 </div>
 
                 {% if kine_session|default(false) %}
@@ -154,17 +108,10 @@
 
                     <!-- Right: messages + input -->
                     <div class="chat-main">
-                        <div id="chat-messages" class="chat-messages"></div>
+                        <div id="chat-messages" class="chat-messages" role="log" aria-label="Conversation avec le patient" aria-live="polite" aria-relevant="additions"></div>
                         <div class="chat-input-container">
                             <input type="text" id="user-input" placeholder="Tapez ou dictez votre message…" autocomplete="off">
-                            <button id="mic-btn" class="btn mic-button" onclick="toggleMic('user-input')" title="Dicter un message">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                    <line x1="12" y1="19" x2="12" y2="23"/>
-                                    <line x1="8" y1="23" x2="16" y2="23"/>
-                                </svg>
-                            </button>
+                            <button id="mic-btn" class="btn mic-button" onclick="toggleMic('user-input')" title="Dicter un message">Dicter</button>
                             <button id="send-btn" class="btn send-button">Envoyer</button>
                         </div>
                     </div>
@@ -194,7 +141,7 @@
                 <!-- Available Competitions List -->
                 <div id="available-competitions-container">
                     <div class="section-header">
-                        <h2>Compétitions Disponibles</h2>
+                        <h1>Compétitions Disponibles</h1>
                     </div>
                     <!-- Competitions will be loaded here by JavaScript -->
                 </div>
@@ -247,19 +194,12 @@
 
                         <!-- Competition Chat -->
                         <div class="competition-chat-container">
-                            <div id="competition-chat-messages" class="chat-messages"></div>
+                            <div id="competition-chat-messages" class="chat-messages" role="log" aria-label="Conversation de la station" aria-live="polite" aria-relevant="additions"></div>
                             <div class="chat-input-container">
                                 <input type="text" id="competition-chat-input"
                                        placeholder="Tapez ou dictez votre message..."
                                        onkeypress="handleCompetitionChatKeypress(event)">
-                                <button class="btn mic-button" onclick="toggleMic('competition-chat-input')" title="Dicter un message">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                        <line x1="12" y1="19" x2="12" y2="23"/>
-                                        <line x1="8" y1="23" x2="16" y2="23"/>
-                                    </svg>
-                                </button>
+                                <button class="btn mic-button" onclick="toggleMic('competition-chat-input')" title="Dicter un message">Dicter</button>
                                 <button onclick="sendCompetitionMessage()" class="btn send-button">Envoyer</button>
                             </div>
                         </div>
@@ -287,7 +227,7 @@
                                     <span id="countdown-timer" class="countdown-timer">--</span>
                                     <span class="countdown-label">secondes</span>
                                 </div>
-                                <p id="auto-advance-msg" style="color:#666;font-style:italic;margin-top:8px;">
+                                <p id="auto-advance-msg" style="color:var(--text-light);font-style:italic;margin-top:8px;">
                                     Le passage est automatique — aucune action requise.
                                 </p>
                             </div>
@@ -297,12 +237,12 @@
                     <!-- Waiting for other students -->
                     <div id="waiting-for-others" class="competition-screen hidden">
                         <div class="between-stations-container" style="text-align:center;">
-                            <h2>🎉 Toutes vos stations sont terminées !</h2>
+                            <h2>Toutes vos stations sont terminées !</h2>
                             <p style="font-size:1.1em;margin:20px 0;">
                                 Veuillez patienter pendant que les autres étudiants terminent leurs stations.
                             </p>
                             <div class="loading-spinner" style="margin:20px auto;width:40px;height:40px;border:4px solid #ccc;border-top-color:#4a7c59;border-radius:50%;animation:spin 1s linear infinite;"></div>
-                            <p style="color:#666;">Les résultats seront affichés une fois la compétition terminée.</p>
+                            <p style="color:var(--text-light);">Les résultats seront affichés une fois la compétition terminée.</p>
                         </div>
                     </div>
 
@@ -310,7 +250,7 @@
                     <div id="final-results" class="competition-screen hidden">
                         <div class="final-results-container">
                             <h2>Compétition Terminée!</h2>
-                            
+
                             <div class="final-score-summary">
                                 <div class="score-card">
                                     <h3>Votre Performance</h3>
@@ -319,7 +259,7 @@
                                         <span class="score-label">Score Moyen</span>
                                     </div>
                                 </div>
-                                
+
                                 <div class="rank-card">
                                     <h3>Classement</h3>
                                     <div class="rank-display">
@@ -329,7 +269,7 @@
                                         <span class="rank-label">Position</span>
                                     </div>
                                 </div>
-                                
+
                                 <div class="stations-card">
                                     <h3>Stations Complétées</h3>
                                     <div class="stations-display">
@@ -338,7 +278,7 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="final-actions">
                                 <button id="download-competition-report" class="submit-button" style="display: none;">
                                     📄 Télécharger Rapport Détaillé
@@ -347,7 +287,7 @@
                                     🏠 Retour aux Compétitions
                                 </button>
                             </div>
-                            
+
                             <div class="final-leaderboard">
                                 <h3>Classement Final (Top 10)</h3>
                                 <div id="final-leaderboard"></div>
@@ -361,7 +301,7 @@
         <!-- Statistics Tab -->
         <div id="stats-tab" class="student-tab-content">
             <div class="section-header">
-                <h2>Mes Statistiques</h2>
+                <h1>Mes Statistiques</h1>
             </div>
 
             <!-- Stats Overview -->
@@ -421,7 +361,7 @@
     <!-- Images Modal for Competition -->
     <div id="images-modal" class="modal hidden">
         <div class="modal-content">
-            <span class="close-modal" onclick="closeImagesModal()">&times;</span>
+            <span class="close-modal" onclick="closeImagesModal()">Fermer</span>
             <h3>Images Médicales</h3>
             <div id="images-content">
                 <!-- Images will be populated by JavaScript -->
@@ -433,5 +373,5 @@
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/student.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/kine-components.js') }}?v={{ app_version }}"></script>
-</body>
-</html>
+
+{% endblock %}

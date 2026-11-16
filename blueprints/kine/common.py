@@ -214,7 +214,7 @@ def error(message, status=400):
 
 
 def teacher_id():
-    return session.get('teacher_id')
+    return session.get('teacher_id') if session.get('user_type') == 'teacher' else None
 
 
 def parse_datetime(value, field_name='datetime', local_utc_offset_minutes=None):
@@ -254,20 +254,6 @@ def model_dict(model, fields):
 
 
 def kine_staff_required(function):
-    """Allow authenticated administrators or teachers to manage kine data."""
-    @wraps(function)
-    def decorated(*args, **kwargs):
-        user_type = session.get('user_type')
-        authorized = (
-            user_type == 'admin' and session.get('admin_authenticated')
-        ) or (
-            user_type == 'teacher' and session.get('teacher_authenticated')
-            and current_user.is_authenticated
-            and str(getattr(current_user, 'ecos_type', 'standard') or 'standard').lower() == 'kine'
-        )
-        if not authorized:
-            if wants_json():
-                return error('Staff authentication required', 401)
-            return redirect(url_for('auth.login'))
-        return function(*args, **kwargs)
-    return decorated
+    """Compatibility name for pedagogical reads; structure has its own permission."""
+    from kine_permissions import kine_permission_required
+    return kine_permission_required('results.read')(function)

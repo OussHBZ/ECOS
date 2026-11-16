@@ -1,0 +1,21 @@
+{% extends 'kine_base.html' %}
+{% block content %}
+<section class="kine-card"><h1>Bibliothèque ETP</h1><p>Chaque enregistrement crée une version distincte. Les cas conservent leur référence et leur adaptation.</p>
+<form method="get" class="kine-filterbar"><label>Recherche<input name="q" value="{{ request.args.get('q','') }}"></label><label>Pathologie<input name="pathology" value="{{ request.args.get('pathology','') }}"></label><label>Niveau<select name="level"><option value="">Tous</option><option value="licence">Licence</option><option value="master">Master</option></select></label><label>Catégorie<select name="category"><option value="">Toutes</option>{% for key,label in categories.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label><button class="btn">Rechercher</button></form>
+<ul>{% for sheet in sheets %}<li><a href="{{ url_for('kine.etp_revision', version_id=sheet.id) }}">{{ sheet.title }} — v{{ sheet.number }}</a> · {{ sheet.pathology }} · {{ sheet.level }} · {{ 'Validée' if sheet.status == 'validated' else 'À vérifier / nouvelle validation requise' }}</li>{% endfor %}</ul>
+<a href="{{ url_for('kine.etp_library') }}">Créer une autre fiche</a></section>
+<section class="kine-card"><h2>{{ 'Nouvelle version de la fiche' if item else 'Importer ou saisir une fiche' }}</h2>
+{% if item and item.source_filename %}<a href="{{ url_for('kine.etp_source', version_id=item.id) }}">Comparer au document source : {{ item.source_filename }}</a>{% endif %}
+<form class="kine-form" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Titre<input name="title" required value="{{ item.title if item else '' }}"></label><label>Pathologie<input name="pathology" value="{{ item.pathology if item else '' }}"></label><label>Niveau<select name="level">{% for key,label in [('both','Licence et Master'),('licence','Licence'),('master','Master')] %}<option value="{{ key }}" {% if item and item.level == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Document Word ou PDF<input type="file" name="source" accept=".docx,.pdf"></label><p>L’import classe uniquement les rubriques reconnues. Le texte non classé et les catégories absentes restent à vérifier. Un nouveau document doit être enregistré puis relu avant validation.</p>
+{% set content = item.content if item else {} %}
+{% include '_etp_categories.html' %}
+<label>Références scientifiques / origine<textarea name="references">{{ content.get('references','') }}</textarea></label>
+{% if content.get('extraction_review_required') %}<p>Vérification de l’extraction requise.</p>{% endif %}
+<label>Contenu non classé (à déplacer ou contrôler)<textarea name="unclassified">{{ content.get('unclassified','') }}</textarea></label>
+{% include '_etp_prompts.html' %}
+<label><input type="checkbox" name="confirm_review" value="yes"> J’ai contrôlé l’extraction, les éléments absents et les incertitudes avec la source.</label>
+<label><input type="checkbox" name="validate" value="yes"> Valider cette nouvelle version de référence</label>
+<button class="btn btn-primary">Enregistrer une nouvelle version</button></form></section>
+{% endblock %}

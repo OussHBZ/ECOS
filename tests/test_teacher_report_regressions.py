@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import text
 
-from test_kine_extension import app, teacher_login, student_login, create_case
+from test_kine_extension import app, teacher_login, student_login, create_case, publish_and_assign
 from kine_patient_engine import KinePatientEngine
 from models import (
     db, Teacher, PatientCase, SimulationSession, PathologyFolder,
@@ -245,6 +245,7 @@ def test_screenshot_measurement_request_through_chat_endpoint(app, message):
         record = db.session.get(PatientCase, case_id).patient_record
         record.tests = {'cardiac': [{'name': 'FEVG', 'value': 40, 'unit': '%'}]}
         db.session.commit()
+    publish_and_assign(client, case_id)
     student_login(client)
     session_id = client.post('/kine/simulation/start', json={'case_id': case_id, 'mode': 'training'}).get_json()['simulation_id']
     route = f'/kine/simulation/{session_id}/message'
@@ -307,15 +308,17 @@ def test_teacher_deletion_preserves_content_and_reviews_with_foreign_keys(app):
         db.session.commit()
         ids = batch.id, draft.id, exam.id, simulation.id
     admin_login(client)
-    assert client.delete('/admin/teachers/1/delete').status_code == 200
+    # D02 user decision (30/10/2026): suspension only, deletion undecided.
+    # PDF p.100 conservation: preserve the original regression and its references.
+    assert client.delete('/admin/teachers/1/delete').status_code == 409
     with app.app_context():
-        assert db.session.get(Teacher, 1) is None
+        assert db.session.get(Teacher, 1) is not None
         assert db.session.get(PatientCase, case_id).patient_record is not None
-        assert db.session.get(PathologyFolder, folder_id).created_by is None
+        assert db.session.get(PathologyFolder, folder_id).created_by == 1
         for model, item_id in zip((KineCaseImportBatch, KineCaseDraft, Exam), ids[:3]):
-            assert db.session.get(model, item_id).created_by is None
+            assert db.session.get(model, item_id).created_by == 1
         saved = db.session.get(SimulationSession, ids[3])
-        assert saved.reviewed_by is None
+        assert saved.reviewed_by == 1
         assert saved.teacher_comments == 'Commentaire conservé'
         assert saved.supplementary_score == 15
 

@@ -1,8 +1,10 @@
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, current_app
 from flask_login import current_user
+from account_security import revoke_sessions, admin_profile, standard_performance_query
 from auth import admin_required
 import logging
 from datetime import datetime
+from sqlalchemy.exc import IntegrityError
 import tempfile
 import json
 import io
@@ -11,13 +13,46 @@ from models import (
     db, Student, Teacher, AdminAccess, OSCESession, SessionParticipant,
     SessionStationAssignment, PatientCase, StudentPerformance,
     CompetitionSession, CompetitionParticipant, CompetitionStationBank,
-    StudentCompetitionSession, StudentStationAssignment, SimulationSession
+    StudentCompetitionSession, StudentStationAssignment, SimulationSession, TeacherStudentScope, TeacherGroupScope
 )
 
 admin_bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
 ECOS_TYPES = {'standard', 'kine'}
 KINE_LEVELS = {'licence', 'master'}
+
+
+@admin_bp.route('/teachers/<int:teacher_id>/kine-scope', methods=['GET', 'PUT'])
+@admin_required
+def teacher_kine_scope(teacher_id):
+    """Only administrators explicitly grant/revoke following; no clinical data."""
+    teacher = Teacher.query.filter_by(id=teacher_id, ecos_type='kine').first_or_404()
+    students = Student.query.filter_by(ecos_type='kine').order_by(Student.name).all()
+    available_ids = {s.id for s in students}
+    available_groups = {s.group_name for s in students if s.group_name}
+    if request.method == 'PUT':
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or set(data) != {'student_ids', 'group_names'}:
+            return jsonify(error='Fournissez student_ids et group_names uniquement.'), 400
+        try:
+            if not isinstance(data['student_ids'], list) or not isinstance(data['group_names'], list):
+                raise ValueError()
+            if any(type(value) is not int for value in data['student_ids']) or any(not isinstance(value, str) for value in data['group_names']):
+                raise ValueError()
+            ids, groups = set(data['student_ids']), set(data['group_names'])
+            if not ids <= available_ids or not groups <= available_groups:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return jsonify(error='Attribution invalide ou hors espace Kiné.'), 400
+        TeacherStudentScope.query.filter_by(teacher_id=teacher.id).delete()
+        TeacherGroupScope.query.filter_by(teacher_id=teacher.id).delete()
+        db.session.add_all([TeacherStudentScope(teacher_id=teacher.id, student_id=sid) for sid in sorted(ids)])
+        db.session.add_all([TeacherGroupScope(teacher_id=teacher.id, group_name=group) for group in sorted(groups)])
+        db.session.commit()
+    return jsonify(student_ids=[r.student_id for r in TeacherStudentScope.query.filter_by(teacher_id=teacher.id)],
+                   group_names=[r.group_name for r in TeacherGroupScope.query.filter_by(teacher_id=teacher.id)],
+                   students=[dict(id=s.id, name=s.name, student_code=s.student_code, group_name=s.group_name) for s in students],
+                   groups=sorted(available_groups))
 
 
 def _validated_ecos_type(value):
@@ -89,6 +124,8 @@ def admin_overview():
         
         recent_activity = []
         for perf, student, case in recent_performances:
+            if admin_profile() != 'pedagogical' and (student.ecos_type == 'kine' or case.specialty == 'kine'):
+                continue
             recent_activity.append({
                 '_sort_date': perf.completed_at,
                 'date': perf.completed_at.strftime('%d/%m/%Y %H:%M'),
@@ -98,7 +135,7 @@ def admin_overview():
                 'score': perf.percentage_score,
                 'status': perf.get_performance_status()
             })
-        for simulation in completed_kine.order_by(SimulationSession.completed_at.desc()).limit(10).all():
+        for simulation in (completed_kine.order_by(SimulationSession.completed_at.desc()).limit(10).all() if admin_profile() == 'pedagogical' else []):
             result = simulation.evaluation_results or {}
             recent_activity.append({
                 '_sort_date': simulation.completed_at,
@@ -522,6 +559,8 @@ def admin_stations():
         
         # Base query
         query = PatientCase.query
+        if admin_profile() != 'pedagogical':
+            query = query.filter(db.func.lower(db.func.trim(db.func.coalesce(PatientCase.specialty, ''))) != 'kine')
         
         # Apply search filter if provided
         if search_query:
@@ -539,8 +578,13 @@ def admin_stations():
         specialty_count = {}
         
         for case in cases:
-            usage_count = case.get_completion_count()
-            avg_score = case.get_average_score()
+            if admin_profile() == 'pedagogical':
+                usage_count = case.get_completion_count()
+                avg_score = case.get_average_score()
+            else:
+                performances = standard_performance_query().filter(StudentPerformance.case_number == case.case_number).all()
+                usage_count = len(performances)
+                avg_score = round(sum(float(p.percentage_score or 0) for p in performances) / usage_count, 1) if usage_count else 0
             
             total_usage += usage_count
             
@@ -587,6 +631,8 @@ def admin_station_details(case_number):
     """Return a unified, read-only detail payload for generic and Kine cases."""
     case = PatientCase.query.filter_by(case_number=case_number).first_or_404()
     is_kine = str(case.specialty or '').strip().lower() == 'kine'
+    if is_kine and admin_profile() != 'pedagogical':
+        return jsonify(error='Accès pédagogique non autorisé.'), 403
     if not is_kine:
         return jsonify({
             'case_number': case.case_number, 'specialty': case.specialty,
@@ -660,7 +706,8 @@ def admin_students():
         students_with_scores = 0
         
         for student in students:
-            generic_performances = StudentPerformance.query.filter_by(student_id=student.id).all() if student.ecos_type == 'standard' else []
+            generic_query = StudentPerformance.query if admin_profile() == 'pedagogical' else standard_performance_query()
+            generic_performances = generic_query.filter(StudentPerformance.student_id == student.id).all() if student.ecos_type == 'standard' else []
             kine_performances = SimulationSession.query.filter_by(student_id=student.id, status='completed').filter(
                 SimulationSession.evaluation_results.isnot(None)
             ).all() if student.ecos_type == 'kine' else []
@@ -672,7 +719,7 @@ def admin_students():
             if total_consultations > 0:
                 active_count += 1
             
-            if avg_score > 0:
+            if avg_score > 0 and (student.ecos_type != 'kine' or admin_profile() == 'pedagogical'):
                 total_score += avg_score
                 students_with_scores += 1
             
@@ -680,6 +727,7 @@ def admin_students():
                 'id': student.id,
                 'student_code': student.student_code,
                 'name': student.name,
+                'account_status': student.account_status,
                 'ecos_type': student.ecos_type or 'standard',
                 'level': student.level if student.ecos_type == 'kine' else None,
                 'group_name': student.group_name,
@@ -687,7 +735,7 @@ def admin_students():
                 'created_at': student.created_at.strftime('%d/%m/%Y'),
                 'last_login': student.last_login.strftime('%d/%m/%Y %H:%M') if student.last_login else None,
                 'total_consultations': total_consultations,
-                'average_score': avg_score
+                'average_score': None if student.ecos_type == 'kine' and admin_profile() != 'pedagogical' else avg_score
             })
         
         avg_score = round(total_score / students_with_scores) if students_with_scores > 0 else 0
@@ -709,9 +757,12 @@ def admin_student_details(student_id):
     """Get detailed information for a specific student"""
     try:
         student = Student.query.get_or_404(student_id)
+        if student.ecos_type == 'kine' and admin_profile() != 'pedagogical':
+            return jsonify(error='Accès pédagogique non autorisé.'), 403
         
         # Get student performances
-        performances = StudentPerformance.query.filter_by(student_id=student_id)\
+        generic_query = StudentPerformance.query if admin_profile() == 'pedagogical' else standard_performance_query()
+        performances = generic_query.filter(StudentPerformance.student_id == student_id)\
             .order_by(StudentPerformance.completed_at.desc()).all() if student.ecos_type == 'standard' else []
         
         performance_data = []
@@ -825,7 +876,7 @@ def admin_available_students():
 def admin_available_stations():
     """Get list of stations available for session assignment"""
     try:
-        cases = PatientCase.query.order_by(PatientCase.case_number).all()
+        cases = PatientCase.query.filter(db.or_(PatientCase.specialty.is_(None), db.func.lower(PatientCase.specialty) != 'kine')).order_by(PatientCase.case_number).all()
         
         station_data = []
         for case in cases:
@@ -903,7 +954,7 @@ def admin_create_session():
         
         # Validate that station numbers exist
         if station_numbers:
-            existing_cases = PatientCase.query.filter(PatientCase.case_number.in_(station_numbers)).all()
+            existing_cases = PatientCase.query.filter(PatientCase.case_number.in_(station_numbers), db.or_(PatientCase.specialty.is_(None), db.func.lower(PatientCase.specialty) != 'kine')).all()
             existing_case_numbers = [c.case_number for c in existing_cases]
             invalid_case_numbers = [sn for sn in station_numbers if sn not in existing_case_numbers]
             
@@ -980,6 +1031,10 @@ def admin_download_student_report(performance_id):
         if not performance:
             logger.error(f"Performance record not found for ID: {performance_id}")
             return jsonify({"error": "Rapport de performance non trouvé"}), 404
+
+        case = PatientCase.query.filter_by(case_number=performance.case_number).first()
+        if admin_profile() != 'pedagogical' and (performance.student.ecos_type == 'kine' or (case and case.specialty == 'kine')):
+            return jsonify(error='Accès pédagogique non autorisé.'), 403
 
         conversation_for_pdf = performance.conversation_transcript 
         
@@ -1201,7 +1256,7 @@ def admin_create_competition_session():
         
         # Validate that station numbers exist
         if station_numbers:
-            existing_cases = PatientCase.query.filter(PatientCase.case_number.in_(station_numbers)).all()
+            existing_cases = PatientCase.query.filter(PatientCase.case_number.in_(station_numbers), db.or_(PatientCase.specialty.is_(None), db.func.lower(PatientCase.specialty) != 'kine')).all()
             existing_case_numbers = [c.case_number for c in existing_cases]
             invalid_case_numbers = [sn for sn in station_numbers if sn not in existing_case_numbers]
             
@@ -1581,6 +1636,7 @@ def reset_student_password(student_id):
 
         student = Student.query.get_or_404(student_id)
         student.set_password(new_password)
+        revoke_sessions(student)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Mot de passe mis à jour.'})
     except Exception as e:
@@ -1592,24 +1648,9 @@ def reset_student_password(student_id):
 @admin_bp.route('/students/<int:student_id>/delete', methods=['DELETE'])
 @admin_required
 def delete_student(student_id):
-    """Delete a student account and all related records"""
-    try:
-        student = Student.query.get_or_404(student_id)
-        name = student.name
-
-        # Manually delete records that lack cascade on the Student side
-        CompetitionParticipant.query.filter_by(student_id=student_id).delete()
-        for scs in StudentCompetitionSession.query.filter_by(student_id=student_id).all():
-            StudentStationAssignment.query.filter_by(student_session_id=scs.id).delete()
-        StudentCompetitionSession.query.filter_by(student_id=student_id).delete()
-
-        db.session.delete(student)
-        db.session.commit()
-        return jsonify({'success': True, 'message': f'Étudiant {name} supprimé.'})
-    except Exception as e:
-        logger.error(f"Error deleting student {student_id}: {str(e)}")
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """D02: suspension only; preserve accounts and every historical relation."""
+    Student.query.get_or_404(student_id)
+    return jsonify(error='Suppression non autorisée : politique de conservation à décider. Utilisez la suspension.'), 409
 
 
 # ──────────────────────────────────────────────
@@ -1634,6 +1675,7 @@ def admin_teachers():
                 'id': t.id,
                 'email': t.email or '',
                 'name': t.name,
+                'account_status': t.account_status,
                 'ecos_type': t.ecos_type or 'standard',
                 'created_at': t.created_at.strftime('%d/%m/%Y') if t.created_at else '-',
                 'last_login': t.last_login.strftime('%d/%m/%Y %H:%M') if t.last_login else 'Jamais',
@@ -1687,6 +1729,7 @@ def update_teacher_ecos_type(teacher_id):
     try:
         teacher = Teacher.query.get_or_404(teacher_id)
         teacher.ecos_type = _validated_ecos_type((request.get_json(silent=True) or {}).get('ecos_type'))
+        revoke_sessions(teacher)
         db.session.commit()
         return jsonify({'success': True, 'id': teacher.id, 'ecos_type': teacher.ecos_type,
                         'message': 'Affectation ECOS de l’enseignant mise à jour.'})
@@ -1707,6 +1750,7 @@ def reset_teacher_password(teacher_id):
 
         teacher = Teacher.query.get_or_404(teacher_id)
         teacher.set_password(new_password)
+        revoke_sessions(teacher)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Mot de passe mis à jour.'})
     except Exception as e:
@@ -1718,22 +1762,9 @@ def reset_teacher_password(teacher_id):
 @admin_bp.route('/teachers/<int:teacher_id>/delete', methods=['DELETE'])
 @admin_required
 def delete_teacher(teacher_id):
-    """Delete a teacher account"""
-    try:
-        teacher = Teacher.query.get_or_404(teacher_id)
-        name = teacher.name
-        # Reviews have no reverse relationship on Teacher. Detach attribution
-        # explicitly so foreign-key enforcement cannot break account deletion.
-        SimulationSession.query.filter_by(reviewed_by=teacher_id).update(
-            {'reviewed_by': None}, synchronize_session='fetch'
-        )
-        db.session.delete(teacher)
-        db.session.commit()
-        return jsonify({'success': True, 'message': f'Enseignant {name} supprimé.'})
-    except Exception as e:
-        logger.error(f"Error deleting teacher {teacher_id}: {str(e)}")
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """D02: suspension only; preserve accounts and every historical relation."""
+    Teacher.query.get_or_404(teacher_id)
+    return jsonify(error='Suppression non autorisée : politique de conservation à décider. Utilisez la suspension.'), 409
 
 
 # ──────────────────────────────────────────────
@@ -1877,6 +1908,7 @@ def update_student_ecos_type(student_id):
         )
         student.ecos_type = ecos_type
         student.level = level
+        revoke_sessions(student)
         db.session.commit()
         return jsonify({'success': True, 'id': student.id, 'ecos_type': student.ecos_type,
                         'level': student.level,
@@ -1884,3 +1916,91 @@ def update_student_ecos_type(student_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(exc)}), 400
+
+
+@admin_bp.route('/accounts/<kind>/<int:account_id>/status', methods=['POST'])
+@admin_required
+def change_account_status(kind, account_id):
+    model = {'student': Student, 'teacher': Teacher}.get(kind)
+    if model is None:
+        return jsonify(error='Type de compte invalide.'), 404
+    account = db.session.get(model, account_id)
+    if account is None:
+        return jsonify(error='Compte introuvable.'), 404
+    action = (request.get_json(silent=True) or request.form).get('action')
+    if action not in ('suspend', 'reactivate'):
+        return jsonify(error='Action invalide.'), 400
+    if account.account_status not in ('active', 'suspended'):
+        return jsonify(error='Ce compte ne peut pas être réactivé.'), 409
+    target = 'suspended' if action == 'suspend' else 'active'
+    if target != account.account_status:
+        account.account_status = target
+        revoke_sessions(account)
+        db.session.commit()
+    return jsonify(success=True, id=account.id, account_status=account.account_status)
+
+
+@admin_bp.route('/accounts/<kind>/<int:account_id>', methods=['GET', 'PATCH'])
+@admin_required
+def account_profile(kind, account_id):
+    model = {'student': Student, 'teacher': Teacher}.get(kind)
+    if model is None:
+        return jsonify(error='Type de compte invalide.'), 404
+    account = db.session.get(model, account_id)
+    if account is None:
+        return jsonify(error='Compte introuvable.'), 404
+    if request.method == 'PATCH':
+        data = request.get_json(silent=True)
+        allowed = {'name', 'ecos_type'} | (
+            {'student_code', 'level', 'group_name', 'class_name'} if kind == 'student' else {'email'}
+        )
+        if not isinstance(data, dict) or set(data) - allowed:
+            return jsonify(error='Champs de profil invalides.'), 400
+        try:
+            name = str(data.get('name', account.name) or '').strip()
+            if not name:
+                raise ValueError('Le nom complet est obligatoire.')
+            account.name = name
+            old_assignment = (account.ecos_type, getattr(account, 'level', None))
+            if kind == 'student':
+                code = str(data.get('student_code', account.student_code) or '').strip()
+                valid, message = Student.validate_apogee_number(code)
+                if not valid:
+                    raise ValueError(message)
+                account.student_code = code
+                account.ecos_type, account.level = _validated_student_assignment({
+                    'ecos_type': data.get('ecos_type', account.ecos_type),
+                    'level': data.get('level', account.level),
+                })
+                for field in ('group_name', 'class_name'):
+                    if field in data:
+                        setattr(account, field, str(data[field] or '').strip() or None)
+            else:
+                email = str(data.get('email', account.email) or '').strip().lower()
+                if '@' not in email:
+                    raise ValueError('Adresse email invalide.')
+                duplicate = Teacher.matching_identifier(email).filter(Teacher.id != account.id).first()
+                if duplicate:
+                    db.session.rollback()
+                    return jsonify(error='Identifiant déjà utilisé.'), 409
+                if str(account.login or '').strip().lower() == str(account.email or '').strip().lower():
+                    account.login = email
+                account.email = email
+                account.ecos_type = _validated_ecos_type(data.get('ecos_type', account.ecos_type))
+            if old_assignment != (account.ecos_type, getattr(account, 'level', None)):
+                revoke_sessions(account)
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify(error=str(exc)), 400
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify(error='Identifiant déjà utilisé.'), 409
+    result = {'id': account.id, 'name': account.name, 'ecos_type': account.ecos_type,
+              'account_status': account.account_status}
+    if kind == 'student':
+        result.update({field: getattr(account, field) for field in
+                       ('student_code', 'level', 'group_name', 'class_name')})
+    else:
+        result['email'] = account.email
+    return jsonify(result)

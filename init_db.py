@@ -139,6 +139,20 @@ def apply_additive_schema_updates():
                 """)
 
 
+    from account_migrations import upgrade_account_lifecycle
+    upgrade_account_lifecycle(db.engine)
+    from case_version_migrations import upgrade_case_version_storage
+    upgrade_case_version_storage(db.engine)
+    from information_access_migrations import upgrade_information_access_policy
+    upgrade_information_access_policy(db.engine)
+    from case_authoring_migrations import upgrade_case_authoring
+    upgrade_case_authoring(db.engine)
+    from etp_migrations import upgrade_etp_library
+    upgrade_etp_library(db.engine)
+    from evaluation_migrations import upgrade_evaluation
+    upgrade_evaluation(db.engine)
+
+
 def seed_pathology_folders():
     """Seed editable default kine folders idempotently."""
     existing_folders = PathologyFolder.query.filter_by(specialty='kine').all()

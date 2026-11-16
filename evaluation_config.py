@@ -442,7 +442,8 @@ def get_kine_evaluation_grid(level):
     return deepcopy(KINE_EVALUATION_GRIDS[normalized_level])
 
 
-def apply_kine_elimination_cap(score, eliminatory_errors):
+def apply_kine_elimination_cap(score, eliminatory_errors, cap=None):
     """Cap a /20 score at 8 when at least one eliminatory error is present."""
     numeric_score = max(0.0, min(20.0, float(score)))
-    return min(numeric_score, KINE_ELIMINATION_CAP) if eliminatory_errors else numeric_score
+    applied_cap = KINE_ELIMINATION_CAP if cap is None else cap
+    return min(numeric_score, applied_cap) if eliminatory_errors else numeric_score

@@ -1,5 +1,5 @@
 {% extends "kine_base.html" %}
-{% block title %}Lot d’import #{{ batch.id }} — ECOS Kiné{% endblock %}
+{% block title %}Lot d’import #{{ batch.id }} — KardioX{% endblock %}
 {% block content %}
 <div class="kine-page-heading">
     <div><span class="kine-eyebrow">File de validation enseignant</span><h1>Lot d’import #{{ batch.id }}</h1><p>Les documents sont traités indépendamment, par petits lots persistants.</p></div>
@@ -20,7 +20,7 @@
     <h2>Brouillons à contrôler</h2>
     <div class="kine-table-wrap"><table class="kine-table">
         <thead><tr><th>Document</th><th>Cas proposé</th><th>État</th><th>Extraction</th><th>Information</th><th>Actions</th></tr></thead>
-        <tbody>{% for draft in batch.drafts %}<tr>
+        <tbody>{% for draft in batch_data.drafts %}<tr>
             <td><strong>{{ draft.source_filename }}</strong></td>
             <td>{% if draft.extracted_data %}{{ draft.extracted_data.case_number or '—' }} — {{ draft.extracted_data.title or 'Sans titre' }}{% else %}—{% endif %}</td>
             <td><span class="kine-badge {% if draft.status in ('error','duplicate') %}kine-badge--major{% endif %}">{{ {'pending':'À extraire','processing':'Traitement en cours','ready':'Prêt à valider','incomplete':'Incomplet','error':'Erreur','duplicate':'Doublon','validated':'Validé','rejected':'Rejeté'}.get(draft.status, draft.status) }}</span></td>
@@ -31,4 +31,4 @@
     </table></div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/kine-case-imports.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}
+{% block kine_scripts %}<script src="{{ url_for('static', filename='js/kine-case-imports.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}

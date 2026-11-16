@@ -1,0 +1,4 @@
+<div class="kine-form-grid">
+{% for key,label in categories.items() %}<label>{{ loop.index }}. {{ label }}<textarea name="{{ key }}" rows="4">{{ content.get('categories',{}).get(key,'') }}</textarea></label>{% endfor %}
+
+</div>

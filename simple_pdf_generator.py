@@ -3,6 +3,7 @@ import tempfile
 import logging
 import csv
 import json
+import uuid
 from datetime import datetime
 from xml.sax.saxutils import escape
 from reportlab.lib import colors
@@ -19,6 +20,26 @@ logger = logging.getLogger(__name__)
 
 def _append_kine_evaluation(elements, evaluation_results, styles):
     """Render the Licence/Master section grid and safety outcome."""
+    if evaluation_results.get('engine') == 'kardiox_criteria_v1':
+        normal = styles['normal']
+        elements.append(Paragraph(escape(evaluation_results['status_label']), styles['subtitle']))
+        elements.append(Paragraph('Seuil appliqué : ' + escape(str(evaluation_results['validation_threshold'])) + '/20', normal))
+        if evaluation_results.get('rounded_below_threshold'):
+            elements.append(Paragraph('La valeur exacte reste sous le seuil malgré l’arrondi affiché.', normal))
+        for row in evaluation_results.get('criteria', []):
+            if not row.get('applicable', True) or not row.get('max_points'):
+                elements.append(Paragraph(escape(row.get('title', row['id'])) + ' - Non évalué / non applicable', styles['subtitle']))
+                continue
+            elements.append(Paragraph(escape(row.get('title', row['id'])) + ' — ' + escape(row['status_label']), styles['subtitle']))
+            elements.append(Paragraph(escape(row['justification']), normal))
+            elements.append(Paragraph('Attendu : ' + escape(row.get('expected', '')), normal))
+            if row.get('alternatives'):
+                elements.append(Paragraph('Alternatives : ' + escape(' ; '.join(row['alternatives'])), normal))
+            for proof in row['evidence']:
+                elements.append(Paragraph(escape(proof['quote']), normal))
+            if row.get('safety_consequence') != 'none':
+                elements.append(Paragraph('Sécurité : ' + escape(row.get('safety_consequence', '')), normal))
+        return
     normal_style = styles['normal']
     subtitle_style = styles['subtitle']
     sections = evaluation_results.get('section_scores', [])
@@ -66,7 +87,7 @@ def _append_kine_evaluation(elements, evaluation_results, styles):
         section_table = Table(section_data, colWidths=[145, 55, 250], repeatRows=1)
         section_table.setStyle(TableStyle([
             ('GRID', (0, 0), (-1, -1), .5, colors.lightgrey),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3ece3')),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.whitesmoke]),
         ]))
@@ -172,7 +193,7 @@ def _append_kine_evaluation(elements, evaluation_results, styles):
 class SimpleConsultationPDF(BaseDocTemplate):
     """Simplified PDF document template for OSCE consultation reports without renderPM dependency"""
     
-    def __init__(self, filename):
+    def __init__(self, filename, kardiox=False):
         super().__init__(
             filename,
             pagesize=A4,
@@ -190,7 +211,7 @@ class SimpleConsultationPDF(BaseDocTemplate):
             
             # Header
             canvas.setFont('Helvetica-Bold', 12)
-            header_text = f"Consultation ECOS - Rapport d'Évaluation"
+            header_text = "KardioX - Rapport d'Évaluation" if kardiox else "Consultation ECOS - Rapport d'Évaluation"
             canvas.drawString(doc.leftMargin, doc.pagesize[1] - doc.topMargin + 40, header_text)
             
             # Date in header
@@ -319,7 +340,9 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         # STEP 4: Create PDF file
         temp_dir = tempfile.gettempdir()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"consultation_case{case_number}_{timestamp}.pdf"
+        # Distinct students/requests for one case in the same second must never
+        # overwrite each other's authorized report before Flask sends it.
+        filename = f"consultation_case{case_number}_{timestamp}_{uuid.uuid4().hex}.pdf"
         filepath = os.path.join(temp_dir, filename)
         
         logger.info(f"Creating PDF at: {filepath}")
@@ -328,7 +351,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         logger.info(f"Temp directory writable: {os.access(temp_dir, os.W_OK)}")
         
         # Create the PDF document
-        doc = SimpleConsultationPDF(filepath)
+        doc = SimpleConsultationPDF(filepath, kardiox=evaluation_results.get('specialty') == 'kine')
         
         # Styles
         styles = getSampleStyleSheet()
@@ -375,7 +398,9 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         elements = []
         
         # Add title
-        elements.append(Paragraph(f"Consultation ECOS - Cas {case_number}", title_style))
+        elements.append(Paragraph(f"{'KardioX' if evaluation_results.get('specialty') == 'kine' else 'Consultation ECOS'} - Cas {escape(str(case_number))}", title_style))
+        if evaluation_results.get('specialty') == 'kine':
+            elements.append(Paragraph('Simuler. Raisonner. Rééduquer.', normal_style))
         elements.append(Spacer(1, 20))
         
         # Add date
@@ -399,10 +424,16 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
             elements.append(Paragraph('<br/>'.join(student_details), normal_style))
         elements.append(Spacer(1, 20))
         
+        if evaluation_results.get('case_reference'):
+            ref = evaluation_results['case_reference']
+            provenance = 'référence reconstruite' if ref.get('case_reference_provenance') == 'reconstructed_current' else 'référence figée'
+            mode = 'Examen' if evaluation_results.get('mode') == 'exam' else 'Entraînement'
+            elements.append(Paragraph(escape(f"Version {ref.get('case_version_number') or 'historique'} - {provenance} - {mode} - Terminée"), normal_style))
+
         # Add score summary at the top
         total_points = evaluation_results.get('points_total', 0)
         earned_points = evaluation_results.get('points_earned', 0)
-        percentage = evaluation_results.get('percentage', 0)
+        percentage = evaluation_results.get('percentage', 0) or 0
         
         # Determine score color based on percentage
         score_color = "#dc3545"  # Red for low scores
@@ -412,6 +443,10 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
             score_color = "#ffc107"  # Yellow for medium scores
         
         score_text = f"<b>Score:</b> <font color='{score_color}'>{earned_points}/{total_points} points ({percentage}%)</font>"
+        if evaluation_results.get('engine') == 'kardiox_criteria_v1' or evaluation_results.get('result_status') == 'pending':
+            score_text = escape(evaluation_results.get('status_label', 'En attente de vérification'))
+            if earned_points is not None:
+                score_text += ' — ' + escape(str(evaluation_results.get('score_display', earned_points))) + '/20'
         
         # Create score summary table
         score_table_data = [
@@ -424,7 +459,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('BOX', (0, 0), (-1, -1), 1, colors.lightgrey),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lavender)
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3ece3'))
         ]))
         
         elements.append(score_table)
@@ -456,7 +491,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
                     ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                     ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                     ('BOX', (0, 0), (-1, -1), 1, colors.lightgrey),
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.lavender)
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3ece3'))
                 ]))
                 
                 elements.append(rec_table)
@@ -474,7 +509,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('BOX', (0, 0), (-1, -1), 1, colors.lightgrey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lavender)
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3ece3'))
             ]))
             
             elements.append(feedback_table)
@@ -498,7 +533,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
             )
             review_table.setStyle(TableStyle([
                 ('BOX', (0, 0), (-1, -1), 1, colors.lightgrey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3ece3')),
             ]))
             elements.append(review_table)
             elements.append(Spacer(1, 15))
@@ -523,7 +558,7 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
             vital_table = Table(vital_data, colWidths=[190, 140, 120], repeatRows=1)
             vital_table.setStyle(TableStyle([
                 ('GRID', (0, 0), (-1, -1), .5, colors.lightgrey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lavender),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3ece3')),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
             elements.append(vital_table)
@@ -538,12 +573,12 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
         # Now we can safely access dict keys because we fixed the format
         for msg in conversation:
             if msg.get('role') != 'system':  # Safe to use dict access
-                role = "Médecin" if msg['role'] == 'human' else "Patient"
+                role = ("Étudiant" if evaluation_results.get("specialty") == "kine" else "Médecin") if msg['role'] == 'human' else "Patient"
                 content = msg.get('content', '')
                 if content:
                     # Keep full message content. Only truncate pathological cases
                     # (>5000 chars) to avoid breaking the PDF layout.
-                    if len(content) > 5000:
+                    if len(content) > 5000 and evaluation_results.get('specialty') != 'kine':
                         content = content[:5000] + "…"
                     conversation_messages.append({
                         'role': role,
@@ -561,12 +596,12 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
                 content = msg['content']
                 
                 # Use different colors for different roles
-                role_color = "#5B9BD5" if role == "Médecin" else "#70AD47"  # Blue for doctor, green for patient
+                role_color = "#5B9BD5" if role in ("Médecin", "Étudiant") else "#70AD47"  # Blue for doctor, green for patient
                 
                 # Format message with role and content
                 conversation_data.append([
                     Paragraph(f"<font color='{role_color}'><b>{role}:</b></font>", normal_style),
-                    Paragraph(content, normal_style)
+                    Paragraph(escape(content).replace('\n', '<br/>') if evaluation_results.get('specialty') == 'kine' else content, normal_style)
                 ])
             
             conversation_table = Table(conversation_data, colWidths=[100, 350])
@@ -576,7 +611,12 @@ def create_simple_consultation_pdf(conversation, case_number, evaluation_results
                 ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke)
             ]))
             
-            elements.append(conversation_table)
+            if evaluation_results.get('specialty') == 'kine':
+                # Flowable paragraphs preserve long exchanges across page breaks.
+                for role_paragraph, content_paragraph in conversation_data:
+                    elements.extend([role_paragraph, content_paragraph, Spacer(1, 8)])
+            else:
+                elements.append(conversation_table)
         else:
             elements.append(Paragraph("Aucun message de conversation enregistré.", normal_style))
         
@@ -836,7 +876,7 @@ def create_competition_report_pdf(report_data):
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
         ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (0, -1), colors.lavender),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f3ece3')),
         ('BACKGROUND', (1, 0), (1, -1), colors.white)
     ]))
     
@@ -934,7 +974,7 @@ def create_competition_pdf_report(competition_summary, conversations_data):
             'CustomTitle',
             parent=styles['Heading1'],
             fontSize=18,
-            textColor=colors.darkblue,
+            textColor=colors.HexColor('#813d10'),
             spaceAfter=20,
             alignment=TA_CENTER
         )
@@ -943,7 +983,7 @@ def create_competition_pdf_report(competition_summary, conversations_data):
             'CustomHeader',
             parent=styles['Heading2'],
             fontSize=14,
-            textColor=colors.darkblue,
+            textColor=colors.HexColor('#813d10'),
             spaceAfter=12
         )
         
@@ -1132,6 +1172,13 @@ KINE_DASHBOARD_EXPORT_COLUMNS = (
     ('eliminatory_error_triggered', 'Eliminatory error'),
     ('eliminatory_errors', 'Eliminatory error details'),
     ('status', 'Status'),
+    ('id', 'Tentative'), ('case_version_id', 'Identifiant version'),
+    ('case_version_number', 'Version du cas'), ('case_reference_provenance', 'Provenance version'),
+    ('result_status', 'Statut du résultat'), ('pending_criteria', 'Critères à vérifier'),
+    ('criteria', 'Critères évalués'), ('criterion_id', 'Critère'), ('competency', 'Compétence'),
+    ('criterion_title', 'Libellé critère'), ('classification', 'Classification'),
+    ('review_required', 'Vérification requise'), ('criterion_points', 'Points critère'),
+    ('criterion_maximum', 'Maximum critère'), ('omission', 'Omission'), ('justification', 'Justification'),
 )
 
 
@@ -1157,7 +1204,7 @@ def _export_path(prefix, extension, output_path=None):
     if output_path:
         return os.path.abspath(os.fspath(output_path))
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-    return os.path.join(tempfile.gettempdir(), f'{prefix}_{timestamp}.{extension}')
+    return os.path.join(tempfile.gettempdir(), f'{prefix}_{timestamp}_{uuid.uuid4().hex}.{extension}')
 
 
 def export_kine_dashboard_csv(rows, output_path=None, columns=None):

@@ -1,9 +1,10 @@
 {% extends "kine_base.html" %}
-{% block title %}Espace étudiant Kiné{% endblock %}
+{% block title %}Espace étudiant — KardioX{% endblock %}
 {% block content %}
 <div class="kine-page-heading"><div><span class="kine-eyebrow">Espace étudiant · {{ student_level|capitalize }}</span><h1>Bienvenue {{ student_name }}</h1><p>Choisissez un dossier d'entraînement ou un examen ouvert.</p></div><a class="btn btn-secondary" href="{{ url_for('kine.simulation_history') }}">Mon historique</a></div>
-<section class="kine-card"><h2>Cas d'entraînement disponibles</h2><div class="kine-case-grid">{% for case in cases %}<article class="kine-case-tile"><span class="kine-badge">{{ case.pathology_folder.name if case.pathology_folder else 'Kinésithérapie' }}</span><h3>{{ case.case_number }}</h3><p>{{ case.pedagogical_objectives or case.get_summary() }}</p><a class="btn btn-primary" href="{{ url_for('kine.patient_record_view', case_id=case.id) }}">Ouvrir le dossier</a></article>{% else %}<p>Aucun cas d'entraînement disponible pour votre niveau.</p>{% endfor %}</div></section>
-<section class="kine-card">
+<p>Prévoyez de mener la simulation à son terme. La pause est autorisée uniquement en entraînement. En examen, une coupure ne suspend pas le chrono : reconnectez-vous avant l’échéance. Abandonner est définitif, sans résultat ni nouvel essai d’examen automatique ; les données sont conservées.</p>
+<section class="kine-card"><h2>Cas d'entraînement disponibles</h2><div class="kine-case-grid">{% for case in cases %}<article class="kine-case-tile"><span class="kine-badge">{{ case.pathology_folder.name if case.pathology_folder else 'Kinésithérapie' }}</span><h3>{{ case.case_number }}</h3><p>Dossier clinique attribué pour votre parcours.</p><a class="btn btn-primary" href="{{ url_for('kine.patient_record_view', case_id=case.id) }}">Ouvrir le dossier</a></article>{% else %}<p>Aucun cas d'entraînement disponible pour votre niveau.</p>{% endfor %}</div></section>
+<section class="kine-card" id="mes-examens">
     <h2>Mes examens programmés</h2>
     <div class="kine-case-grid">
     {% for row in exam_rows %}
@@ -19,10 +20,11 @@
             {% if exam.instructions %}<p><strong>Consignes :</strong> {{ exam.instructions }}</p>{% endif %}
             {% if attempt and attempt.status == 'completed' %}
             <a class="btn btn-secondary" href="{{ url_for('kine.simulation_chat', session_id=attempt.id) }}">Consulter le résultat</a>
+            {% elif attempt and attempt.status == 'interrupted' %}<p>Tentative abandonnée, sans résultat. Aucun nouvel essai automatique.</p>
             {% elif attempt %}
-            <a class="btn btn-primary" href="{{ url_for('kine.simulation_chat', session_id=attempt.id) }}">Reprendre l’examen</a>
+            <a class="btn btn-primary" href="{{ url_for('kine.simulation_chat', session_id=attempt.id) }}">Rejoindre la tentative en cours</a>
             {% elif row.is_open %}
-            <form method="post" action="{{ url_for('kine.start_simulation') }}">
+            <form method="post" action="{{ url_for('kine.start_simulation') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="case_id" value="{{ case.id }}">
                 <input type="hidden" name="exam_id" value="{{ exam.id }}">
                 <input type="hidden" name="mode" value="exam">

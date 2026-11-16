@@ -4,12 +4,19 @@ import json
 import logging
 import re
 import unicodedata
+import hashlib
+from pathlib import Path
+from copy import deepcopy
 
 from langchain_core.messages import HumanMessage
 
 from evaluation_config import apply_kine_elimination_cap, get_kine_evaluation_grid
 
 logger = logging.getLogger(__name__)
+
+
+class FrozenEvaluationUnavailable(ValueError):
+    """The recorded engine must be restored; never silently use a new one."""
 
 STATUSES = {'realized', 'partial', 'not_realized'}
 STATUS_LABELS = {
@@ -98,7 +105,7 @@ def _llm_evaluation(llm_client, student_messages, case_data, grid):
     } for section in grid['sections']]
     context = {
         key: value for key, value in (case_data or {}).items()
-        if key not in {'student', 'evaluation_checklist', 'timeline'}
+        if key not in {'student', 'evaluation_checklist', 'timeline', '_frozen_evaluation_reference'}
     }
     prompt = f"""Vous êtes un évaluateur strict d'ECOS en kinésithérapie.
 Vous devez évaluer UNIQUEMENT les messages étudiants fournis ci-dessous.
@@ -413,7 +420,8 @@ def _normalize_results(raw, grid, level, student_messages):
         })
 
     raw_score = round(raw_score, 1)
-    final_score = round(apply_kine_elimination_cap(raw_score, errors), 1)
+    # Same legacy rule, using the captured cap when the reference is frozen.
+    final_score = round(apply_kine_elimination_cap(raw_score, errors, cap=grid['elimination_cap']), 1)
     threshold = grid['validation_threshold']
     return {
         'schema_version': 2,
@@ -437,7 +445,22 @@ def _normalize_results(raw, grid, level, student_messages):
 
 def evaluate_kine_conversation(conversation, case_data, llm_client=None):
     level = resolve_student_level(case_data)
-    grid = get_kine_evaluation_grid(level)
+    reference = (case_data or {}).get('_frozen_evaluation_reference')
+    from criterion_evaluation import ENGINE, evaluate, reference as criteria_reference
+    if reference and reference.get('engine') == ENGINE:
+        return evaluate(conversation, reference, llm=llm_client,
+                        timeline=(case_data or {}).get('timeline'), context=case_data)
+    if reference is None:
+        criteria = (case_data or {}).get('evaluation_criteria', [])
+        return evaluate(conversation, criteria_reference(criteria, level), llm=llm_client,
+                        timeline=(case_data or {}).get('timeline'), context=case_data)
+    if reference is not None:
+        current_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        if reference.get('engine') != 'legacy_kine_v2' or reference.get('engine_sha256') != current_hash or not reference.get('grid'):
+            raise FrozenEvaluationUnavailable('Référentiel figé absent ou moteur historique indisponible ; aucun recalcul implicite.')
+        grid = deepcopy(reference['grid'])
+    else:
+        grid = get_kine_evaluation_grid(level)
     student_messages = _student_messages(
         conversation, (case_data or {}).get('timeline')
     )
@@ -445,8 +468,10 @@ def evaluate_kine_conversation(conversation, case_data, llm_client=None):
         try:
             raw = _llm_evaluation(llm_client, student_messages, case_data, grid)
         except Exception as exc:
-            logger.exception('Kine LLM evaluation failed; using offline fallback: %s', exc)
-            raw = _pattern_evaluation(student_messages, grid)
+            logger.warning('Historical Kiné evaluation unavailable: %s', exc)
+            return {'result_status': 'pending', 'status_label': 'En attente de vérification',
+                    'points_earned': None, 'points_total': 20, 'passed': None, 'level': level}
     else:
-        raw = _pattern_evaluation(student_messages, grid)
+        return {'result_status': 'pending', 'status_label': 'En attente de vérification',
+                'points_earned': None, 'points_total': 20, 'passed': None, 'level': level}
     return _normalize_results(raw, grid, level, student_messages)

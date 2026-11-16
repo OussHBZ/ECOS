@@ -29,19 +29,27 @@ DEFAULT_PHYSIO_EXTRACTION_SCHEMA = {
     "suggested_pathology_folder": None,
     "level": None,
     "mode_availability": None,
+    "difficulty": None,
+    "subpathology": None,
+    "rehabilitation_phase": None,
+    "planned_sessions": None,
+    "pedagogical_summary": None,
     "pedagogical_objectives": None,
     "emotional_state": None,
     "patient_info": {
-        "name": None, "age": None, "gender": None, "family_situation": None,
+        "name": None, "first_name": None, "last_name": None,
+        "age": None, "gender": None, "family_situation": None,
         "occupation": None, "height_cm": None, "weight_kg": None, "bmi": None,
-        "social_context": None
+        "social_context": None, "housing": None, "physical_activity": None,
+        "tobacco": None, "alcohol": None, "diet": None
     },
     "medical_context": {
         "main_diagnosis": None, "associated_diagnoses": [],
-        "admission_reason": None, "cardiovascular_event_date": None
+        "admission_reason": None, "cardiovascular_event_date": None,
+        "clinical_phase": None, "diagnosis_date": None, "clinical_state": None
     },
     "history": {
-        "cardiovascular": [], "medical": [], "surgical": [],
+        "cardiovascular": [], "medical": [], "surgical": [], "personal": [],
         "allergies": [], "risk_factors": [], "lifestyle": []
     },
     "comorbidities": [],
@@ -49,17 +57,20 @@ DEFAULT_PHYSIO_EXTRACTION_SCHEMA = {
         {"type": None, "date": None, "complications": []}
     ],
     "medications": [
-        {"therapeutic_class": None, "inn": None, "effect": None,
+        {"therapeutic_class": None, "inn": None, "dosage": None,
+         "frequency": None, "effect": None,
          "physiotherapy_precautions": None}
     ],
     "tests": {
         "cardiac": [], "vascular": [], "biological": [], "imaging": [], "other": []
     },
     "reference_vitals": {
-        "heart_rate_bpm": None, "blood_pressure_mmhg": None,
+        "heart_rate_bpm": None, "blood_pressure_systolic_mmhg": None,
+        "blood_pressure_diastolic_mmhg": None,
         "spo2_percent": None, "respiratory_rate_bpm": None,
         "height_cm": None, "weight_kg": None, "bmi": None
     },
+    "effort_tests": [],
     "vital_parameters": [
         {
             "name": None, "unit": None,
@@ -78,7 +89,13 @@ DEFAULT_PHYSIO_EXTRACTION_SCHEMA = {
          "scripted_reaction": None, "severity": None}
     ],
     "symptoms": [], "evaluation_checklist": [], "diagnosis": None,
-    "directives": None, "custom_sections": []
+    "directives": None,
+    "structured_content": {
+        "social_context": {}, "anamnese": {}, "diagnostic_context": {},
+        "reasoning": {}, "objectives": [],
+        "rehabilitation_prescription": {}, "etp": {}, "patient_personality": {}
+    },
+    "extraction_uncertainties": [], "custom_sections": []
 }
 
 class DocumentExtractionAgent:
@@ -335,7 +352,7 @@ class DocumentExtractionAgent:
             
             if json_match:
                 json_str = json_match.group(1)
-                logger.debug(f"Attempting to parse JSON from LLM: {json_str[:500]}...") # Log start of JSON
+                logger.debug("Parsing document extraction response")
                 try:
                     data = json.loads(json_str)
                     logger.info("Successfully extracted structured data using LLM.")
@@ -343,7 +360,7 @@ class DocumentExtractionAgent:
                     return # Success
                 except json.JSONDecodeError as e:
                     extraction_error = e
-                    logger.error(f"Initial JSON parsing error: {str(e)}. Original JSON string part: {json_str[:500]}")
+                    logger.error("Invalid extraction JSON at line %s column %s", e.lineno, e.colno)
                     logger.info("Attempting to clean and re-parse JSON...")
                     cleaned_json_str = self._clean_json_string(json_str)
                     try:
@@ -353,19 +370,19 @@ class DocumentExtractionAgent:
                         return # Success after cleaning
                     except json.JSONDecodeError as e2:
                         extraction_error = e2
-                        logger.error(f"Failed to parse JSON even after cleaning: {str(e2)}. Cleaned JSON string part: {cleaned_json_str[:500]}")
+                        logger.error("Invalid extraction JSON after cleaning")
                         # Log the full raw response if cleaning fails, for deeper inspection
-                        logger.error(f"Full problematic raw LLM response was: {raw_llm_response_content}")
+                        logger.debug("Extraction content omitted from logs")
             else:
                 extraction_error = ValueError("La réponse du LLM ne contient pas de JSON exploitable")
                 logger.error("Failed to extract any JSON-like structure from LLM response.")
-                logger.error(f"Full raw LLM response was: {raw_llm_response_content}")
+                logger.debug("Extraction content omitted from logs")
 
         except Exception as e:
             extraction_error = e
-            logger.error(f"Error during LLM call or initial processing: {str(e)}")
+            logger.error("Extraction service failed: %s", type(e).__name__)
             if raw_llm_response_content: # Log if we have it
-                 logger.error(f"Full raw LLM response during error was: {raw_llm_response_content}")
+                 logger.debug("Extraction content omitted from logs")
         
         if self._is_physio_case():
             raise RuntimeError(
@@ -441,12 +458,18 @@ valide conforme exactement au schéma ci-dessous.
 
 RÈGLES D'EXTRACTION:
 - N'inventez aucune information. Utilisez null, [] ou {{}} lorsqu'une donnée manque.
+- Ne transformez pas une absence de mention en résultat normal. Pour chaque
+  résultat structuré, conservez explicitement le statut documenté parmi value,
+  ras, absent, not_evaluated ou unknown. Ajoutez toute lecture ambiguë à
+  extraction_uncertainties au lieu de choisir une valeur.
 - Extrayez le numéro et le titre du cas lorsqu'ils figurent dans le document.
 - Proposez un dossier pathologique seulement à partir du diagnostic explicite.
 - Proposez level parmi licence, master ou both et mode_availability parmi
   training, exam ou both. Chaque proposition reste révisable par l'enseignant.
 - Extrayez les objectifs pédagogiques et l'état émotionnel explicitement décrits.
 - Conservez les valeurs, unités, dates et formulations cliniques du document.
+- Pour une pression artérielle, conservez séparément les valeurs systolique et
+  diastolique et leur unité ; ne convertissez pas une valeur manquante.
 - Analysez tout le document, y compris les tableaux, sans vous arrêter aux premières pages.
 - Extrayez chaque médicament, examen, constante, mesure, domaine du bilan et incident.
 - Placez dans custom_sections toute information clinique ou pédagogique importante qui
@@ -469,6 +492,17 @@ RÈGLES D'EXTRACTION:
 - Un incident n'est extrait que s'il est décrit. Relevez son déclencheur/condition,
   la réaction attendue du patient et sa gravité uniquement si elle est précisée.
 - N'ajoutez aucun incident probable ou comportement patient de votre initiative.
+- Pour les tests à l'effort décrits par la source, utilisez effort_tests : chaque test
+  possède id, name, protocol et measurements. Chaque mesure possède id, name,
+  moment (initial/during/stage/end/recovery), moment_detail, actor
+  (student/patient/system/teacher), value, unit, status, data_type et source
+  (page/extrait). N'inventez jamais responsable, moment, valeur, unité ou seuil.
+  Signalez dans extraction_uncertainties tout champ requis non documenté.
+  Gardez expected_type, expected_value, thresholds et expected_action distincts
+  des valeurs cliniques et uniquement si la source les définit.
+- Un profil comportemental explicitement décrit peut être extrait dans
+  structured_content.patient_personality, désactivé par défaut pour revue.
+  Ne déduisez aucun profil d'un diagnostic.
 - Gardez evaluation_checklist compatible avec le format existant:
   description, points, category et completed=false.
 
@@ -628,7 +662,7 @@ Répondez uniquement avec le JSON, sans balises Markdown ni commentaire.
         
         if eval_section_match:
             eval_section = eval_section_match.group(0)
-            logger.debug(f"Found evaluation section: {eval_section[:100]}...")
+            logger.debug("Found evaluation section")
             
             # Look for numbered or bulleted items with comprehensive patterns
             item_patterns = [
@@ -777,7 +811,7 @@ Répondez uniquement avec le JSON, sans balises Markdown ni commentaire.
     
     def _clean_json_string(self, json_str):
         """Clean and fix common JSON formatting issues from LLM output."""
-        logger.debug(f"Attempting to clean JSON string (original start): {json_str[:200]}")
+        logger.debug("Cleaning extraction JSON")
         
         # Remove common LLM artifacts like ```json and ```
         json_str = re.sub(r'^```json\s*', '', json_str, flags=re.IGNORECASE)
@@ -804,7 +838,7 @@ Répondez uniquement avec le JSON, sans balises Markdown ni commentaire.
         json_str = re.sub(r'//.*?($|\n)', '\n', json_str) # Remove // comments
         json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL) # Remove /* */ comments
         
-        logger.debug(f"Cleaned JSON string (attempted start): {json_str[:200]}")
+        logger.debug("Extraction JSON cleaned")
         return json_str
     
     def save_case_data(self, case_number, specialty, extracted_data):

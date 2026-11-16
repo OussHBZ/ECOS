@@ -1,82 +1,29 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ECOS Chat Simulator - FMPM</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon-32x32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon-16x16.png') }}">
-    <link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='images/favicon-192x192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version }}">
-</head>
-<body class="home-page">
-
-    <!-- Header -->
-    <header class="fmpm-header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo-section">
-                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
-                    <div class="brand-text">
-                        <h1 class="brand-title">ECOS Chat Simulator</h1>
-                        <p class="brand-subtitle">Plateforme de simulation pour examens cliniques objectifs structurés</p>
-                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
-                    </div>
-                </div>
-                <a href="{{ url_for('auth.login', workspace='kine') }}" class="home-kine-cta">
-                    <span class="home-kine-cta__icon" aria-hidden="true">✚</span>
-                    <span><strong>ECOS Kiné</strong><small>Accéder à l’espace kinésithérapie</small></span>
-                    <span aria-hidden="true">→</span>
-                </a>
-            </div>
+{% extends "app_base.html" %}
+{% block title %}ECOS · KardioX — Simulation clinique FMPM{% endblock %}
+{% block content %}
+{% include '_public_brand.html' %}
+<section class="home-intro">
+    <span class="kine-eyebrow">Apprentissage et pratique clinique</span>
+    <h1>Un espace pour pratiquer.<br>Des repères pour progresser.</h1>
+    <p>Préparez vos examens cliniques à travers des consultations simulées. Retrouvez vos cas, vos évaluations et votre suivi pédagogique dans l’espace attribué à votre compte.</p>
+</section>
+<div class="home-workspaces">
+    <section class="kine-card">
+        <span class="kine-eyebrow">Examens cliniques objectifs structurés</span>
+        <h2>ECOS Standard</h2>
+        <p>Entraînement aux consultations, stations cliniques et sessions de compétition.</p>
+        <div class="kine-actions">
+            <a class="btn btn-primary" href="{{ url_for('auth.login', role='student', workspace='standard') }}">Espace étudiant</a>
+            <a class="btn btn-secondary" href="{{ url_for('auth.login', role='teacher', workspace='standard') }}">Espace enseignant</a>
         </div>
-    </header>
-
-    <div class="container">
-
-        <!-- Hero section -->
-        <div class="home-hero">
-            <h2 class="home-hero-title">Prépare tes ECOS avec un patient virtuel</h2>
-            <p class="home-hero-sub">
-                Plonge dans des stations cliniques réalistes guidées par l'IA.<br>
-                Reçois un feedback immédiat et détaillé pour suivre ta progression.
-            </p>
-        </div>
-
-        <!-- Profile cards -->
-        <div class="role-selection" id="standard-profiles">
-            <h3 class="page-title">ECOS Standard — sélectionnez votre profil</h3>
-
-            <div class="role-buttons">
-                <a href="{{ url_for('auth.login', role='student', workspace='standard') }}" class="role-button student">
-                    <span class="role-icon">🎓</span>
-                    <div class="role-title">Étudiant</div>
-                    <div class="role-description">
-                        Pratiquez vos consultations avec des patients virtuels et recevez des évaluations détaillées
-                    </div>
-                </a>
-
-                <a href="{{ url_for('auth.login', role='teacher', workspace='standard') }}" class="role-button teacher">
-                    <span class="role-icon">👨‍🏫</span>
-                    <div class="role-title">Enseignant</div>
-                    <div class="role-description">
-                        Créez et gérez des cas cliniques, suivez les performances des étudiants
-                    </div>
-                </a>
-
-                <a href="{{ url_for('auth.login', role='admin', workspace='standard') }}" class="role-button admin">
-                    <span class="role-icon">⚙️</span>
-                    <div class="role-title">Administrateur</div>
-                    <div class="role-description">
-                        Gérez les sessions ECOS, supervisez les stations et administrez le système
-                    </div>
-                </a>
-            </div>
-
-            <p class="home-footer-note">Besoin d'aide ? Contactez votre coordinateur pédagogique.</p>
-        </div>
-
-    </div>
-</body>
-</html>
+    </section>
+    <section class="kine-card">
+        <span class="kine-eyebrow">Kinésithérapie</span>
+        <h2>KardioX</h2>
+        <p>Simuler. Raisonner. Rééduquer.<br>Dossiers patients, simulations et parcours de rééducation.</p>
+        <div class="kine-actions"><a class="btn btn-primary" href="{{ url_for('auth.login', workspace='kine') }}">Accéder à KardioX</a></div>
+    </section>
+</div>
+<p class="field-help">Besoin d’aide ? Contactez votre coordinateur pédagogique.</p>
+<a href="{{ url_for('auth.login', role='admin', workspace='standard') }}">Accès administration</a>
+{% endblock %}

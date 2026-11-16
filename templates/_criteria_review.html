@@ -1,0 +1,17 @@
+{% if simulation.evaluation_results and simulation.evaluation_results.engine == 'kardiox_criteria_v1' %}
+<section class="kine-card"><h2>Vérification des classifications</h2>
+<p class="kine-badge">{% if simulation.status == 'completed' and (simulation.mode == 'training' or (simulation.evaluation_results.revision is not none and simulation.evaluation_results.feedback_published_revision == simulation.evaluation_results.revision)) %}Bilan visible pour l’étudiant{% else %}Bilan non publié{% endif %}</p>
+<p>Chaque modification conserve son auteur, son motif et les résultats avant/après. Une révision retire la publication du bilan jusqu’à nouvelle publication.</p>
+{% for row in simulation.evaluation_results.criteria %}
+<form method="post" action="{{ url_for('kine.classify_criterion', session_id=simulation.id) }}" class="kine-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ simulation.evaluation_results.revision }}"><input type="hidden" name="criterion_id" value="{{ row.id }}">
+<h3>{{ row.id }} — {{ row.status_label }}</h3><p>{{ row.justification }}</p>{% for proof in row.evidence %}<blockquote>{{ proof.quote }}</blockquote>{% endfor %}
+<p><strong>{{ row.title }}</strong> — {{ row.step }} · {{ row.type }}</p><p>Attendu : {{ row.expected }}</p><p>Alternatives : {{ row.alternatives|join(' ; ') }}</p><p>Poids : {{ row.max_points }} · Sécurité configurée : {{ row.configured_safety.consequence }}</p>
+<label>Classification<select name="status">{% for key,label in [('correct','Correcte (idéale)'),('acceptable','Acceptable'),('partial','Partiellement correcte'),('incorrect','Incorrecte'),('dangerous','Dangereuse ou critique'),('pending','À vérifier')] %}<option value="{{ key }}" {% if row.status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Résolution de sécurité (uniquement si la règle prévoit une vérification)<select name="safety_resolution"><option value="">Conserver la règle</option><option value="none">Aucune erreur</option><option value="critical">Critique non éliminatoire</option><option value="eliminatory">Éliminatoire</option></select></label>
+<details><summary>Preuves étudiantes associées</summary><input type="hidden" name="evidence_submitted" value="yes">{% set evidence_count = namespace(value=0) %}{% for message in simulation.conversation if message.role == 'human' %}{% set evidence_count.value = evidence_count.value + 1 %}{% set evidence_id = 'message_' ~ evidence_count.value %}<label><input type="checkbox" name="evidence_message_ids" value="{{ evidence_id }}" {% if evidence_id in row.evidence|map(attribute='message_id')|list %}checked{% endif %}>{{ message.content }}</label>{% endfor %}</details>
+<label>Motif<textarea name="reason" required></textarea></label><button class="btn btn-primary">Confirmer et recalculer</button></form>
+{% endfor %}
+<a href="{{ url_for('kine.evaluation_history', session_id=simulation.id) }}">Historique immuable des modifications</a>
+<form method="post" action="{{ url_for('kine.publish_feedback', session_id=simulation.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="revision" value="{{ simulation.evaluation_results.revision }}"><button class="btn btn-primary">Publier le bilan individuel</button></form>
+</section>{% endif %}

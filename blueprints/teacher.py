@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, sen
 from flask_login import current_user
 from models import db, PatientCase, StudentPerformance, Student
 from auth import teacher_required
+from account_security import standard_performance_query
 import logging
 import os
 from werkzeug.utils import secure_filename
@@ -532,7 +533,7 @@ def teacher_stations():
         stations = []
         for case in cases:
             # Get completion count and average score
-            performances = StudentPerformance.query.filter_by(case_number=case.case_number).all()
+            performances = standard_performance_query().filter(StudentPerformance.case_number == case.case_number).all()
             completion_count = len(performances)
             average_score = sum(perf.percentage_score for perf in performances) / len(performances) if performances else 0
             
@@ -564,7 +565,7 @@ def teacher_students_performance():
         search_query = request.args.get('search', '').strip()
         
         # Base query
-        query = Student.query
+        query = Student.query.filter_by(ecos_type='standard')
         
         # Apply search filter if provided
         if search_query:
@@ -580,7 +581,7 @@ def teacher_students_performance():
         student_data = []
         for student in students:
             # Get student performances
-            performances = StudentPerformance.query.filter_by(student_id=student.id).all()
+            performances = standard_performance_query().filter(StudentPerformance.student_id == student.id).all()
             
             total_workouts = len(performances)
             unique_stations = len(set(perf.case_number for perf in performances))
@@ -615,7 +616,7 @@ def teacher_student_detailed_performance(student_id):
         student = Student.query.get_or_404(student_id)
         
         # Get student performances
-        performances = StudentPerformance.query.filter_by(student_id=student_id)\
+        performances = standard_performance_query().filter(StudentPerformance.student_id == student_id)\
             .order_by(StudentPerformance.completed_at.desc()).all()
         
         # Calculate summary stats

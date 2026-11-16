@@ -1,5 +1,5 @@
 {% extends "kine_base.html" %}
-{% block title %}Import massif de cas — ECOS Kiné{% endblock %}
+{% block title %}Import massif de cas — KardioX{% endblock %}
 {% block content %}
 <div class="kine-page-heading">
     <div><span class="kine-eyebrow">File d’import enseignant</span><h1>Importer des cas Kiné depuis Word</h1><p>Chaque document devient un brouillon à contrôler avant toute création de cas.</p></div>
@@ -7,7 +7,7 @@
 </div>
 <section class="kine-card">
     <h2>Nouveau lot</h2>
-    <form class="kine-form" method="post" enctype="multipart/form-data" data-case-import-upload>
+    <form class="kine-form" method="post" enctype="multipart/form-data" data-case-import-upload><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Documents Word ou archive ZIP
             <input type="file" name="documents" accept=".doc,.docx,.zip" multiple required>
             <small>Un document correspond par défaut à un cas. Une archive peut contenir jusqu’à 500 fichiers DOCX.</small>
@@ -30,4 +30,4 @@
     </table></div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/kine-case-imports.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}
+{% block kine_scripts %}<script src="{{ url_for('static', filename='js/kine-case-imports.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}

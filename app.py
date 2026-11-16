@@ -85,6 +85,7 @@ class FallbackGroqClient:
                 temperature=self.config['temperature'],
                 max_tokens=self.config['max_tokens'],
                 timeout=self.config['timeout'],
+                max_retries=self.config.get('max_retries', 2),
                 http_client=self.http_client,
             )
         return self._clients[model]
@@ -109,12 +110,11 @@ class FallbackGroqClient:
                 last_error = e
                 if self._is_fallback_error(e):
                     logger.warning(
-                        f"[Groq fallback] '{model}' failed ({type(e).__name__}): "
-                        f"{str(e)[:250]}. Trying next model…"
+                        f"[Groq fallback] '{model}' failed ({type(e).__name__}). Trying next model…"
                     )
                     continue
                 # Non-fallback error (auth, bad request, etc.) — don't cycle
-                logger.error(f"[Groq] non-recoverable error on '{model}': {e}")
+                logger.error(f"[Groq] non-recoverable error on '{model}': {type(e).__name__}")
                 raise
         raise Exception(
             f"All Groq models exhausted ({len(self.models)} tried). "
@@ -616,10 +616,27 @@ def create_app():
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")
 
+    # Account revocation schema must be complete before accepting requests.
+    # Keep it after the legacy teacher-table reconstruction above.
+    from account_migrations import upgrade_account_lifecycle
+    with app.app_context():
+        upgrade_account_lifecycle(db.engine)
+        from case_version_migrations import upgrade_case_version_storage
+        upgrade_case_version_storage(db.engine)
+        from information_access_migrations import upgrade_information_access_policy
+        upgrade_information_access_policy(db.engine)
+        from case_authoring_migrations import upgrade_case_authoring
+        upgrade_case_authoring(db.engine)
+        from etp_migrations import upgrade_etp_library
+        upgrade_etp_library(db.engine)
+        from evaluation_migrations import upgrade_evaluation
+        upgrade_evaluation(db.engine)
+
     # Create upload folder if it doesn't exist
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    app.config['KINE_RESTORED_UPLOAD_ROOT'] = os.environ.get('KINE_RESTORED_UPLOAD_ROOT')
     
     # Create a persistent HTTP client
     http_client = Client(timeout=10.0, verify=True)
@@ -674,6 +691,13 @@ def create_app():
     app.config['DOCUMENT_LLM_CLIENT'] = document_client
     app.config['EVALUATION_AGENT'] = evaluation_agent
     app.config['GROQ_CLIENT'] = client
+    # KardioX has a single bounded provider attempt per invocation. Keep the
+    # historical ECOS client configuration independent.
+    app.config['KINE_LLM_CLIENT'] = FallbackGroqClient(
+        api_key, Client(timeout=10.0, verify=True), groq_models[:1],
+        {**LLAMA_MODELS['config'], 'timeout': 10, 'max_retries': 0},
+    )
+    app.config['KINE_REUSES_GROQ_CLIENT'] = False
     app.config['EVALUATION_CONFIG'] = EVALUATION_CONFIG
 
     def generic_case_query():
@@ -1197,30 +1221,9 @@ def create_app():
 
     @app.route('/download_pdf/<filename>')
     def download_pdf(filename):
-        """Download generated PDF"""
-        try:
-            # Security: prevent path traversal
-            if '..' in filename or '/' in filename or '\\' in filename:
-                return jsonify({'error': 'Invalid filename'}), 400
+        from account_security import legacy_pdf_download
+        return legacy_pdf_download(filename)
 
-            temp_dir = tempfile.gettempdir()
-            file_path = os.path.join(temp_dir, filename)
-
-            if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-                return jsonify({'error': 'PDF file not found'}), 404
-
-            return send_from_directory(
-                temp_dir,
-                filename,
-                as_attachment=True,
-                download_name=f'consultation_evaluation_{filename}',
-                mimetype='application/pdf'
-            )
-
-        except Exception as e:
-            logger.error(f"Error downloading PDF: {e}", exc_info=True)
-            return jsonify({'error': 'Error downloading PDF'}), 500
-        
     @app.route('/check_pdf_status')
     def check_pdf_status():
         """Check if PDF is ready for download"""

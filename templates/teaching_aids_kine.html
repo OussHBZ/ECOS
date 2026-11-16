@@ -1,0 +1,8 @@
+{% extends 'kine_base.html' %}{% block content %}
+<h1>Aide pédagogique — {{ clinical_case.case_number }}</h1><p>Canal séparé du patient, disponible uniquement pendant l’entraînement. Chaque indice doit aider à rechercher une information sans donner la réponse. Publiez une nouvelle version pour appliquer vos changements.</p>
+{% for aid in aids %}<p>{{ aid.text }} ({{ aid.id }})</p>{% endfor %}
+<form method="post" class="kine-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Identifiant<input name="id" required></label><label>Information concernée<select name="information_id">{% for item in clinical_case.information_items if item.access_mode != 'evaluation_reserved' %}<option value="{{ item.stable_id }}">{{ item.label }}</option>{% endfor %}</select></label>
+<label>Indice<textarea name="text" required></textarea></label><label>Informations préalablement obtenues (identifiants séparés par virgules)<input name="requires_information"></label>
+<label><input type="checkbox" name="active" value="yes"> Activer</label><label><input type="checkbox" name="approved" value="yes"> J’ai vérifié cet indice : il ne donne pas directement la réponse.</label>
+<button class="btn btn-primary">Enregistrer cette aide</button></form>{% endblock %}

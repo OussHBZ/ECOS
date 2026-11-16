@@ -1,33 +1,40 @@
 {% extends "kine_base.html" %}
-{% block title %}Simulation {{ clinical_case.case_number }} — ECOS Kiné{% endblock %}
+{% block title %}Simulation {{ clinical_case.case_number }} — KardioX{% endblock %}
 {% block content %}
+{% if version_reference and version_reference.case_version_id %}<p>Version {{ version_reference.case_version_number }} · Référence {{ 'reconstruite depuis les données disponibles ; version historique non attestée' if version_reference.case_reference_provenance == 'reconstructed_current' else 'figée' }}</p>{% endif %}
 <div class="kine-chat-page" data-kine-chat
      data-message-url="{{ message_url }}" data-test-url="{{ test_url }}"
      data-pause-url="{{ pause_url }}" data-resume-url="{{ resume_url }}"
-     data-complete-url="{{ complete_url }}" data-mode="{{ simulation.mode }}"
+     data-abandon-url="{{ url_for('kine.abandon_simulation', session_id=simulation.id) }}" data-reconnect-url="{{ url_for('kine.reconnect_simulation', session_id=simulation.id) }}" data-complete-url="{{ complete_url }}" data-mode="{{ simulation.mode }}"
      data-student-name="{{ simulation.student.name }}"
      data-status="{{ simulation.status }}" data-deadline="{{ deadline|default('') }}">
     <div class="kine-page-heading kine-chat-heading">
-        <div><span class="kine-eyebrow">{{ simulation.mode|capitalize }} · {{ clinical_case.case_number }}</span><h1>Consultation kinésithérapique</h1></div>
+        <div><span class="kine-eyebrow">{{ 'Entraînement' if simulation.mode == 'training' else 'Examen' }} · {{ clinical_case.case_number }}</span><h1>Consultation kinésithérapique</h1></div>
         <div class="kine-actions">
-            <a class="btn btn-secondary" href="{{ record_url }}">Dossier patient</a>
+            <button class="btn btn-secondary" type="button" data-record-toggle aria-expanded="true" aria-controls="kine-record-sidebar">Réduire le dossier</button>
             <a class="btn btn-secondary" href="{{ timeline_url }}">Chronologie</a>
             {% if simulation.mode == 'exam' %}<div class="kine-exam-clock" data-exam-clock><small>Temps restant</small><strong>--:--</strong></div>{% endif %}
-            {% if simulation.mode == 'training' %}<button class="btn btn-secondary" type="button" data-pause-toggle>{{ 'Reprendre' if simulation.status == 'paused' else 'Pause' }}</button>{% endif %}
-            <button class="btn btn-primary" type="button" data-complete>Terminer et évaluer</button>
+            {% if simulation.mode == 'training' %}<button class="btn btn-secondary" type="button" data-pause-toggle {% if simulation.status not in ['in_progress','paused'] %}disabled{% endif %}>{{ 'Reprendre' if simulation.status == 'paused' else 'Mettre en pause' }}</button>{% endif %}
+            <button class="btn btn-primary" type="button" data-complete {% if simulation.status not in ['in_progress','paused'] %}disabled{% endif %}>Terminer et évaluer</button>
         </div>
     </div>
+    <p data-connection-status role="status">En cas de coupure, reconnectez-vous à cette tentative. En examen, le chrono continue jusqu’à l’échéance. Un abandon explicite est définitif et ne produit aucun résultat. Vos données sont conservées.</p>
+    {% if simulation.status in ['in_progress','paused'] %}<button class="btn btn-secondary" type="button" data-abandon>Abandonner cette tentative</button>{% endif %}
+    <p><a href="{{ timeline_url }}">Revoir mes réponses et décisions</a>{% if evaluation %} · <a href="{{ url_for('kine.individual_pdf', session_id=simulation.id) }}">Télécharger mon bilan PDF</a>{% endif %}</p>
     {% include '_progression_tracker.html' %}
     <div class="kine-chat-layout">
-        <aside class="kine-card kine-chat-side"><h2>Consignes</h2><p>{{ clinical_case.directives or 'Menez la consultation complète en respectant les phases.' }}</p><h3>État</h3><span class="kine-badge" data-session-status>{{ {'in_progress':'En cours','paused':'En pause','completed':'Terminée'}.get(simulation.status, simulation.status) }}</span><div class="kine-obtained-vitals"><h3>Paramètres obtenus</h3><p data-vitals-empty{% if obtained_vital_parameters %} class="hidden"{% endif %}>Aucun paramètre mesuré.</p><div class="kine-table-wrap{% if not obtained_vital_parameters %} hidden{% endif %}" data-vitals-table-wrap><table><thead><tr><th>Paramètre</th><th>Moment</th><th>Valeur</th></tr></thead><tbody data-vitals-body>{% for item in obtained_vital_parameters %}<tr><td>{{ item.name }}</td><td>{{ item.moment_label }}</td><td>{{ item.value }}{% if item.unit %} {{ item.unit }}{% endif %}</td></tr>{% endfor %}</tbody></table></div></div></aside>
+        <aside class="kine-card kine-chat-side" id="kine-record-sidebar" data-record-sidebar><h2>Dossier médical</h2><iframe data-record-frame src="{{ record_url }}" title="Dossier médical accessible" class="kine-record-frame"></iframe><h2>Consignes</h2><p>Menez la consultation sans demander au patient les attentes d’évaluation.</p><h3>État</h3><span class="kine-badge" data-session-status>{{ {'in_progress':'En cours','paused':'En pause','completed':'Terminée','interrupted':'Interrompue','abandoned':'Abandonnée'}.get(simulation.status, simulation.status) }}</span><div class="kine-obtained-vitals"><h3>Paramètres obtenus</h3><p data-vitals-empty{% if obtained_vital_parameters %} class="hidden"{% endif %}>Aucun paramètre mesuré.</p><div class="kine-table-wrap{% if not obtained_vital_parameters %} hidden{% endif %}" data-vitals-table-wrap><table><thead><tr><th>Paramètre</th><th>Moment</th><th>Valeur</th></tr></thead><tbody data-vitals-body>{% for item in obtained_vital_parameters %}<tr><td>{{ item.name }}</td><td>{{ item.moment_label }}</td><td>{{ item.value }}{% if item.unit %} {{ item.unit }}{% endif %}</td></tr>{% endfor %}</tbody></table></div></div></aside>
         <section class="kine-card kine-chat-panel">
-            <div class="kine-chat-messages" data-chat-messages aria-live="polite">
+            <div class="kine-chat-messages" data-chat-messages role="log" aria-label="Conversation avec le patient" aria-live="polite" aria-relevant="additions">
                 {% for message in conversation %}<article class="kine-message kine-message--{{ 'student' if message.role == 'human' else 'patient' }}"><strong>{{ simulation.student.name if message.role == 'human' else 'Patient' }}</strong><p>{{ message.content }}</p></article>{% endfor %}
             </div>
-            <form class="kine-chat-input" data-chat-form><input name="message" autocomplete="off" placeholder="Votre message au patient…" {% if simulation.status != 'in_progress' %}disabled{% endif %}><button class="btn btn-primary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Envoyer</button></form>
-            <form class="kine-test-input" data-test-form><input name="test" placeholder="Annoncer un test (ex. SpO2, TUG, 6MWT)…" {% if simulation.status != 'in_progress' %}disabled{% endif %}><button class="btn btn-secondary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Demander le résultat</button></form>
+            <form class="kine-chat-input" data-chat-form><label for="patient-message">Votre message au patient</label><input id="patient-message" name="message" autocomplete="off" placeholder="Votre message au patient…" {% if simulation.status != 'in_progress' %}disabled{% endif %}><button class="btn btn-primary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Envoyer</button></form>
+            <form class="kine-test-input" data-test-form><label for="patient-test">Test ou mesure à demander</label><input id="patient-test" name="test" placeholder="Annoncer un test (ex. SpO2, TUG, 6MWT)…" {% if simulation.status != 'in_progress' %}disabled{% endif %}><button class="btn btn-secondary" {% if simulation.status != 'in_progress' %}disabled{% endif %}>Demander le résultat</button></form>
         </section>
     </div>
+    {% include '_effort_student.html' %}
+    {% include '_session_student.html' %}
+    {% if simulation.mode == 'training' and simulation.status == 'in_progress' %}<section class="kine-card"><h2>Canal pédagogique</h2><button type="button" data-aids-url="{{ url_for('kine.simulation_aids', session_id=simulation.id) }}">Consulter les indices autorisés</button><div data-aids-content></div></section>{% endif %}
     <section class="kine-card kine-evaluation-panel{% if not evaluation %} hidden{% endif %}" data-evaluation-panel>
         <h2>Évaluation finale</h2><div data-evaluation-content>{% if evaluation %}
             {% include '_kine_evaluation_details.html' %}
@@ -43,4 +50,4 @@
     {% endif %}
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/kine-chat.js') }}?v={{ app_version|default('1') }}" defer></script>{% endblock %}
+{% block kine_scripts %}<script src="{{ url_for('static', filename='js/kine-aids.js') }}" defer></script><script src="{{ url_for('static', filename='js/kine-chat.js') }}?v={{ app_version|default('1') }}" defer></script><script src="{{ url_for('static', filename='js/kine-effort.js') }}" defer></script><script src="{{ url_for('static', filename='js/kine-session-actions.js') }}" defer></script>{% endblock %}

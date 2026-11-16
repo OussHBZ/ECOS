@@ -187,7 +187,10 @@ class ProgressionTracker:
                 raise InvalidPhaseError("Cette phase n'est pas disponible pour ce niveau.")
             return phase
         try:
-            return self.phases[int(value) - 1]
+            position = int(value)
+            if position < 1:
+                raise IndexError()
+            return self.phases[position - 1]
         except (TypeError, ValueError, IndexError):
             raise InvalidPhaseError(
                 f'La phase doit être comprise entre 1 et {len(self.phases)}.'
@@ -195,7 +198,7 @@ class ProgressionTracker:
 
     @property
     def progress_percentage(self) -> int:
-        """Percentage of the furthest server-verified workflow phase reached."""
+        """Position reached in the topic guide; never a competency score."""
         return round(self.highest_reached_position / len(self.phases) * 100)
 
     def _validate_state(self) -> None:
@@ -204,42 +207,14 @@ class ProgressionTracker:
         _normalize_phase(_read(self.session, 'current_phase', 1))
 
     def can_navigate_to(self, target: Any) -> bool:
-        phase = self._target_phase(target)
-        target_position = self._position(phase)
-        current_position = self._position(self.current)
-        if target_position == current_position:
-            return True
-        if self.mode == 'exam':
-            return (
-                target_position == current_position + 1
-                and self.current_requirements_met
-            )
-        if target_position <= self.highest_reached_position:
-            return True
-        return (
-            current_position == self.highest_reached_position
-            and target_position == current_position + 1
-            and self.current_requirements_met
-        )
+        self._target_phase(target)
+        return not self.simulation_completed
 
     def navigate_to(self, target: Any, timestamp=None) -> Dict[str, Any]:
         phase = self._target_phase(target)
         previous = self.current
         if not self.can_navigate_to(phase):
-            target_position = self._position(phase)
-            current_position = self._position(previous)
-            if self.mode == 'exam' and target_position < current_position:
-                reason = "Les phases d’examen terminées sont verrouillées."
-            elif target_position > current_position + 1:
-                reason = "Le saut vers une phase future est interdit. Suivez les phases dans l’ordre."
-            elif target_position > self.highest_reached_position and not self.current_requirements_met:
-                reason = (
-                    "La phase suivante reste verrouillée. Éléments encore nécessaires : "
-                    + ' '.join(self.current_unmet_requirements)
-                )
-            else:
-                reason = "Revenez à la dernière phase débloquée avant de poursuivre."
-            raise NavigationLockedError(reason)
+            raise NavigationLockedError("Simulation terminée.")
 
         if phase.number != previous.number:
             changed_at = timestamp or self._now()
@@ -259,8 +234,6 @@ class ProgressionTracker:
         return self.navigate_to(position + 1, timestamp=timestamp)
 
     def previous_phase(self, timestamp=None) -> Dict[str, Any]:
-        if self.mode == 'exam':
-            raise NavigationLockedError("Le retour en arrière est désactivé en mode examen.")
         position = self._position(self.current)
         if position == 1:
             return self.to_frontend()
@@ -385,22 +358,12 @@ class ProgressionTracker:
         current = self.current
         current_position = self._position(current)
         highest_reached = self.highest_reached_position
-        completed = [
-            number for number in range(1, highest_reached + 1)
-            if number != current_position
-        ]
-        remaining = list(range(highest_reached + 1, len(self.phases) + 1))
+        completed = []
+        remaining = []
         phases = []
         for number, phase in enumerate(self.phases, start=1):
-            if number <= highest_reached and number != current_position:
-                status = 'completed'
-            elif number == current_position:
-                status = 'current'
-            else:
-                status = 'remaining'
+            status = 'current' if number == current_position else 'available'
             can_navigate = self.can_navigate_to(phase)
-            if self.mode == 'exam' and number != current_position:
-                can_navigate = False
             if self.simulation_completed:
                 can_navigate = False
             phases.append({
@@ -433,18 +396,12 @@ class ProgressionTracker:
             'progress_percentage': self.progress_percentage,
             'completed_phases': completed,
             'remaining_phases': remaining,
-            'can_go_back': self.mode == 'training' and current_position > 1,
+            'can_go_back': not self.simulation_completed and current_position > 1,
             'highest_reached_phase': highest_reached,
-            'current_phase_ready': self.current_requirements_met,
-            'unmet_requirements': self.current_unmet_requirements,
-            'requirements_message': (
-                'Simulation terminée : l’évaluation et le feedback sont disponibles ci-dessous.'
-                if self.simulation_completed
-                else 'Phase prête : vous pouvez poursuivre.'
-                if self.current_requirements_met
-                else 'Éléments encore nécessaires : '
-                     + ' '.join(self.current_unmet_requirements)
-            ),
+            'current_phase_ready': not self.simulation_completed,
+            'unmet_requirements': [],
+            'informative_only': True,
+            'requirements_message': 'Repère informatif : aucun sujet ni aucune compétence n’est validé automatiquement.',
             'is_last_phase': current_position == len(self.phases),
             'is_complete': self.simulation_completed,
             'phases': phases,

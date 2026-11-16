@@ -11,8 +11,25 @@ ECOS_TYPES = {'standard', 'kine'}
 
 auth_bp = Blueprint('auth', __name__)
 
+from account_security import csrf_token, protect_request
+auth_bp.before_app_request(protect_request)
+
+
+@auth_bp.app_context_processor
+def account_security_context():
+    from account_security import admin_profile
+    return {'csrf_token': csrf_token, 'admin_profile': admin_profile}
+
+
+@auth_bp.route('/csrf-token')
+def csrf_token_view():
+    response = jsonify({'csrf_token': csrf_token()})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
 # Admin access code - loaded from environment
 ADMIN_ACCESS_CODE = os.getenv('ADMIN_CODE', 'ADMIN123')
+PEDAGOGICAL_ADMIN_ACCESS_CODE = os.getenv('PEDAGOGICAL_ADMIN_CODE')
 # Function to check if the request is an AJAX request
 def is_ajax_request():
     """Check if the request is an AJAX request"""
@@ -70,7 +87,7 @@ def login():
 
             student = Student.query.filter_by(student_code=result).first()
 
-            if student and student.check_password(password):
+            if student and student.is_active and student.check_password(password):
                 assigned_type = account_ecos_type(student)
                 if workspace != assigned_type:
                     return _ecos_access_denied('student', assigned_type)
@@ -79,6 +96,7 @@ def login():
                 session.clear()
                 login_user(student)
                 session['user_type'] = 'student'
+                session['auth_version'] = student.auth_version or 0
                 session['workspace'] = assigned_type
                 return redirect(url_for('kine.student_kine_home' if assigned_type == 'kine' else 'student.student_interface'))
             else:
@@ -97,7 +115,7 @@ def login():
             # Do not pick an arbitrary account when old identifiers collide.
             teacher = matches[0] if len(matches) == 1 else None
 
-            if teacher and teacher.check_password(password):
+            if teacher and teacher.is_active and teacher.check_password(password):
                 assigned_type = account_ecos_type(teacher)
                 if workspace != assigned_type:
                     return _ecos_access_denied('teacher', assigned_type)
@@ -106,6 +124,7 @@ def login():
                 session.clear()
                 login_user(teacher)
                 session['user_type'] = 'teacher'
+                session['auth_version'] = teacher.auth_version or 0
                 session['teacher_authenticated'] = True
                 session['teacher_id'] = teacher.id
                 session['teacher_name'] = teacher.name
@@ -118,7 +137,13 @@ def login():
         elif login_type == 'admin':
             access_code = request.form.get('access_code', '').strip()
 
-            if access_code == ADMIN_ACCESS_CODE:
+            # Authority comes from distinct server credentials, never form role claims.
+            profile = None
+            if PEDAGOGICAL_ADMIN_ACCESS_CODE and PEDAGOGICAL_ADMIN_ACCESS_CODE != ADMIN_ACCESS_CODE and access_code == PEDAGOGICAL_ADMIN_ACCESS_CODE:
+                profile = 'pedagogical'
+            elif access_code == ADMIN_ACCESS_CODE and access_code != PEDAGOGICAL_ADMIN_ACCESS_CODE:
+                profile = 'technical'
+            if profile:
                 logout_user()
                 session.clear()
                 session['user_type'] = 'admin'
@@ -129,8 +154,10 @@ def login():
                 if not admin_access:
                     admin_access = AdminAccess(access_code=access_code)
                     db.session.add(admin_access)
+                admin_access.admin_profile = profile
                 admin_access.last_used = datetime.utcnow()
                 db.session.commit()
+                session['admin_access_id'] = admin_access.id
 
                 return redirect(url_for('admin.admin_interface'))
             else:
@@ -139,7 +166,7 @@ def login():
 
     return render_template('login.html', workspace=workspace)
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 def logout():
     logout_user()
     session.clear()
@@ -194,7 +221,8 @@ def admin_required(f):
     """Decorator to require administrator authentication - returns JSON for AJAX requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if session.get('user_type') != 'admin' or not session.get('admin_authenticated'):
+        from account_security import admin_profile
+        if admin_profile() not in ('technical', 'pedagogical'):
             if is_ajax_request():
                 logger.warning(f"Unauthorized admin AJAX request to {request.path}")
                 return jsonify({

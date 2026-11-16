@@ -1,0 +1,16 @@
+{% extends 'kine_base.html' %}
+{% block content %}
+<section class="kine-card"><h1>Rééducation attendue — {{ clinical_case.title }}</h1>
+<p>Définissez les références et les alternatives acceptables pour ce cas. Sélectionner un exercice n’active aucun critère de surveillance. Vérifiez chaque règle avant de l’activer.</p>
+<a href="{{ url_for('kine.case_item', case_id=clinical_case.id) }}">Retour au cas</a>
+<form method="post" data-rehabilitation-editor>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="program_json">
+<div data-program-fields></div>
+<button type="submit" class="btn btn-primary">Enregistrer la rééducation du cas</button>
+</form></section>
+<script type="application/json" data-program-data>{{ program|tojson }}</script>
+<script type="application/json" data-program-categories>{{ categories|tojson }}</script>
+<script type="application/json" data-program-suggestions>{{ suggestions|tojson }}</script>
+{% endblock %}
+{% block kine_scripts %}<script src="{{ url_for('static', filename='js/kine-rehabilitation.js') }}" defer></script>{% endblock %}

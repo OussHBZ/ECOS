@@ -30,7 +30,17 @@ class SessionMixin:
         return status_map.get(self.status, self.status)
 
 
-class Student(db.Model, UserMixin):
+class AccountLifecycleMixin:
+    """Persistent revocation shared by both workspaces; no historical deletion."""
+    account_status = db.Column(db.String(20), nullable=False, default='active', server_default='active')
+    auth_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+
+    @property
+    def is_active(self):
+        return self.account_status in (None, 'active')
+
+
+class Student(AccountLifecycleMixin, db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     # Updated: Changed from 4 digits to 6-7 digits for Numéro d'Apogée
     student_code = db.Column(db.String(7), unique=True, nullable=False)  # Changed from String(4) to String(7)
@@ -159,7 +169,7 @@ class Student(db.Model, UserMixin):
     def __repr__(self):
         return f'<Student {self.student_code}: {self.name}>'
 
-class Teacher(db.Model, UserMixin):
+class Teacher(AccountLifecycleMixin, db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=True)  # primary identifier
     login = db.Column(db.String(100), unique=True, nullable=True)   # kept for migration only
@@ -196,6 +206,21 @@ class AdminAccess(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     access_code = db.Column(db.String(20), unique=True, nullable=False)
     last_used = db.Column(db.DateTime)
+    admin_profile = db.Column(db.String(20), nullable=False, default='technical', server_default='technical')
+
+
+class TeacherStudentScope(db.Model):
+    __tablename__ = 'teacher_student_scopes'
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class TeacherGroupScope(db.Model):
+    __tablename__ = 'teacher_group_scopes'
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), primary_key=True)
+    group_name = db.Column(db.String(100), primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class OSCESession(db.Model, SessionMixin):
     """Model for OSCE examination sessions"""
@@ -275,6 +300,16 @@ class PatientCase(db.Model):
     pedagogical_objectives = db.Column(db.Text)
     emotional_state = db.Column(db.String(50))
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    # T05 authoring metadata. Nullable/JSON fields keep legacy and standard
+    # ECOS rows unchanged while the Kiné wizard can preserve partial work.
+    difficulty = db.Column(db.String(20))
+    subpathology = db.Column(db.String(250))
+    rehabilitation_phase = db.Column(db.String(50))
+    planned_sessions = db.Column(db.Integer)
+    pedagogical_summary = db.Column(db.Text)
+    structured_content_json = db.Column(db.Text)
+    authoring_status = db.Column(db.String(20), nullable=False, default='legacy')
+    authoring_progress_json = db.Column(db.Text)
     
     # Relationships
     performances = db.relationship('StudentPerformance', backref='case', lazy=True)
@@ -282,6 +317,38 @@ class PatientCase(db.Model):
     session_assignments = db.relationship('SessionStationAssignment', backref='case', lazy=True, cascade='all, delete-orphan')
     incidents = db.relationship('Incident', back_populates='clinical_case', lazy=True, cascade='all, delete-orphan')
     patient_record = db.relationship('PatientRecord', back_populates='clinical_case', uselist=False, cascade='all, delete-orphan')
+    information_items = db.relationship(
+        'CaseInformation', back_populates='clinical_case', lazy=True,
+        cascade='all, delete-orphan', order_by='CaseInformation.path',
+    )
+    documents = db.relationship(
+        'KineCaseDocument', back_populates='clinical_case', lazy=True,
+        cascade='all, delete-orphan', order_by='KineCaseDocument.id',
+    )
+
+    @property
+    def structured_content(self):
+        try:
+            value = json.loads(self.structured_content_json or '{}')
+            return value if isinstance(value, dict) else {}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return {}
+
+    @structured_content.setter
+    def structured_content(self, value):
+        self.structured_content_json = json.dumps(value or {}, ensure_ascii=False)
+
+    @property
+    def authoring_progress(self):
+        try:
+            value = json.loads(self.authoring_progress_json or '{}')
+            return value if isinstance(value, dict) else {}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return {}
+
+    @authoring_progress.setter
+    def authoring_progress(self, value):
+        self.authoring_progress_json = json.dumps(value or {}, ensure_ascii=False)
     
     @property
     def patient_info(self):
@@ -733,11 +800,100 @@ class Medication(db.Model):
     patient_record_id = db.Column(db.Integer, db.ForeignKey('patient_records.id'), nullable=False)
     therapeutic_class = db.Column(db.String(200), nullable=False)
     inn = db.Column(db.String(200))
+    dosage = db.Column(db.Text)
+    frequency = db.Column(db.Text)
     effect = db.Column(db.Text)
     physiotherapy_precautions = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     patient_record = db.relationship('PatientRecord', back_populates='medications')
+
+
+class KineCaseDocument(db.Model):
+    """Original immutable upload attached to a Kiné authoring case."""
+    __tablename__ = 'kine_case_documents'
+
+    id = db.Column(db.Integer, primary_key=True)
+    clinical_case_id = db.Column(
+        db.Integer, db.ForeignKey('patient_case1.id'), nullable=False, index=True,
+    )
+    stable_id = db.Column(db.String(36), nullable=False, unique=True)
+    kind = db.Column(db.String(40), nullable=False, default='clinical')
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_path = db.Column(db.Text, nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    mime_type = db.Column(db.String(150))
+    created_by = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    clinical_case = db.relationship('PatientCase', back_populates='documents')
+    creator = db.relationship('Teacher', backref=db.backref('kine_case_documents', lazy=True))
+
+
+class CaseInformation(db.Model):
+    """Mutable authoring policy for one atomic item of a Kiné case."""
+    __tablename__ = 'case_information'
+
+    id = db.Column(db.Integer, primary_key=True)
+    clinical_case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), nullable=False, index=True)
+    stable_id = db.Column(db.String(36), nullable=False)
+    path = db.Column(db.String(500), nullable=False)
+    label = db.Column(db.String(250), nullable=False)
+    value_json = db.Column(db.Text, nullable=False)
+    value_type = db.Column(db.String(30), nullable=False)
+    access_mode = db.Column(db.String(30), nullable=False)
+    patient_knows = db.Column(db.Boolean, nullable=True)
+    importance = db.Column(db.String(30), nullable=False, default='complementary')
+    level_rules_json = db.Column(db.Text, nullable=False, default='{}')
+    disclosure_conditions_json = db.Column(db.Text, nullable=False, default='{}')
+    provenance = db.Column(db.String(50), nullable=False, default='authored')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    clinical_case = db.relationship('PatientCase', back_populates='information_items')
+    __table_args__ = (
+        db.UniqueConstraint('clinical_case_id', 'stable_id', name='uq_case_information_stable'),
+        db.UniqueConstraint('clinical_case_id', 'path', name='uq_case_information_path'),
+    )
+
+
+class KineVersionInformation(db.Model):
+    """Immutable information policy/value captured for a published case version."""
+    __tablename__ = 'kine_version_information'
+
+    version_id = db.Column(db.Integer, db.ForeignKey('kine_case_versions.id'), primary_key=True)
+    stable_id = db.Column(db.String(36), primary_key=True)
+    path = db.Column(db.String(500), nullable=False)
+    label = db.Column(db.String(250), nullable=False)
+    value_json = db.Column(db.Text, nullable=False)
+    value_type = db.Column(db.String(30), nullable=False)
+    access_mode = db.Column(db.String(30), nullable=False)
+    patient_knows = db.Column(db.Boolean, nullable=True)
+    importance = db.Column(db.String(30), nullable=False)
+    level_rules_json = db.Column(db.Text, nullable=False, default='{}')
+    disclosure_conditions_json = db.Column(db.Text, nullable=False, default='{}')
+    provenance = db.Column(db.String(50), nullable=False, default='authored')
+
+    version = db.relationship('KineCaseVersion', backref=db.backref('information_items', lazy=True))
+
+
+class SimulationDisclosure(db.Model):
+    """One fact actually disclosed to a student during a frozen simulation."""
+    __tablename__ = 'simulation_disclosures'
+
+    simulation_id = db.Column(db.Integer, db.ForeignKey('simulation_sessions.id'), primary_key=True)
+    stable_id = db.Column(db.String(36), primary_key=True)
+    channel = db.Column(db.String(30), nullable=False)
+    value_sha256 = db.Column(db.String(64), nullable=False)
+    details_json = db.Column(db.Text, nullable=False, default='{}')
+    revealed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    simulation = db.relationship(
+        'SimulationSession', backref=db.backref(
+            'information_disclosures', lazy=True, cascade='all, delete-orphan',
+        ),
+    )
 
 
 class Incident(db.Model):
@@ -806,6 +962,43 @@ class Exam(db.Model):
         return bool(self.start_at and datetime.utcnow() >= self.start_at) or bool(self.simulation_sessions)
 
 
+class KineCaseVersion(db.Model):
+    """An immutable publication or the current mutable working snapshot."""
+    __tablename__ = 'kine_case_versions'
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), nullable=False)
+    number = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='draft')
+    content_json = db.Column(db.Text, nullable=False)
+    content_sha256 = db.Column(db.String(64), nullable=False)
+    provenance = db.Column(db.String(50), nullable=False, default='authored')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    published_at = db.Column(db.DateTime)
+    published_actor = db.Column(db.String(100))
+    clinical_case = db.relationship('PatientCase', backref=db.backref('kine_versions', lazy=True))
+    __table_args__ = (db.UniqueConstraint('case_id', 'number', name='uq_kine_case_version_number'),)
+
+
+class KineCaseAvailability(db.Model):
+    """Availability is separate from the immutable clinical publication."""
+    __tablename__ = 'kine_case_availability'
+    case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), primary_key=True)
+    version_id = db.Column(db.Integer, db.ForeignKey('kine_case_versions.id'), nullable=True)
+    audience_json = db.Column(db.Text, nullable=False, default='{}')
+    updated_actor = db.Column(db.String(100))
+    version = db.relationship('KineCaseVersion')
+
+
+class ExamCaseVersion(db.Model):
+    __tablename__ = 'exam_case_versions'
+    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), primary_key=True)
+    version_id = db.Column(db.Integer, db.ForeignKey('kine_case_versions.id'), nullable=False)
+    provenance = db.Column(db.String(50), nullable=False, default='selected')
+    version = db.relationship('KineCaseVersion')
+    exam = db.relationship('Exam', backref=db.backref('case_version_selections', lazy=True))
+
+
 class SimulationSession(db.Model):
     __tablename__ = 'simulation_sessions'
     __table_args__ = (
@@ -818,6 +1011,11 @@ class SimulationSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
     clinical_case_id = db.Column(db.Integer, db.ForeignKey('patient_case1.id'), nullable=False)
+    case_version_id = db.Column(db.Integer, db.ForeignKey('kine_case_versions.id'), nullable=True)
+    frozen_student_level = db.Column(db.String(20))
+    evaluation_reference_json = db.Column(db.Text)
+    student_reference_json = db.Column(db.Text)
+    reference_origin = db.Column(db.String(50))
     exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'), nullable=True)
     mode = db.Column(db.String(20), nullable=False, default='training')
     status = db.Column(db.String(20), nullable=False, default='in_progress')
@@ -841,6 +1039,7 @@ class SimulationSession(db.Model):
 
     student = db.relationship('Student', backref=db.backref('simulation_sessions', lazy=True))
     clinical_case = db.relationship('PatientCase', backref=db.backref('simulation_sessions', lazy=True))
+    case_version = db.relationship('KineCaseVersion')
     exam = db.relationship('Exam', back_populates='simulation_sessions')
     reviewer = db.relationship('Teacher', foreign_keys=[reviewed_by])
 
@@ -849,6 +1048,26 @@ class SimulationSession(db.Model):
 # alias gives new kine code the terminology used by the specification without
 # creating a duplicate table or breaking generic OSCE imports.
 ClinicalCase = PatientCase
+
+
+class KineEvaluationChange(db.Model):
+    __tablename__ = 'kine_evaluation_changes'
+    id = db.Column(db.Integer, primary_key=True)
+    simulation_id = db.Column(db.Integer, db.ForeignKey('simulation_sessions.id'), nullable=False)
+    revision = db.Column(db.Integer, nullable=False)
+    actor = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    criterion_id = db.Column(db.String(80))
+    reason = db.Column(db.Text, nullable=False)
+    before_json = db.Column(db.Text, nullable=False)
+    after_json = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint('simulation_id', 'revision'),)
+
+
+class KineEvaluationSettings(db.Model):
+    __tablename__ = 'kine_evaluation_settings'
+    level = db.Column(db.String(20), primary_key=True)
+    threshold = db.Column(db.String(60), nullable=False)
 
 
 class StudentPerformance(db.Model):
@@ -1608,6 +1827,26 @@ class StudentCompetitionSession(db.Model):
         except Exception as e:
             logger.error(f"Error getting rank for student competition session: {str(e)}")
             return 'N/A'
+
+class KineETPVersion(db.Model):
+    """Append-only library revisions. Case adaptations live in case snapshots."""
+    __tablename__ = 'kine_etp_versions'
+    id = db.Column(db.Integer, primary_key=True)
+    sheet_id = db.Column(db.String(64), nullable=False, index=True)
+    number = db.Column(db.Integer, nullable=False)
+    title = db.Column(db.String(250), nullable=False)
+    pathology = db.Column(db.String(250), nullable=False, default='')
+    level = db.Column(db.String(20), nullable=False, default='both')
+    status = db.Column(db.String(20), nullable=False, default='review')
+    content_json = db.Column(db.Text, nullable=False)
+    content_sha256 = db.Column(db.String(64), nullable=False)
+    source_bytes = db.Column(db.LargeBinary)
+    source_filename = db.Column(db.String(250))
+    source_sha256 = db.Column(db.String(64))
+    created_by = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('sheet_id', 'number'),)
+
 
 class StudentStationAssignment(db.Model):
     """Model for tracking individual station assignments within a student's competition session"""

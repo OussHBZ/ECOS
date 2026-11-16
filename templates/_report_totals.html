@@ -1,0 +1,13 @@
+<section class="kine-card" id="suivi-competences">
+<h2>Résultats et compétences évaluées</h2>
+<p>{{ report.stats.scored_count }} résultat(s) noté(s) définitif(s) · {{ report.stats.pending_count }} en attente de vérification.
+Moyenne : {{ report.stats.average_score if report.stats.average_score is not none else '—' }}/20.</p>
+<p>Les résultats provisoires sont comptés séparément et exclus des moyennes et des points définitifs. Les compétences non applicables sont exclues. La durée décrit l’activité ; une durée plus courte ne signifie pas une meilleure performance.</p>
+{% for title, rows in [('Par compétence', report.competencies), ('Par critère et version du cas', report.criteria)] %}
+<h3>{{ title }}</h3><div class="kine-table-wrap"><table class="kine-table"><thead><tr><th>Élément</th><th>Satisfaits</th><th>Partiels</th><th>Non satisfaits</th><th>À vérifier</th><th>Omissions</th><th>Sécurité</th><th>Points définitifs</th><th>Provisoires</th></tr></thead><tbody>
+{% for row in rows %}<tr><td><strong>{{ row.name }}</strong>{% if title.startswith('Par critère') %}<small>{{ row.key }}</small>{% endif %}
+<details><summary>Évolution</summary><ul>{% for point in row.series %}<li>{{ point.date }} · {{ 'Examen' if point.mode == 'exam' else 'Entraînement' }} · {{ point.points }}/{{ point.maximum }}</li>{% else %}<li>Aucun résultat définitif.</li>{% endfor %}</ul></details></td>
+<td>{{ row.satisfied }}</td><td>{{ row.partial }}</td><td>{{ row.failed }}</td><td>{{ row.pending }}</td><td>{{ row.omissions }}</td><td>{{ row.safety }}</td><td>{{ row.earned }}/{{ row.possible }}{% if row.percentage is not none %} ({{ row.percentage }} %){% endif %}</td><td>{{ row.provisional }}</td></tr>
+{% else %}<tr><td colspan="9">Aucun critère évaluable et autorisé pour ces filtres.</td></tr>{% endfor %}</tbody></table></div>{% endfor %}
+<details><summary>Répartition des tentatives</summary>{% for dimension, counts in report.dimensions.items() %}<p><strong>{{ {'case_version_id':'Version du cas (identifiant)', 'mode':'Mode', 'status':'État de la tentative', 'result_status':'État du résultat'}[dimension] }}</strong> : {% for value, count in counts.items() %}{{ value }} : {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endfor %}</details>
+</section>

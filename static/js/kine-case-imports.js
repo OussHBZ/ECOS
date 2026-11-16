@@ -8,7 +8,7 @@
         button.disabled = true;
         status.textContent = 'Création de la file de brouillons…';
         try {
-            const response = await fetch(uploadForm.action || window.location.href, {
+            const response = await secureFetch(uploadForm.action || window.location.href, {
                 method: 'POST', credentials: 'same-origin',
                 headers: {'Accept': 'application/json'},
                 body: new FormData(uploadForm)
@@ -45,7 +45,7 @@
         if (running || batch.dataset.batchStatus === 'completed') return;
         running = true;
         try {
-            const response = await fetch(batch.dataset.processUrl, {
+            const response = await secureFetch(batch.dataset.processUrl, {
                 method: 'POST', credentials: 'same-origin',
                 headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
                 body: JSON.stringify({limit: 3})
@@ -66,7 +66,7 @@
         window.setTimeout(processNext, 500);
     };
     batch.querySelector('[data-retry-errors]')?.addEventListener('click', async () => {
-        const response = await fetch(batch.dataset.retryUrl, {
+        const response = await secureFetch(batch.dataset.retryUrl, {
             method: 'POST', credentials: 'same-origin',
             headers: {'Accept': 'application/json'}
         });

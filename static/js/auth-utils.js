@@ -41,7 +41,7 @@ async function authenticatedFetch(url, options = {}) {
     }
 
     try {
-        const response = await fetch(url, finalOptions);
+        const response = await (typeof secureFetch === 'function' ? secureFetch : fetch)(url, finalOptions);
 
         if (response.status === 401) {
             try {

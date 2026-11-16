@@ -1,0 +1,45 @@
+{% set role = session.get('user_type', '') %}
+{% set is_kine = workspace|default('') == 'kine' or request.path.startswith('/kine') or session.get('workspace') == 'kine' or (current_user.is_authenticated and current_user.ecos_type|default('standard') == 'kine') %}
+{% set product = 'KardioX' if is_kine else 'ECOS' %}
+{% set role_label = {'student':'Étudiant', 'teacher':'Enseignant', 'admin':('Super-admin pédagogique' if admin_profile() == 'pedagogical' else 'Admin technique')}.get(role, '') %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ product }} · {{ role_label }}{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version|default('1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/kine.css') }}?v={{ app_version|default('1') }}">
+    {% block head %}{% endblock %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=redesign-1">
+</head>
+<body class="{% if role %}app-shell{% else %}public-page{% endif %} {% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#main-content">Aller au contenu</a>
+    {% if role %}{% include '_app_sidebar.html' %}{% endif %}
+    <div class="app-workspace">
+        <header class="app-header">
+            {% if role %}<button type="button" class="app-menu-button" data-menu-open aria-controls="app-navigation" aria-expanded="false">Menu</button>{% endif %}
+            <div class="app-header-context"><span>{{ product }}</span><span class="app-header-divider">/</span><span data-page-context>{{ role_label or 'Simulation clinique' }}</span></div>
+            <span class="app-header-account">{{ role_label or 'Faculté de Médecine et de Pharmacie de Marrakech' }}</span>
+        </header>
+        <main id="main-content" class="app-main {% block main_class %}{% endblock %}" tabindex="-1">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}<div class="kine-flashes" role="status">{% for category, message in messages %}<div class="kine-alert kine-alert--{{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+            {% endwith %}
+            {% block navigation %}{% endblock %}
+            {% if clinical_case and clinical_case.id and role in ['teacher','admin'] and is_kine %}
+            <nav class="app-breadcrumbs" aria-label="Fil d’Ariane"><a href="{{ url_for('kine.teacher_dashboard') }}#tous-les-cas">Cas cliniques</a><a href="{{ url_for('kine.case_item', case_id=clinical_case.id) }}">{{ clinical_case.case_number }}</a>{% if request.endpoint != 'kine.case_item' %}<span>Configuration du cas</span>{% endif %}</nav>
+            {% elif clinical_case and role == 'student' and is_kine %}
+            <nav class="app-breadcrumbs" aria-label="Fil d’Ariane"><a href="{{ url_for('kine.student_kine_home') }}">Mes cas cliniques</a><span>{{ clinical_case.case_number }}</span></nav>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+        <footer class="app-footer">{{ product }} · Formation et simulation clinique <span>FMPM · Marrakech</span></footer>
+    </div>
+    <script src="{{ url_for('static', filename='js/security.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app-shell.js') }}?v=redesign-1" defer></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

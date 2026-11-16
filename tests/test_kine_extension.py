@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from flask import Flask, g, has_app_context
+from flask.testing import FlaskClient
 from flask_login import LoginManager
 from openpyxl import load_workbook
 from PyPDF2 import PdfReader
@@ -20,6 +21,7 @@ from blueprints.kine.common import (
     canonicalize_medical_tests, normalize_vital_parameters, prune_empty,
 )
 from blueprints.admin import admin_bp
+from blueprints.teacher import teacher_bp
 from auth import auth_bp, student_required, teacher_required
 from document_processor import DocumentExtractionAgent
 from enhanced_evaluation_agent import EnhancedEvaluationAgent
@@ -29,7 +31,7 @@ from kine_evaluation import evaluate_kine_conversation
 from kine_patient_engine import KinePatientEngine
 from models import (
     db, KineCaseDraft, KineCaseImportBatch, PatientCase,
-    SimulationSession, Student, Teacher,
+    SimulationSession, Student, Teacher, TeacherStudentScope,
 )
 from progression_tracker import PHASES, NavigationLockedError, ProgressionTracker
 from simple_pdf_generator import (
@@ -39,9 +41,27 @@ from simple_pdf_generator import (
 from timeline_logger import append_timeline_event, format_timeline
 
 
+class BrowserTestClient(FlaskClient):
+    """Existing scenarios now send the same session CSRF token as the browser.
+
+    No server-side TESTING exemption. Security tests can pass csrf=False.
+    """
+    def open(self, *args, csrf=True, **kwargs):
+        method = kwargs.get('method', 'GET').upper()
+        if csrf and method not in ('GET', 'HEAD', 'OPTIONS'):
+            response = super().open('/csrf-token', method='GET')
+            token = (response.get_json(silent=True) or {}).get('csrf_token')
+            if token:
+                headers = dict(kwargs.get('headers') or {})
+                headers.setdefault('X-CSRF-Token', token)
+                kwargs['headers'] = headers
+        return super().open(*args, **kwargs)
+
+
 @pytest.fixture()
 def app():
     application = Flask(__name__, template_folder='../templates', static_folder='../static')
+    application.test_client_class = BrowserTestClient
     application.config.update(
         SECRET_KEY='test', TESTING=True,
         SQLALCHEMY_DATABASE_URI='sqlite:///:memory:',
@@ -49,6 +69,10 @@ def app():
     )
     db.init_app(application)
     login = LoginManager(application)
+
+    @application.route('/')
+    def index():
+        return 'Test home'
 
     @login.user_loader
     def load_user(user_id):
@@ -70,6 +94,7 @@ def app():
 
     application.register_blueprint(auth_bp)
     application.register_blueprint(admin_bp, url_prefix='/admin')
+    application.register_blueprint(teacher_bp, url_prefix='/teacher')
     application.register_blueprint(kine_bp)
     with application.app_context():
         db.create_all()
@@ -77,6 +102,9 @@ def app():
             Student(student_code='123456', name='Student', level='licence', group_name='Groupe A', ecos_type='kine'),
             Teacher(email='teacher@example.test', name='Teacher', password_hash='x', ecos_type='kine'),
         ])
+        db.session.commit()
+        # Explicit fixture attribution; production migration grants no scope.
+        db.session.add(TeacherStudentScope(teacher_id=1, student_id=1))
         db.session.commit()
     yield application
 
@@ -98,7 +126,19 @@ def student_login(client, student_id=1):
         g.pop('_login_user', None)
 
 
-def create_case(client, folder_id):
+def publish_and_assign(client, case_id, student_ids=None, group_names=None):
+    published = client.post(f'/kine/cases/{case_id}/versions/publish', json={})
+    assert published.status_code == 201
+    assigned = client.put(f'/kine/cases/{case_id}/availability', json={
+        'version_id': published.get_json()['id'],
+        'student_ids': [1] if student_ids is None else student_ids,
+        'group_names': group_names or [],
+    })
+    assert assigned.status_code == 200
+    return published.get_json()
+
+
+def create_case(client, folder_id, activate=True):
     response = client.post('/kine/cases', json={
         'case_number': 'KINE-001', 'folder_id': folder_id, 'level': 'both',
         'mode_availability': 'both', 'emotional_state': 'anxious',
@@ -117,7 +157,10 @@ def create_case(client, folder_id):
                        'scripted_reaction': 'Chest pain', 'severity': 'major'}],
     })
     assert response.status_code == 201
-    return response.get_json()['id']
+    case_id = response.get_json()['id']
+    if activate:
+        publish_and_assign(client, case_id)
+    return case_id
 
 
 def docx_bytes(text):
@@ -451,6 +494,8 @@ def test_kine_evaluation_agents(agent_class, level, count):
         {
             'specialty': 'kine',
             'student': SimpleNamespace(level=level),
+            # Explicit legacy reference: verify historical engine compatibility only.
+            '_frozen_evaluation_reference': __import__('case_versions').evaluation_reference(level),
             # A conflicting free-form value must never override Student.
             'student_level': 'master' if level == 'licence' else 'licence',
         },
@@ -520,6 +565,7 @@ def test_detailed_kine_evaluation_uses_only_unique_student_evidence(app):
     ], {
         'specialty': 'kine',
         'student': SimpleNamespace(level='licence'),
+        '_frozen_evaluation_reference': __import__('case_versions').evaluation_reference('licence'),
     }, DetailedLLM())
 
     history = next(
@@ -570,7 +616,8 @@ def test_kine_grid_is_selected_from_the_student_for_every_case(level, count, thr
         {'specialty': 'kine', 'level': 'licence', 'student': SimpleNamespace(level=level)},
     )
     assert result['level'] == level
-    assert len(result['section_scores']) == count
+    assert result['criteria'] == []
+    assert result['result_status'] == 'not_calculable' and result['points_earned'] is None
     assert result['validation_threshold'] == threshold
 
 
@@ -582,9 +629,7 @@ def test_kine_evaluation_ignores_free_form_master_level_without_student():
         }
     )
     assert result['level'] == 'licence'
-    assert 'incident_management' not in {
-        item['id'] for item in result['section_scores']
-    }
+    assert result['criteria'] == [] and result['result_status'] == 'not_calculable'
 
 
 def test_generic_evaluation_and_extraction_are_unchanged():
@@ -636,8 +681,9 @@ def test_progression_modes_and_payload():
     )
     assert len(master.to_frontend()['phases']) == 9
     assert master.to_frontend()['phases'][7]['key'] == 'incident_management'
-    with pytest.raises(NavigationLockedError, match='saut'):
-        master.navigate_to(7)
+    assert master.navigate_to(7)['current_phase'] == 7
+    assert master.to_frontend()['completed_phases'] == []
+    master.navigate_to(1)
     for target in range(2, 8):
         action = (
             'test_requested'
@@ -700,14 +746,15 @@ def test_progression_modes_and_payload():
     )
     initial = exam.to_frontend()
     assert initial['phases'][0]['status'] == 'current'
-    assert initial['phases'][1]['can_navigate'] is False
-    assert initial['phases'][2]['locked'] is True
-    assert initial['current_phase_ready'] is False
-    assert 'Éléments encore nécessaires' in initial['requirements_message']
-    with pytest.raises(NavigationLockedError): exam.navigate_to(3)
+    assert initial['phases'][1]['can_navigate'] is True
+    assert initial['phases'][2]['locked'] is False
+    assert initial['informative_only'] is True
+    assert initial['completed_phases'] == []
+    assert exam.navigate_to(3)['current_phase'] == 3
+    exam.navigate_to(1)
     exam.session['timeline'].append({'action': 'student_message', 'phase': 1})
     assert exam.next_phase()['current_phase'] == 2
-    with pytest.raises(NavigationLockedError): exam.navigate_to(1)
+    assert exam.navigate_to(1)['current_phase'] == 1
     master.navigate_to(7)
     for target in range(8, 10):
         master_state['timeline'].append({
@@ -718,107 +765,47 @@ def test_progression_modes_and_payload():
     assert master.to_frontend()['is_complete'] is False
 
 
-def test_training_progression_rejects_future_phase_and_api_phase_tampering(app):
+@pytest.mark.parametrize('mode', ['training', 'exam'])
+def test_d07_free_topic_navigation_without_automatic_validation(app, mode):
+    app.config['GROQ_CLIENT'] = SimpleNamespace(invoke=lambda *a, **k: SimpleNamespace(content='Je vous écoute.'))
     client = app.test_client()
     teacher_login(client)
-    folder_id = client.post(
-        '/kine/folders', json={'name': 'Verrouillage entraînement'}
-    ).get_json()['id']
+    folder_id = client.post('/kine/folders', json={'name': 'D07 navigation libre'}).get_json()['id']
     case_id = create_case(client, folder_id)
+    exam_id = None
+    if mode == 'exam':
+        now = datetime.utcnow()
+        exam = client.post('/kine/exams', json={
+            'name': 'D07 examen', 'start_at': (now-timedelta(minutes=1)).isoformat(),
+            'end_at': (now+timedelta(hours=1)).isoformat(), 'max_duration_minutes': 30,
+            'case_ids': [case_id], 'student_ids': [1],
+        })
+        assert exam.status_code == 201
+        exam_id = exam.get_json()['id']
     student_login(client)
-    session_id = client.post('/kine/simulation/start', json={
-        'case_id': case_id, 'mode': 'training',
+    sid = client.post('/kine/simulation/start', json={
+        'case_id': case_id, 'mode': mode, 'exam_id': exam_id,
     }).get_json()['simulation_id']
-
-    missing = client.post(f'/kine/simulation/{session_id}/progress', json={
-        'phase': 2,
-    })
-    assert missing.status_code == 409
-    assert 'Éléments encore nécessaires' in missing.get_json()['error']
-
-    tampered = client.post(f'/kine/simulation/{session_id}/progress', json={
-        'phase': 10, 'current_phase': 10,
-        'timeline': [{'action': 'student_message', 'phase': 9}],
-    })
-    assert tampered.status_code == 409
-    assert 'comprise entre 1 et 8' in tampered.get_json()['error']
+    for phase in (7, 2, 4, 1):
+        response = client.post(f'/kine/simulation/{sid}/progress', json={'phase': phase})
+        assert response.status_code == 200
+        state = response.get_json()
+        assert state['current_phase'] == phase and state['completed_phases'] == []
+        assert state['informative_only'] is True
+        assert all(item['status'] != 'completed' for item in state['phases'])
+    message = client.post(f'/kine/simulation/{sid}/message', json={'message': 'Bonjour.'})
+    assert message.status_code == 200
+    assert message.get_json()['progress']['current_phase'] == 1
+    for invalid in (0, -1, 10, 'unknown'):
+        assert client.post(f'/kine/simulation/{sid}/progress', json={
+            'phase': invalid, 'current_phase': 10, 'timeline': [{'action':'phase_change'}],
+        }).status_code == 409
     with app.app_context():
-        assert db.session.get(SimulationSession, session_id).current_phase == 1
-
-    client.post(f'/kine/simulation/{session_id}/message', json={
-        'message': 'Bonjour, je suis votre kinésithérapeute.',
-    })
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 3}
-    ).status_code == 409
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 2}
-    ).status_code == 200
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 1}
-    ).status_code == 200
-    # La phase 2 est déjà réalisée, mais la phase 3 ne peut pas être sautée
-    # directement depuis la phase 1.
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 3}
-    ).status_code == 409
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 2}
-    ).status_code == 200
-
-
-def test_exam_progression_is_strict_and_completed_phases_stay_locked(app):
-    client = app.test_client()
-    teacher_login(client)
-    folder_id = client.post(
-        '/kine/folders', json={'name': 'Verrouillage examen'}
-    ).get_json()['id']
-    case_id = create_case(client, folder_id)
-    now = datetime.utcnow()
-    exam = client.post('/kine/exams', json={
-        'name': 'Examen progression stricte',
-        'start_at': (now - timedelta(minutes=1)).isoformat(),
-        'end_at': (now + timedelta(hours=1)).isoformat(),
-        'max_duration_minutes': 30,
-        'case_ids': [case_id], 'student_ids': [1],
-    })
-    assert exam.status_code == 201
-    student_login(client)
-    session_id = client.post('/kine/simulation/start', json={
-        'case_id': case_id, 'mode': 'exam',
-        'exam_id': exam.get_json()['id'],
-    }).get_json()['simulation_id']
-
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 2}
-    ).status_code == 409
-    client.post(f'/kine/simulation/{session_id}/message', json={
-        'message': 'Bonjour, je suis votre kinésithérapeute.',
-    })
-    automatically_advanced = client.get(
-        f'/kine/simulation/{session_id}/progress'
-    ).get_json()
-    assert automatically_advanced['current_phase'] == 2
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress',
-        json={'phase': 3, 'current_phase': 3},
-    ).status_code == 409
-    manual_next = client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 2}
-    )
-    assert manual_next.status_code == 409
-    assert 'avancement est automatique' in manual_next.get_json()['error']
-    state = client.get(f'/kine/simulation/{session_id}/progress').get_json()
-    assert state['phases'][0]['locked'] is True
-    assert state['phases'][0]['can_navigate'] is False
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 1}
-    ).status_code == 409
-    assert client.post(
-        f'/kine/simulation/{session_id}/progress', json={'phase': 10}
-    ).status_code == 409
-    with app.app_context():
-        assert db.session.get(SimulationSession, session_id).current_phase == 2
+        simulation = db.session.get(SimulationSession, sid)
+        assert simulation.current_phase == 1 and simulation.evaluation_results is None
+        assert len(simulation.conversation) == 2
+        assert simulation.conversation[0]['content'] == 'Bonjour.'
+        assert not any(event.get('action') == 'competency_validated' for event in simulation.timeline)
 
 
 def test_patient_engine_values_incidents_and_diagnosis_guard():
@@ -1043,6 +1030,7 @@ def test_student_only_receives_obtained_vital_moment(app):
             }],
         })
         db.session.commit()
+    publish_and_assign(client, case_id)
 
     student_login(client)
     initial = client.get(
@@ -1071,6 +1059,7 @@ def test_student_only_receives_obtained_vital_moment(app):
 
 
 def test_student_level_authoritatively_controls_tracker_incidents_and_evaluation(app):
+    app.config['GROQ_CLIENT'] = SimpleNamespace(invoke=lambda *a, **k: SimpleNamespace(content='Je vous écoute.'))
     client = app.test_client()
     teacher_login(client)
     folder_id = client.post(
@@ -1086,6 +1075,14 @@ def test_student_level_authoritatively_controls_tracker_incidents_and_evaluation
         db.session.add(master_student)
         db.session.commit()
         master_id = master_student.id
+        db.session.add(TeacherStudentScope(teacher_id=1, student_id=master_id))
+        db.session.commit()
+
+    teacher_login(client)
+    availability = client.get(f'/kine/cases/{case_id}/availability').get_json()
+    assert client.put(f'/kine/cases/{case_id}/availability', json={
+        'version_id': availability['version_id'], 'student_ids': [1, master_id],
+    }).status_code == 200
 
     student_login(client, 1)
     licence_start = client.post('/kine/simulation/start', json={
@@ -1113,9 +1110,8 @@ def test_student_level_authoritatively_controls_tracker_incidents_and_evaluation
         f'/kine/simulation/{licence_session}/complete', json={}
     ).get_json()['evaluation']
     assert licence_evaluation['level'] == 'licence'
-    assert 'incident_management' not in {
-        item['id'] for item in licence_evaluation['section_scores']
-    }
+    assert licence_evaluation['criteria'] == []
+    assert licence_evaluation['result_status'] == 'not_calculable'
 
     student_login(client, master_id)
     master_start = client.post('/kine/simulation/start', json={
@@ -1142,9 +1138,9 @@ def test_student_level_authoritatively_controls_tracker_incidents_and_evaluation
         f'/kine/simulation/{master_session}/complete', json={}
     ).get_json()['evaluation']
     assert master_evaluation['level'] == 'master'
-    assert 'incident_management' in {
-        item['id'] for item in master_evaluation['section_scores']
-    }
+    # A scenario incident does not activate assessment criteria automatically.
+    assert master_evaluation['criteria'] == []
+    assert master_evaluation['result_status'] == 'not_calculable'
 
 
 def test_patient_engine_blocks_prompt_injection_and_privileged_disclosure_before_llm():
@@ -1394,7 +1390,8 @@ def test_timeline_logger_order_and_formatting():
     assert legacy[0]['action_label'] == 'Changement de phase'
 
 
-def test_crud_simulation_timeline_dashboard_and_exports(app):
+def test_crud_simulation_timeline_dashboard_and_exports(app, monkeypatch):
+    app.config['GROQ_CLIENT'] = SimpleNamespace(invoke=lambda *a, **k: SimpleNamespace(content='Je vous écoute.'))
     client = app.test_client(); teacher_login(client)
     folder = client.post('/kine/folders', json={'name': 'Cardiac surgery'}); assert folder.status_code == 201
     case_id = create_case(client, folder.get_json()['id'])
@@ -1413,11 +1410,15 @@ def test_crud_simulation_timeline_dashboard_and_exports(app):
         'case_id': case_id, 'mode': 'exam', 'exam_id': exam.get_json()['id']
     })
     assert exam_started.status_code == 201 and exam_started.get_json().get('deadline')
-    with app.app_context():
-        timed = db.session.get(SimulationSession, exam_started.get_json()['simulation_id'])
-        timed.started_at = datetime.utcnow() - timedelta(minutes=31)
-        db.session.commit()
-    assert client.get(f"/kine/simulation/{exam_started.get_json()['simulation_id']}/progress").status_code == 200
+    # Advance server time to the frozen deadline, rather than rewrite an attempt's start.
+    from blueprints.kine import routes_student
+    end = datetime.fromisoformat(exam_started.get_json()['deadline'].removesuffix('Z'))
+    class ExpiredClock(datetime):
+        @classmethod
+        def utcnow(cls): return end
+    with monkeypatch.context() as clock:
+        clock.setattr(routes_student, 'datetime', ExpiredClock)
+        assert client.get(f"/kine/simulation/{exam_started.get_json()['simulation_id']}/progress").status_code == 200
     with app.app_context():
         assert db.session.get(SimulationSession, exam_started.get_json()['simulation_id']).status == 'completed'
     assert client.get(f'/kine/cases/{case_id}/patient-record', headers={'Accept': 'application/json'}).status_code == 200
@@ -1441,7 +1442,9 @@ def test_crud_simulation_timeline_dashboard_and_exports(app):
     assert client.get('/kine/history').status_code == 200
     completed = client.post(f'/kine/simulation/{session_id}/complete', json={}); assert completed.status_code == 200
     assert completed.get_json()['status'] == 'completed'
-    assert len(completed.get_json()['evaluation']['section_scores']) == 7
+    assert completed.get_json()['evaluation']['criteria'] == []
+    assert completed.get_json()['evaluation']['result_status'] == 'not_calculable'
+    assert completed.get_json()['evaluation']['points_earned'] is None
     assert completed.get_json()['evaluation']['student']['name'] == 'Student'
     assert completed.get_json()['evaluation']['student']['student_code'] == '123456'
     assert len(completed.get_json()['progress']['phases']) == 8
@@ -1494,8 +1497,8 @@ def test_crud_simulation_timeline_dashboard_and_exports(app):
     history_html = client.get('/kine/history').get_data(as_text=True)
     assert 'Feedback enseignant' in history_html
     assert 'Afficher le détail de l’évaluation' in history_html
-    assert 'Éléments attendus' in history_html
-    assert 'Absent ou restant à réaliser' in history_html
+    assert 'Résultat non calculable' in history_html
+    assert 'None/20' not in history_html
     assert 'Bonne progression.' in history_html
     assert 'Consulter le feedback' in history_html
     completed_chat = client.get(
@@ -1505,10 +1508,10 @@ def test_crud_simulation_timeline_dashboard_and_exports(app):
         f'/kine/simulation/{session_id}/timeline'
     ).get_data(as_text=True)
     assert 'Bonne progression.' in completed_chat
-    assert 'Critère évalué' in completed_chat
+    assert 'Résultat non calculable' in completed_chat
     assert 'Code Apogée 123456' in completed_chat
     assert 'Bonne progression.' in completed_timeline
-    assert 'Justification de la section' in completed_timeline
+    assert 'Résultat non calculable' in completed_timeline
 
     teacher_login(client)
     archive = client.post('/kine/dashboard/conversations/pdf', data={'session_ids': str(session_id)})
@@ -1726,11 +1729,12 @@ def test_training_only_case_cannot_be_added_to_exam(app):
         'patient_record': {'identity': {}, 'medical_context': {}, 'medical_history': {},
                            'tests': {}, 'reference_vitals': {}},
     }).get_json()
+    version = client.post(f"/kine/cases/{case['id']}/versions/publish", json={}).get_json()
     now = datetime.utcnow()
     exam = client.post('/kine/exams', json={
         'name': 'Filtered exam', 'start_at': now.isoformat(),
         'end_at': (now + timedelta(hours=1)).isoformat(), 'max_duration_minutes': 20,
-        'case_ids': [case['id']], 'student_ids': [1],
+        'case_version_ids': [version['id']], 'student_ids': [1],
     })
     assert exam.status_code == 400
     assert 'mode examen' in exam.get_json()['error']
@@ -1784,6 +1788,10 @@ def test_exam_student_search_selection_and_persistence(app):
         db.session.add(master)
         db.session.commit()
         master_id = master.id
+
+        # D02 pp.97–98: searching an exam roster needs an explicit follow grant.
+        db.session.add(TeacherStudentScope(teacher_id=1, student_id=master_id))
+        db.session.commit()
 
     client = app.test_client()
     teacher_login(client)
@@ -2066,6 +2074,7 @@ def test_student_initial_record_never_exposes_kine_assessment_or_test_values(app
         },
     })
     assert teacher_update.status_code == 200
+    publish_and_assign(client, case_id)
 
     # The teacher form still receives and displays the complete persisted data.
     teacher_html = client.get(f'/kine/cases/{case_id}').get_data(as_text=True)
@@ -2085,8 +2094,9 @@ def test_student_initial_record_never_exposes_kine_assessment_or_test_values(app
 
     assert 'Bilan kinésithérapique' not in html
     assert 'physiotherapy_assessment' not in template_source
-    assert 'record.tests' not in template_source
-    assert 'record.reference_vitals' not in template_source
+    # T04 (pp. 12-14) replaces the old static template exclusion: these
+    # containers may render only the server projection after an actual reveal.
+    assert 'Résultats effectivement obtenus' not in html
     for marker in (assessment_marker, test_marker, reference_marker, 'SpO2 88 %'):
         assert marker not in html
         assert marker not in json.dumps(initial_json, ensure_ascii=False)
@@ -2109,6 +2119,16 @@ def test_student_initial_record_never_exposes_kine_assessment_or_test_values(app
     ).get_json()['response']
     assert announced['type'] == 'test_result'
     assert announced['content'] == f'{test_marker} m'
+    revealed_html = client.get(
+        f'/kine/simulation/{session_id}/patient-record'
+    ).get_data(as_text=True)
+    revealed_json = client.get(
+        f'/kine/simulation/{session_id}/patient-record',
+        headers={'Accept': 'application/json'},
+    ).get_json()['record']
+    assert test_marker in revealed_html
+    assert test_marker in json.dumps(revealed_json, ensure_ascii=False)
+    assert assessment_marker not in revealed_html
 
     with app.app_context():
         stored = db.session.get(PatientCase, case_id).patient_record

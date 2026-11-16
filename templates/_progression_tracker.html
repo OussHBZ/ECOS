@@ -15,18 +15,18 @@
 {% set current_item = tracker_phases[tracker_phase - 1] %}
 <section class="kine-tracker" data-kine-tracker
          data-mode="{{ tracker_mode }}" data-current-phase="{{ tracker_phase }}"
-         data-progress-url="{{ progress_url|default('') }}" aria-label="Progression de la consultation">
+         data-progress-url="{{ progress_url|default('') }}" aria-label="Repère informatif de la consultation">
     <div class="kine-tracker__summary">
         <div><strong>Phase {{ tracker_phase }}/{{ tracker_phases|length }}</strong> <span data-tracker-phase-label>{{ current_item.label }}</span></div>
-        <div><span data-tracker-percentage>{{ tracker_percentage }}</span>%</div>
+        <div>Position du repère : <span data-tracker-percentage>{{ tracker_percentage }}</span>%</div>
     </div>
-    <div class="kine-tracker__bar" role="progressbar" aria-label="Progression globale"
+    <div class="kine-tracker__bar" role="progressbar" aria-label="Position dans le repère, sans validation de compétence"
          aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ tracker_percentage }}">
         <span data-tracker-bar style="width:{{ tracker_percentage }}%"></span>
     </div>
     <ol class="kine-tracker__steps">
         {% for phase in tracker_phases %}
-        <li class="kine-tracker__step{% if phase.number < tracker_phase %} is-complete{% elif phase.number == tracker_phase %} is-current{% else %} is-remaining{% endif %}"
+        <li class="kine-tracker__step{% if phase.number == tracker_phase %} is-current{% else %} is-remaining{% endif %}"
             data-phase="{{ phase.number }}" data-phase-label="{{ phase.label }}"
             data-phase-guidance="{{ phase.guidance }}">
             <button type="button" data-phase-button="{{ phase.number }}"

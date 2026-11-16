@@ -14,21 +14,21 @@ let selectedStations = [];
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('Admin interface initializing...');
-    
+
     // First, check session status
     const isAuthenticated = await initializeSessionCheck('admin');
     if (!isAuthenticated) {
         return; // Stop initialization if not authenticated
     }
-    
+
     // Start session monitoring
     startSessionMonitoring();
-    
+
     console.log('Admin interface authenticated and initialized');
-    
+
     // Load overview data by default
     await loadOverviewData();
-    
+
     // Set up event listeners for search inputs
     const stationsSearch = document.getElementById('admin-stations-search');
     if (stationsSearch) {
@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         });
     }
-    
+
     const studentsSearch = document.getElementById('admin-students-search');
     if (studentsSearch) {
         studentsSearch.addEventListener('keypress', (event) => {
@@ -47,18 +47,18 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         });
     }
-    
+
     // Add event listeners for student and station search in modal
     const studentSearch = document.getElementById('student-search');
     if (studentSearch) {
         studentSearch.addEventListener('input', updateAvailableStudentsList);
     }
-    
+
     const stationSearch = document.getElementById('station-search');
     if (stationSearch) {
         stationSearch.addEventListener('input', updateAvailableStationsList);
     }
-    
+
     // Set up form event listeners - PREVENT DOUBLE BINDING
     // Competition session form
     const competitionForm = document.getElementById('create-competition-session-form');
@@ -66,24 +66,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Remove any existing event listeners by cloning the form
         const newCompetitionForm = competitionForm.cloneNode(true);
         competitionForm.parentNode.replaceChild(newCompetitionForm, competitionForm);
-        
+
         // Add the event listener to the new form
         newCompetitionForm.addEventListener('submit', createCompetitionSession);
         console.log('Competition session form event listener attached');
     }
-    
+
     // Regular session form
     const createSessionForm = document.getElementById('create-session-form');
     if (createSessionForm) {
         // Remove any existing event listeners by cloning the form
         const newSessionForm = createSessionForm.cloneNode(true);
         createSessionForm.parentNode.replaceChild(newSessionForm, createSessionForm);
-        
+
         // Add the event listener to the new form
         newSessionForm.addEventListener('submit', createSession);
         console.log('Regular session form event listener attached');
     }
-    
+
     // Close modal functionality
     document.querySelectorAll('.close-modal').forEach(closeBtn => {
         closeBtn.addEventListener('click', function() {
@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         });
     });
-    
+
     // Close modals when clicking outside
     window.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) {
@@ -112,17 +112,17 @@ document.addEventListener('DOMContentLoaded', async function() {
 // Tab navigation for admin interface
 function showAdminTab(tabName) {
     console.log('Showing admin tab:', tabName);
-    
+
     // Hide all tab contents
     document.querySelectorAll('.admin-tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
-    
+
     // Remove active class from all nav tabs
     document.querySelectorAll('.admin-nav-tabs .nav-tab').forEach(tab => {
         tab.classList.remove('active');
     });
-    
+
     // Show selected tab
     const selectedTab = document.getElementById(tabName);
     if (selectedTab) {
@@ -131,12 +131,15 @@ function showAdminTab(tabName) {
         console.error('Tab not found:', tabName);
         return;
     }
-    
+
     // Add active class to clicked nav tab
-    if (event && event.target) {
-        event.target.classList.add('active');
-    }
-    
+    document.querySelectorAll('[data-app-tab]').forEach(button => {
+        const active = button.dataset.appTab === tabName;
+        button.classList.toggle('active', active);
+        if (active) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+    });
+
     // Load content for specific tabs
     if (tabName === 'overview-tab') {
         loadOverviewData();
@@ -154,33 +157,33 @@ function showAdminTab(tabName) {
 async function loadAdminCompetitionSessions() {
     try {
         console.log('Loading admin competition sessions...');
-        
+
         const response = await authenticatedFetch('/admin/competition-sessions');
         if (!response) return; // Authentication failed
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         console.log('Competition sessions data:', data);
-        
+
         // Update stats
         const totalSessionsElement = document.getElementById('total-sessions');
         const scheduledSessionsElement = document.getElementById('scheduled-sessions');
         const activeSessionsElement = document.getElementById('active-sessions');
-        
+
         if (totalSessionsElement) totalSessionsElement.textContent = data.total;
         if (scheduledSessionsElement) scheduledSessionsElement.textContent = data.scheduled;
         if (activeSessionsElement) activeSessionsElement.textContent = data.active;
-        
+
         // Update table
         const tableBody = document.getElementById('competition-sessions-table-body');
         if (!tableBody) {
             console.error('Competition sessions table body not found');
             return;
         }
-        
+
         tableBody.innerHTML = '';
 
         const competitionSessions = data.sessions || [];
@@ -192,19 +195,19 @@ async function loadAdminCompetitionSessions() {
 
                 // Determine button visibility based on status
                 let actionButtons = `<button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>`;
-                
+
                 if (session.status === 'scheduled' && session.can_start) {
                     actionButtons += `<button class="start-button" onclick="startCompetition(${session.id})">Démarrer</button>`;
                 }
-                
+
                 if (session.status === 'scheduled') {
                     actionButtons += `<button class="edit-button" onclick="editCompetitionSession(${session.id})">Modifier</button>`;
                 }
-                
+
                 // Always show delete button, but with different styling
                 const deleteButtonClass = session.status === 'active' ? 'delete-button warning' : 'delete-button';
                 actionButtons += `<button class="${deleteButtonClass}" onclick="deleteCompetitionSession(${session.id})">Supprimer</button>`;
-                
+
                 row.innerHTML = `
                     <td>${session.name}</td>
                     <td>${session.start_time}</td>
@@ -218,13 +221,13 @@ async function loadAdminCompetitionSessions() {
                 `;
                 tableBody.appendChild(row);
             });
-            
+
             // Update status displays
             setTimeout(updateSessionStatusDisplay, 100);
         }
-        
+
         console.log('Competition sessions loaded successfully');
-        
+
     } catch (error) {
         console.error('Error loading admin competition sessions:', error);
         const tableBody = document.getElementById('competition-sessions-table-body');
@@ -238,14 +241,14 @@ async function loadAdminCompetitionSessions() {
 async function viewCompetitionSessionDetails(sessionId) {
     try {
         console.log(`Viewing competition session details for ID: ${sessionId}`);
-        
+
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}`);
         if (!response.ok) {
             throw new Error('Failed to load session details');
         }
-        
+
         const sessionData = await response.json();
-        
+
         // Create session details HTML
         let detailsHTML = `
             <div class="competition-session-details">
@@ -254,7 +257,7 @@ async function viewCompetitionSessionDetails(sessionId) {
                 <p><strong>Début:</strong> ${sessionData.start_time}</p>
                 <p><strong>Fin:</strong> ${sessionData.end_time}</p>
                 <p><strong>Statut:</strong> <span class="status-badge status-${sessionData.status}">${sessionData.status_display}</span></p>
-                
+
                 <div class="competition-settings">
                     <h5>Paramètres de la Compétition</h5>
                     <p><strong>Stations par session:</strong> ${sessionData.stations_per_session}</p>
@@ -262,28 +265,28 @@ async function viewCompetitionSessionDetails(sessionId) {
                     <p><strong>Temps entre stations:</strong> ${sessionData.time_between_stations} minutes</p>
                     <p><strong>Stations aléatoires:</strong> ${sessionData.randomize_stations ? 'Oui' : 'Non'}</p>
                 </div>
-                
+
                 <h5>Participants (${sessionData.participants.length})</h5>
                 <div class="participants-list">`;
-        
+
         if (sessionData.participants.length > 0) {
             sessionData.participants.forEach(participant => {
                 detailsHTML += `
                     <div class="participant-item">
                         <strong>${participant.name}</strong> (${participant.student_code})
-                        <small>Statut: ${getStatusDisplay(participant.status)} | 
-                               Station: ${participant.current_station}/${sessionData.stations_per_session} | 
+                        <small>Statut: ${getStatusDisplay(participant.status)} |
+                               Station: ${participant.current_station}/${sessionData.stations_per_session} |
                                Progrès: ${participant.progress}%</small>
                     </div>`;
             });
         } else {
             detailsHTML += '<p>Aucun participant</p>';
         }
-        
+
         detailsHTML += `</div>
                 <h5>Banque de Stations (${sessionData.stations.length})</h5>
                 <div class="stations-list">`;
-        
+
         if (sessionData.stations.length > 0) {
             sessionData.stations.forEach(station => {
                 detailsHTML += `
@@ -296,9 +299,9 @@ async function viewCompetitionSessionDetails(sessionId) {
         } else {
             detailsHTML += '<p>Aucune station assignée</p>';
         }
-        
+
         detailsHTML += '</div>';
-        
+
         // Add leaderboard if available
         if (sessionData.leaderboard && sessionData.leaderboard.length > 0) {
             detailsHTML += `
@@ -314,7 +317,7 @@ async function viewCompetitionSessionDetails(sessionId) {
                             </tr>
                         </thead>
                         <tbody>`;
-            
+
             sessionData.leaderboard.slice(0, 10).forEach(entry => {
                 detailsHTML += `
                     <tr>
@@ -324,22 +327,22 @@ async function viewCompetitionSessionDetails(sessionId) {
                         <td>${entry.stations_completed}</td>
                     </tr>`;
             });
-            
+
             detailsHTML += '</tbody></table></div>';
         }
-        
+
         detailsHTML += '</div>';
-        
+
         // Show in modal
         let modal = document.getElementById('competition-session-details-modal');
         if (!modal) {
             modal = createCompetitionSessionDetailsModal();
         }
-        
+
         document.getElementById('competition-session-details-content').innerHTML = detailsHTML;
         modal.classList.remove('hidden');
         modal.classList.add('visible');
-        
+
     } catch (error) {
         console.error('Error viewing competition session details:', error);
         alert('Erreur lors du chargement des détails de la session de compétition');
@@ -351,21 +354,21 @@ async function startCompetition(sessionId) {
     if (!confirm('Êtes-vous sûr de vouloir démarrer cette compétition ? Cette action est irréversible.')) {
         return;
     }
-    
+
     try {
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/start`, {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
             loadAdminCompetitionSessions(); // Refresh sessions list
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error starting competition:', error);
         alert('Erreur lors du démarrage de la compétition');
@@ -376,15 +379,15 @@ async function startCompetition(sessionId) {
 async function editCompetitionSession(sessionId) {
     try {
         console.log(`Editing competition session ID: ${sessionId}`);
-        
+
         // Load current session data
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/edit`);
         if (!response.ok) {
             throw new Error('Failed to load session data for editing');
         }
-        
+
         const sessionData = await response.json();
-        
+
         // Populate the create competition session modal with existing data
         document.getElementById('competition-session-name').value = sessionData.name;
         document.getElementById('competition-session-description').value = sessionData.description || '';
@@ -394,41 +397,41 @@ async function editCompetitionSession(sessionId) {
         document.getElementById('time-per-station').value = sessionData.time_per_station;
         document.getElementById('time-between-stations').value = sessionData.time_between_stations;
         document.getElementById('randomize-stations').checked = sessionData.randomize_stations;
-        
+
         // Load available students and stations
         await loadAvailableStudents();
         await loadAvailableStations();
-        
+
         // Pre-select participants
-        selectedStudents = availableStudents.filter(student => 
+        selectedStudents = availableStudents.filter(student =>
             sessionData.participants.includes(student.id)
         );
-        
+
         // Pre-select stations
-        selectedStations = availableStations.filter(station => 
+        selectedStations = availableStations.filter(station =>
             sessionData.stations.includes(station.case_number)
         );
-        
+
         updateSelectedStudentsList();
         updateSelectedStationsList();
-        
+
         // Change form behavior for editing
         const form = document.getElementById('create-competition-session-form');
         form.dataset.editMode = 'true';
         form.dataset.sessionId = sessionId;
-        
+
         // Change modal title
         const modalTitle = document.querySelector('#create-competition-session-modal h3');
         modalTitle.textContent = 'Modifier la Session de Compétition';
-        
+
         // Change submit button text
         const submitButton = document.querySelector('#create-competition-session-form button[type="submit"]');
         submitButton.textContent = 'Mettre à jour la Session';
-        
+
         // Show modal
         document.getElementById('create-competition-session-modal').classList.remove('hidden');
         document.getElementById('create-competition-session-modal').classList.add('visible');
-        
+
     } catch (error) {
         console.error('Error editing competition session:', error);
         alert('Erreur lors du chargement des données de la session');
@@ -443,12 +446,12 @@ async function deleteCompetitionSession(sessionId) {
         if (!detailsResponse.ok) {
             throw new Error('Impossible de récupérer les détails de la session');
         }
-        
+
         const sessionData = await detailsResponse.json();
-        
+
         // Create appropriate confirmation message based on session status
         let confirmMessage = `Êtes-vous sûr de vouloir supprimer la session "${sessionData.name}" ?`;
-        
+
         if (sessionData.status === 'active') {
             confirmMessage = `⚠️ ATTENTION: La session "${sessionData.name}" est actuellement ACTIVE!\n\n`;
             confirmMessage += `Participants: ${sessionData.participants.length}\n`;
@@ -470,36 +473,36 @@ async function deleteCompetitionSession(sessionId) {
             confirmMessage += `• Les données de classement\n\n`;
             confirmMessage += `Cette action est irréversible.`;
         }
-        
+
         if (!confirm(confirmMessage)) {
             return;
         }
-        
+
         // Show loading state
         const deleteButtons = document.querySelectorAll(`button[onclick*="deleteCompetitionSession(${sessionId})"]`);
         deleteButtons.forEach(btn => {
             btn.disabled = true;
             btn.textContent = 'Suppression...';
         });
-        
+
         console.log(`Deleting competition session ID: ${sessionId}`);
-        
+
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/delete`, {
             method: 'DELETE'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             // Show success message
             showSuccessMessage(result.message);
-            
+
             // Refresh the sessions list
             await loadAdminCompetitionSessions();
         } else {
             // Show detailed error message
             const errorMessage = result.error || 'Erreur inconnue lors de la suppression';
-            
+
             // Provide specific guidance based on error type
             if (errorMessage.includes('active participants')) {
                 alert(`❌ ${errorMessage}\n\n💡 Solutions possibles:\n• Attendez que tous les participants terminent\n• Annulez la session depuis l'interface de gestion\n• Contactez les participants pour qu'ils quittent la session`);
@@ -509,7 +512,7 @@ async function deleteCompetitionSession(sessionId) {
                 alert(`❌ Erreur: ${errorMessage}`);
             }
         }
-        
+
     } catch (error) {
         console.error('Error deleting competition session:', error);
         alert(`❌ Erreur de connexion: ${error.message}\n\nVérifiez votre connexion et réessayez.`);
@@ -531,7 +534,7 @@ function showSuccessMessage(message) {
         position: fixed;
         top: 20px;
         right: 20px;
-        background: #4CAF50;
+        background: var(--success-color);
         color: white;
         padding: 15px 20px;
         border-radius: 8px;
@@ -540,17 +543,17 @@ function showSuccessMessage(message) {
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         animation: slideIn 0.3s ease-out;
     `;
-    
+
     successDiv.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>✅ ${message}</span>
-            <button onclick="this.parentElement.parentElement.remove()" 
-                    style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px;">&times;</button>
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()"
+                    style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; margin-left: 10px;">Supprimer</button>
         </div>
     `;
-    
+
     document.body.appendChild(successDiv);
-    
+
     // Auto-remove after 5 seconds
     setTimeout(() => {
         if (successDiv.parentElement) {
@@ -562,20 +565,20 @@ function showSuccessMessage(message) {
 function updateSessionStatusDisplay() {
     // Add visual indicators for session status in the table
     const sessionRows = document.querySelectorAll('#competition-sessions-table-body tr');
-    
+
     sessionRows.forEach(row => {
         const statusBadge = row.querySelector('.status-badge');
         const deleteButton = row.querySelector('.delete-button');
-        
+
         if (statusBadge && deleteButton) {
             const status = statusBadge.textContent.toLowerCase();
-            
+
             // Add warning for active sessions
             if (status.includes('cours') || status.includes('active')) {
-                deleteButton.style.background = '#ff9800';
+                deleteButton.style.background = 'var(--warning-color)';
                 deleteButton.title = '⚠️ Session active - suppression avec précaution';
             } else if (status.includes('programmé') || status.includes('scheduled')) {
-                deleteButton.style.background = '#f44336';
+                deleteButton.style.background = 'var(--error-color)';
                 deleteButton.title = 'Supprimer la session programmée';
             } else {
                 deleteButton.style.background = '#9e9e9e';
@@ -588,7 +591,7 @@ function updateSessionStatusDisplay() {
 // Competition session functions (add more as needed)
 function openCreateCompetitionSessionModal() {
     console.log('Opening create competition session modal...');
-    
+
     // Reset form to creation mode
     const form = document.getElementById('create-competition-session-form');
     if (form) {
@@ -596,26 +599,26 @@ function openCreateCompetitionSessionModal() {
         delete form.dataset.editMode;
         delete form.dataset.sessionId;
     }
-    
+
     // Reset modal title and button text
     const modalTitle = document.querySelector('#create-competition-session-modal h3');
     if (modalTitle) {
         modalTitle.textContent = 'Créer une Nouvelle Session de Compétition';
     }
-    
+
     const submitButton = document.querySelector('#create-competition-session-form button[type="submit"]');
     if (submitButton) {
         submitButton.textContent = 'Créer la Session';
     }
-    
+
     // Reset selections
     selectedStudents = [];
     selectedStations = [];
-    
+
     // Load data
     loadAvailableStudents();
     loadAvailableStations();
-    
+
     // Show modal
     const modal = document.getElementById('create-competition-session-modal');
     if (modal) {
@@ -633,19 +636,19 @@ function openCreateCompetitionSessionModal() {
 function closeCreateCompetitionSessionModal() {
     const modal = document.getElementById('create-competition-session-modal');
     const form = document.getElementById('create-competition-session-form');
-    
+
     // Reset edit mode
     delete form.dataset.editMode;
     delete form.dataset.sessionId;
-    
+
     // Reset modal title
     const modalTitle = document.querySelector('#create-competition-session-modal h3');
     modalTitle.textContent = 'Créer une Nouvelle Session de Compétition';
-    
+
     // Reset submit button text
     const submitButton = document.querySelector('#create-competition-session-form button[type="submit"]');
     submitButton.textContent = 'Créer la Session';
-    
+
     // Hide modal and reset form
     modal.classList.remove('visible');
     modal.classList.add('hidden');
@@ -661,15 +664,15 @@ function createCompetitionSessionDetailsModal() {
     const modalHTML = `
         <div id="competition-session-details-modal" class="modal hidden">
             <div class="modal-content">
-                <span class="close-modal">&times;</span>
+                <span class="close-modal">Fermer</span>
                 <h3>Détails de la Session de Compétition</h3>
                 <div id="competition-session-details-content"></div>
             </div>
         </div>
     `;
-    
+
     document.body.insertAdjacentHTML('beforeend', modalHTML);
-    
+
     // Add close functionality
     const modal = document.getElementById('competition-session-details-modal');
     const closeBtn = modal.querySelector('.close-modal');
@@ -677,7 +680,7 @@ function createCompetitionSessionDetailsModal() {
         modal.classList.remove('visible');
         modal.classList.add('hidden');
     });
-    
+
     return modal;
 }
 
@@ -685,60 +688,60 @@ function createCompetitionSessionDetailsModal() {
 async function createCompetitionSession(event) {
     event.preventDefault();
     event.stopPropagation(); // Prevent event bubbling
-    
+
     const form = event.target;
     const submitButton = form.querySelector('button[type="submit"]');
-    
+
     // Prevent double submission by disabling the submit button
     if (submitButton.disabled) {
         console.log('Form already being submitted, ignoring duplicate submission');
         return false;
     }
-    
+
     // Disable submit button to prevent double submission
     submitButton.disabled = true;
     const originalButtonText = submitButton.textContent;
     submitButton.textContent = 'Création en cours...';
-    
+
     const isEditMode = form.dataset.editMode === 'true';
     const sessionId = form.dataset.sessionId;
-    
+
     console.log(isEditMode ? 'Updating competition session...' : 'Creating competition session...');
-    
+
     try {
         const formData = new FormData(form);
-        
+
         // Validate required fields
         const sessionName = formData.get('session_name');
         const startTime = formData.get('start_time');
         const endTime = formData.get('end_time');
         const stationsPerSession = formData.get('stations_per_session');
         const timePerStation = formData.get('time_per_station');
-        
+
         if (!sessionName || !startTime || !endTime || !stationsPerSession || !timePerStation) {
             alert('Veuillez remplir tous les champs obligatoires');
             return;
         }
-        
+
         if (selectedStudents.length === 0) {
             alert('Veuillez sélectionner au moins un participant');
             return;
         }
-        
+
         if (selectedStations.length === 0) {
             alert('Veuillez sélectionner au moins une station');
             return;
         }
-        
+
         if (selectedStations.length < parseInt(stationsPerSession)) {
             alert(`La banque de stations doit contenir au moins ${stationsPerSession} stations`);
             return;
         }
-        
+
         // Format datetime for backend
         const startDateTime = new Date(startTime).toISOString();
         const endDateTime = new Date(endTime).toISOString();
-        
+
         const sessionData = {
             name: sessionName,
             description: formData.get('session_description') || '',
@@ -751,9 +754,9 @@ async function createCompetitionSession(event) {
             participants: selectedStudents.map(s => s.id),
             stations: selectedStations.map(s => s.case_number)
         };
-        
+
         console.log('Competition session data to send:', sessionData);
-        
+
         const url = isEditMode ? `/admin/competition-sessions/${sessionId}/edit` : '/admin/create-competition-session';
         const response = await authenticatedFetch(url, {
             method: 'POST',
@@ -762,9 +765,9 @@ async function createCompetitionSession(event) {
             },
             body: JSON.stringify(sessionData)
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             const message = isEditMode ? 'Session de compétition mise à jour avec succès!' : `Session de compétition créée avec succès! ID: ${result.session_id}`;
             alert(message);
@@ -774,7 +777,7 @@ async function createCompetitionSession(event) {
             console.error('Error response:', result);
             alert(`Erreur: ${result.error || 'Erreur inconnue'}`);
         }
-        
+
     } catch (error) {
         console.error('Network or parsing error:', error);
         alert('Erreur de connexion lors de la création/modification de la session de compétition');
@@ -783,7 +786,7 @@ async function createCompetitionSession(event) {
         submitButton.disabled = false;
         submitButton.textContent = originalButtonText;
     }
-    
+
     return false; // Prevent any default form submission
 }
 
@@ -808,7 +811,7 @@ const competitionStyles = `
 }
 
 .competition-settings {
-    background: #f8f9fa;
+    background: var(--background-light);
     padding: 15px;
     border-radius: 8px;
     margin: 15px 0;
@@ -816,7 +819,7 @@ const competitionStyles = `
 
 .competition-settings h5 {
     margin-top: 0;
-    color: #ff7e5f;
+    color: var(--primary-color);
 }
 
 .participants-list,
@@ -836,13 +839,13 @@ const competitionStyles = `
     margin-bottom: 8px;
     background: white;
     border-radius: 4px;
-    border-left: 3px solid #2196F3;
+    border-left: 3px solid var(--primary-color);
 }
 
 .participant-item small,
 .station-item small {
     display: block;
-    color: #666;
+    color: var(--text-light);
     font-size: 12px;
     margin-top: 4px;
 }
@@ -861,7 +864,7 @@ const competitionStyles = `
 }
 
 .leaderboard-table th {
-    background: linear-gradient(135deg, #ff7e5f, #feb47b);
+    background: var(--secondary-color);
     color: white;
     padding: 12px;
     text-align: left;
@@ -874,21 +877,21 @@ const competitionStyles = `
 }
 
 .leaderboard-table tr:hover {
-    background: #f8f9fa;
+    background: var(--background-light);
 }
 
 /* Competition Session Form Styles */
 .competition-form-section {
-    background: #f8f9fa;
+    background: var(--background-light);
     padding: 20px;
     border-radius: 8px;
     margin: 20px 0;
-    border-left: 4px solid #ff7e5f;
+    border-left: 4px solid var(--primary-color);
 }
 
 .competition-form-section h4 {
     margin-top: 0;
-    color: #ff7e5f;
+    color: var(--primary-color);
 }
 
 .form-row {
@@ -911,7 +914,7 @@ const competitionStyles = `
 /* Badge styles for competition */
 .setting-badge {
     background: #E8F5E8;
-    color: #2E7D32;
+    color: var(--success-color);
     padding: 4px 12px;
     border-radius: 12px;
     font-size: 12px;
@@ -928,7 +931,7 @@ const competitionStyles = `
 }
 
 .start-button {
-    background: #4CAF50;
+    background: var(--success-color);
     color: white;
     border: none;
     padding: 6px 12px;
@@ -939,7 +942,7 @@ const competitionStyles = `
 }
 
 .start-button:hover {
-    background: #45a049;
+    background: var(--success-color);
 }
 
 /* Responsive design for competition */
@@ -947,15 +950,15 @@ const competitionStyles = `
     .form-row {
         grid-template-columns: 1fr;
     }
-    
+
     .competition-settings {
         padding: 10px;
     }
-    
+
     .leaderboard-table {
         font-size: 12px;
     }
-    
+
     .leaderboard-table th,
     .leaderboard-table td {
         padding: 8px;
@@ -966,30 +969,30 @@ const competitionStyles = `
 // Add the competition styles to the document
 const competitionStyleSheet = document.createElement('style');
 competitionStyleSheet.textContent = competitionStyles;
-document.head.appendChild(competitionStyleSheet);
+document.head.insertBefore(competitionStyleSheet, document.querySelector('link[href*="css/app.css"]'));
 
 // Load overview data
 async function loadOverviewData() {
     try {
         const response = await authenticatedFetch('/admin/overview');
         if (!response) return; // Authentication failed
-        
+
         if (!response.ok) {
             throw new Error('Failed to load overview data');
         }
-        
+
         const data = await response.json();
-        
+
         // Update overview stats
         document.getElementById('total-stations-overview').textContent = data.total_stations;
         document.getElementById('total-students-overview').textContent = data.total_students;
         document.getElementById('active-sessions-overview').textContent = data.active_sessions;
         document.getElementById('total-consultations-overview').textContent = data.total_consultations;
-        
+
         // Update recent activity
         const activityBody = document.getElementById('recent-activity-body');
         activityBody.innerHTML = '';
-        
+
         if (data.recent_activity.length === 0) {
             activityBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Aucune activité récente</td></tr>';
         } else {
@@ -1005,7 +1008,7 @@ async function loadOverviewData() {
                 activityBody.appendChild(row);
             });
         }
-        
+
     } catch (error) {
         console.error('Error loading overview data:', error);
     }
@@ -1018,25 +1021,25 @@ async function loadAdminStations(searchQuery = '') {
         if (searchQuery) {
             url += `?search=${encodeURIComponent(searchQuery)}`;
         }
-        
+
         const response = await authenticatedFetch(url);
         if (!response) return; // Authentication failed
-        
+
         if (!response.ok) {
             throw new Error('Failed to load stations');
         }
-        
+
         const data = await response.json();
-        
+
         // Update stats
         document.getElementById('total-stations').textContent = data.total;
         document.getElementById('avg-station-score').textContent = data.avg_score + '%';
         document.getElementById('most-used-specialty').textContent = data.most_used_specialty || 'N/A';
-        
+
         // Update table
         const tableBody = document.getElementById('admin-stations-table-body');
         tableBody.innerHTML = '';
-        
+
         if (data.stations.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucune station trouvée</td></tr>';
         } else {
@@ -1059,10 +1062,10 @@ async function loadAdminStations(searchQuery = '') {
                 tableBody.appendChild(row);
             });
         }
-        
+
     } catch (error) {
         console.error('Error loading admin stations:', error);
-        document.getElementById('admin-stations-table-body').innerHTML = 
+        document.getElementById('admin-stations-table-body').innerHTML =
             '<tr><td colspan="7" style="text-align: center;">Erreur lors du chargement</td></tr>';
     }
 }
@@ -1070,14 +1073,14 @@ async function loadAdminStations(searchQuery = '') {
 async function viewSessionDetails(sessionId) {
     try {
         console.log(`Viewing session details for ID: ${sessionId}`);
-        
+
         const response = await authenticatedFetch(`/admin/sessions/${sessionId}`);
         if (!response.ok) {
             throw new Error('Failed to load session details');
         }
-        
+
         const sessionData = await response.json();
-        
+
         // Create session details HTML
         let detailsHTML = `
             <div class="session-details">
@@ -1087,10 +1090,10 @@ async function viewSessionDetails(sessionId) {
                 <p><strong>Fin:</strong> ${sessionData.end_time}</p>
                 <p><strong>Statut:</strong> <span class="status-badge status-${sessionData.status}">${sessionData.status_display}</span></p>
                 <p><strong>Créé le:</strong> ${sessionData.created_at} par ${sessionData.created_by}</p>
-                
+
                 <h5>Participants (${sessionData.participants.length})</h5>
                 <div class="participants-list">`;
-        
+
         if (sessionData.participants.length > 0) {
             sessionData.participants.forEach(participant => {
                 detailsHTML += `
@@ -1102,11 +1105,11 @@ async function viewSessionDetails(sessionId) {
         } else {
             detailsHTML += '<p>Aucun participant</p>';
         }
-        
+
         detailsHTML += `</div>
                 <h5>Stations (${sessionData.stations.length})</h5>
                 <div class="stations-list">`;
-        
+
         if (sessionData.stations.length > 0) {
             sessionData.stations.forEach(station => {
                 detailsHTML += `
@@ -1119,19 +1122,19 @@ async function viewSessionDetails(sessionId) {
         } else {
             detailsHTML += '<p>Aucune station assignée</p>';
         }
-        
+
         detailsHTML += '</div></div>';
-        
+
         // Show in modal (create modal if it doesn't exist)
         let modal = document.getElementById('session-details-modal');
         if (!modal) {
             modal = createSessionDetailsModal();
         }
-        
+
         document.getElementById('session-details-content').innerHTML = detailsHTML;
         modal.classList.remove('hidden');
         modal.classList.add('visible');
-        
+
     } catch (error) {
         console.error('Error viewing session details:', error);
         alert('Erreur lors du chargement des détails de la session');
@@ -1142,55 +1145,55 @@ async function viewSessionDetails(sessionId) {
 async function editSession(sessionId) {
     try {
         console.log(`Editing session ID: ${sessionId}`);
-        
+
         // Load current session data
         const response = await authenticatedFetch(`/admin/sessions/${sessionId}/edit`);
         if (!response.ok) {
             throw new Error('Failed to load session data for editing');
         }
-        
+
         const sessionData = await response.json();
-        
+
         // Populate the create session modal with existing data
         document.getElementById('session-name').value = sessionData.name;
         document.getElementById('session-description').value = sessionData.description || '';
         document.getElementById('session-start').value = sessionData.start_time.slice(0, 16); // Format for datetime-local
         document.getElementById('session-end').value = sessionData.end_time.slice(0, 16);
-        
+
         // Load available students and stations
         await loadAvailableStudents();
         await loadAvailableStations();
-        
+
         // Pre-select participants
-        selectedStudents = availableStudents.filter(student => 
+        selectedStudents = availableStudents.filter(student =>
             sessionData.participants.includes(student.id)
         );
-        
+
         // Pre-select stations
-        selectedStations = availableStations.filter(station => 
+        selectedStations = availableStations.filter(station =>
             sessionData.stations.includes(station.case_number)
         );
-        
+
         updateSelectedStudentsList();
         updateSelectedStationsList();
-        
+
         // Change form behavior for editing
         const form = document.getElementById('create-session-form');
         form.dataset.editMode = 'true';
         form.dataset.sessionId = sessionId;
-        
+
         // Change modal title
         const modalTitle = document.querySelector('#create-session-modal h3');
         modalTitle.textContent = 'Modifier la Session ECOS';
-        
+
         // Change submit button text
         const submitButton = document.querySelector('#create-session-form button[type="submit"]');
         submitButton.textContent = 'Mettre à jour la Session';
-        
+
         // Show modal
         document.getElementById('create-session-modal').classList.remove('hidden');
         document.getElementById('create-session-modal').classList.add('visible');
-        
+
     } catch (error) {
         console.error('Error editing session:', error);
         alert('Erreur lors du chargement des données de la session');
@@ -1202,23 +1205,23 @@ async function deleteSession(sessionId) {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette session ? Cette action est irréversible.')) {
         return;
     }
-    
+
     try {
         console.log(`Deleting session ID: ${sessionId}`);
-        
+
         const response = await authenticatedFetch(`/admin/sessions/${sessionId}/delete`, {
             method: 'DELETE'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
             loadAdminSessions(); // Refresh sessions list
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error deleting session:', error);
         alert('Erreur lors de la suppression de la session');
@@ -1232,43 +1235,43 @@ async function loadAdminStudents(searchQuery = '') {
         if (searchQuery) {
             url += `?search=${encodeURIComponent(searchQuery)}`;
         }
-        
+
         const response = await authenticatedFetch(url);
         if (!response) return; // Authentication failed
-        
+
         if (!response.ok) {
             throw new Error('Failed to load students');
         }
-        
+
         const data = await response.json();
-        
+
         // Update stats
         document.getElementById('total-students').textContent = data.total;
         document.getElementById('active-students').textContent = data.active;
         document.getElementById('avg-student-score').textContent = data.avg_score + '%';
-        
+
         // Update table
         const tableBody = document.getElementById('admin-students-table-body');
         tableBody.innerHTML = '';
-        
+
         if (data.students.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Aucun étudiant trouvé</td></tr>';
         } else {
             data.students.forEach(student => {
                 const row = document.createElement('tr');
-                const safeName = student.name.replace(/'/g, "\\'");
+                const safeName = escHtml(String(student.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n'));
                 row.innerHTML = `
                     <td>
                         <span class="apogee-number">${student.student_code}</span>
                         <div class="code-type-label">N° Apogée</div>
                     </td>
-                    <td>${student.name}</td>
-                    <td><select id="student-ecos-type-${student.id}" aria-label="Type d’ECOS de ${student.name}" onchange="toggleStudentLevelEditor(${student.id})">
+                    <td>${escHtml(student.name)}</td>
+                    <td><select id="student-ecos-type-${student.id}" aria-label="Type d’ECOS de ${escHtml(student.name)}" onchange="toggleStudentLevelEditor(${student.id})">
                         <option value="standard" ${student.ecos_type === 'standard' ? 'selected' : ''}>ECOS standard</option>
-                        <option value="kine" ${student.ecos_type === 'kine' ? 'selected' : ''}>ECOS Kiné</option>
+                        <option value="kine" ${student.ecos_type === 'kine' ? 'selected' : ''}>KardioX</option>
                     </select></td>
                     <td>
-                        <select id="student-level-${student.id}" aria-label="Niveau Kiné de ${student.name}"
+                        <select id="student-level-${student.id}" aria-label="Niveau Kiné de ${escHtml(student.name)}"
                                 class="${student.ecos_type === 'kine' ? '' : 'hidden'}"
                                 ${student.ecos_type === 'kine' ? 'required' : 'disabled'}>
                             <option value="">Choisir</option>
@@ -1277,27 +1280,29 @@ async function loadAdminStudents(searchQuery = '') {
                         </select>
                         <span id="student-level-empty-${student.id}" class="${student.ecos_type === 'kine' ? 'hidden' : ''}">—</span>
                         ${student.ecos_type === 'kine' && (student.group_name || student.class_name)
-                            ? `<small>${student.group_name || 'Sans groupe'} · ${student.class_name || 'Sans classe'}</small>`
+                            ? `<small>${escHtml(student.group_name || 'Sans groupe')} · ${escHtml(student.class_name || 'Sans classe')}</small>`
                             : ''}
                     </td>
                     <td>${student.created_at}</td>
                     <td>${student.last_login || 'Jamais'}</td>
                     <td><span class="workout-badge">${student.total_consultations}</span></td>
-                    <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score}%</span></td>
+                    <td><span class="score-badge score-${getScoreClass(student.average_score)}">${student.average_score === null ? '—' : student.average_score + '%'}</span></td>
                     <td>
                         <button class="btn btn-primary" style="font-size:12px;padding:4px 8px;" onclick="updateStudentEcosType(${student.id})">Enregistrer</button>
-                        <button class="detail-button" onclick="viewStudentDetails(${student.id}, '${safeName}', '${student.student_code}')">Détails</button>
+                        <button class="btn btn-secondary" onclick="editAccountProfile('student', ${student.id})">Modifier le profil</button>
+                        ${student.average_score !== null ? `<button class="detail-button" onclick="viewStudentDetails(${student.id}, '${safeName}', '${student.student_code}')">Détails</button>` : ''}
+                        <button class="btn btn-secondary" onclick="changeAccountStatus('student', ${student.id}, '${student.account_status === 'suspended' ? 'reactivate' : 'suspend'}')">${student.account_status === 'suspended' ? 'Réactiver' : 'Suspendre'}</button>
+                        <span>${student.account_status === 'suspended' ? 'Suspendu' : 'Actif'}</span>
                         <button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;margin-left:4px;" onclick="openResetStudentPasswordModal(${student.id},'${safeName}')">Réinit. MdP</button>
-                        <button class="btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;margin-left:4px;" onclick="deleteStudent(${student.id},'${safeName}')">Supprimer</button>
                     </td>
                 `;
                 tableBody.appendChild(row);
             });
         }
-        
+
     } catch (error) {
         console.error('Error loading admin students:', error);
-        document.getElementById('admin-students-table-body').innerHTML = 
+        document.getElementById('admin-students-table-body').innerHTML =
             '<tr><td colspan="9" style="text-align: center;">Erreur lors du chargement</td></tr>';
     }
 }
@@ -1309,18 +1314,18 @@ async function loadAdminSessions() {
         if (!response.ok) {
             throw new Error('Failed to load sessions');
         }
-        
+
         const data = await response.json();
-        
+
         // Update stats
         document.getElementById('total-sessions').textContent = data.total;
         document.getElementById('scheduled-sessions').textContent = data.scheduled;
         document.getElementById('active-sessions').textContent = data.active;
-        
+
         // Update table
         const tableBody = document.getElementById('sessions-table-body');
         tableBody.innerHTML = '';
-        
+
         const practiceSessions = data.sessions || [];
         if (practiceSessions.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucune session trouvée</td></tr>';
@@ -1343,10 +1348,10 @@ async function loadAdminSessions() {
                 tableBody.appendChild(row);
             });
         }
-        
+
     } catch (error) {
         console.error('Error loading admin sessions:', error);
-        document.getElementById('sessions-table-body').innerHTML = 
+        document.getElementById('sessions-table-body').innerHTML =
             '<tr><td colspan="7" style="text-align: center;">Erreur lors du chargement</td></tr>';
     }
 }
@@ -1392,9 +1397,9 @@ async function viewStationDetails(caseNumber) {
         if (!response.ok) {
             throw new Error('Failed to load station details');
         }
-        
+
         const data = await response.json();
-        
+
         let detailsHTML = `
             <div class="station-details">
                 <h4>Cas ${escapeStationText(data.case_number)}${data.title ? ` — ${escapeStationText(data.title)}` : ''}</h4>
@@ -1421,15 +1426,15 @@ async function viewStationDetails(caseNumber) {
             </div>`;
         } else {
             detailsHTML += `<p><strong>Durée :</strong> ${escapeStationText(data.consultation_time || '—')} minutes</p>
-                
+
                 <h5>Informations du patient</h5>
                 <p><strong>Nom :</strong> ${escapeStationText(data.patient_info?.name || 'Non spécifié')}</p>
                 <p><strong>Âge :</strong> ${escapeStationText(data.patient_info?.age || 'Non spécifié')}</p>
                 <p><strong>Sexe :</strong> ${escapeStationText(data.patient_info?.gender || 'Non spécifié')}</p>
-                
+
                 <h5>Symptômes (${data.symptoms?.length || 0})</h5>
                 <ul>`;
-        
+
         if (data.symptoms && data.symptoms.length > 0) {
             data.symptoms.forEach(symptom => {
                 detailsHTML += `<li>${escapeStationText(symptom)}</li>`;
@@ -1437,11 +1442,11 @@ async function viewStationDetails(caseNumber) {
         } else {
             detailsHTML += '<li>Aucun symptôme défini</li>';
         }
-        
+
         detailsHTML += `</ul>
                 <h5>Grille d'évaluation (${data.evaluation_checklist?.length || 0} éléments)</h5>
                 <ul>`;
-        
+
         if (data.evaluation_checklist && data.evaluation_checklist.length > 0) {
             data.evaluation_checklist.forEach(item => {
                 detailsHTML += `<li>${escapeStationText(item.description)} (${escapeStationText(item.points)} points)</li>`;
@@ -1449,15 +1454,15 @@ async function viewStationDetails(caseNumber) {
         } else {
             detailsHTML += '<li>Aucun élément d\'évaluation défini</li>';
         }
-        
+
             detailsHTML += '</ul></div>';
         }
-        
+
         // Show in modal
         document.getElementById('station-details-content').innerHTML = detailsHTML;
         document.getElementById('station-details-modal').classList.remove('hidden');
         document.getElementById('station-details-modal').classList.add('visible');
-        
+
     } catch (error) {
         console.error('Error loading station details:', error);
         alert('Erreur lors du chargement des détails de la station');
@@ -1471,27 +1476,27 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
         if (!response.ok) {
             throw new Error('Failed to load student details');
         }
-        
+
         const data = await response.json();
-        
+
         // Update modal header with Numéro d'Apogée
         const headerElement = document.getElementById('student-details-name');
         if (headerElement) {
             headerElement.innerHTML = `
-                ${studentName} 
+                ${studentName}
                 <span class="apogee-badge">N° Apogée: ${studentCode}</span>
             `;
         }
-        
+
         // Update stats
         document.getElementById('student-total-consultations').textContent = data.total_consultations;
         document.getElementById('student-unique-stations').textContent = data.unique_stations;
         document.getElementById('student-avg-score').textContent = (data.average_score != null ? data.average_score : 0) + '%';
-        
+
         // Update performance table
         const tableBody = document.getElementById('student-performance-table-body');
         tableBody.innerHTML = '';
-        
+
         if (data.performances.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Aucune performance enregistrée</td></tr>';
         } else {
@@ -1513,11 +1518,11 @@ async function viewStudentDetails(studentId, studentName, studentCode) {
                 tableBody.appendChild(row);
             });
         }
-        
+
         // Show modal
         document.getElementById('student-details-modal').classList.remove('hidden');
         document.getElementById('student-details-modal').classList.add('visible');
-        
+
     } catch (error) {
         console.error('Error loading student details:', error);
         alert('Erreur lors du chargement des détails de l\'étudiant');
@@ -1532,15 +1537,15 @@ function downloadStudentReport(reportUrl) {
 // Session management functions
 function openCreateSessionModal() {
     console.log('Opening create session modal...');
-    
+
     // Reset selections
     selectedStudents = [];
     selectedStations = [];
-    
+
     // Load data
     loadAvailableStudents();
     loadAvailableStations();
-    
+
     // Show modal
     const modal = document.getElementById('create-session-modal');
     if (modal) {
@@ -1555,19 +1560,19 @@ function openCreateSessionModal() {
 function closeCreateSessionModal() {
     const modal = document.getElementById('create-session-modal');
     const form = document.getElementById('create-session-form');
-    
+
     // Reset edit mode
     delete form.dataset.editMode;
     delete form.dataset.sessionId;
-    
+
     // Reset modal title
     const modalTitle = document.querySelector('#create-session-modal h3');
     modalTitle.textContent = 'Créer une Nouvelle Session ECOS';
-    
+
     // Reset submit button text
     const submitButton = document.querySelector('#create-session-form button[type="submit"]');
     submitButton.textContent = 'Créer la Session';
-    
+
     // Hide modal and reset form
     modal.classList.remove('visible');
     modal.classList.add('hidden');
@@ -1582,15 +1587,15 @@ function createSessionDetailsModal() {
     const modalHTML = `
         <div id="session-details-modal" class="modal hidden">
             <div class="modal-content">
-                <span class="close-modal">&times;</span>
+                <span class="close-modal">Fermer</span>
                 <h3>Détails de la Session</h3>
                 <div id="session-details-content"></div>
             </div>
         </div>
     `;
-    
+
     document.body.insertAdjacentHTML('beforeend', modalHTML);
-    
+
     // Add close functionality
     const modal = document.getElementById('session-details-modal');
     const closeBtn = modal.querySelector('.close-modal');
@@ -1598,7 +1603,7 @@ function createSessionDetailsModal() {
         modal.classList.remove('visible');
         modal.classList.add('hidden');
     });
-    
+
     return modal;
 }
 // Load available students for session creation
@@ -1606,17 +1611,17 @@ async function loadAvailableStudents() {
     try {
         console.log('Loading available students...');
         const response = await authenticatedFetch('/admin/available-students');
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         console.log('Loaded students:', data.students.length);
-        
+
         availableStudents = data.students;
         updateAvailableStudentsList();
-        
+
     } catch (error) {
         console.error('Error loading available students:', error);
         alert('Erreur lors du chargement de la liste des étudiants');
@@ -1628,17 +1633,17 @@ async function loadAvailableStations() {
     try {
         console.log('Loading available stations...');
         const response = await authenticatedFetch('/admin/available-stations');
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         console.log('Loaded stations:', data.stations.length);
-        
+
         availableStations = data.stations;
         updateAvailableStationsList();
-        
+
     } catch (error) {
         console.error('Error loading available stations:', error);
         alert('Erreur lors du chargement de la liste des stations');
@@ -1649,12 +1654,12 @@ async function loadAvailableStations() {
 function updateAvailableStudentsList() {
     const container = document.getElementById('available-students-list');
     const searchTerm = document.getElementById('student-search').value.toLowerCase();
-    
+
     container.innerHTML = '';
-    
+
     availableStudents
-        .filter(student => 
-            student.name.toLowerCase().includes(searchTerm) || 
+        .filter(student =>
+            student.name.toLowerCase().includes(searchTerm) ||
             student.student_code.includes(searchTerm)  // Now supports 6-7 digits
         )
         .forEach(student => {
@@ -1676,21 +1681,21 @@ const apogeeStyles = `
 .apogee-number {
     font-family: 'Courier New', monospace;
     font-weight: bold;
-    color: #007bff;
+    color: var(--primary-color);
     font-size: 14px;
 }
 
 .code-type-label {
     font-size: 10px;
-    color: #6c757d;
+    color: var(--text-light);
     text-transform: uppercase;
     font-weight: normal;
     margin-top: 2px;
 }
 
 .apogee-badge {
-    background: #e3f2fd;
-    color: #1976d2;
+    background: var(--secondary-color);
+    color: var(--primary-dark);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 12px;
@@ -1701,7 +1706,7 @@ const apogeeStyles = `
 .apogee-number-small {
     display: block;
     font-size: 11px;
-    color: #6c757d;
+    color: var(--text-light);
     font-family: 'Courier New', monospace;
     margin-top: 2px;
 }
@@ -1722,12 +1727,12 @@ const apogeeStyles = `
 }
 
 .selection-item label:hover {
-    background-color: #f8f9fa;
+    background-color: var(--background-light);
 }
 
 .selection-item input[type="checkbox"]:checked + label {
-    background-color: #e3f2fd;
-    border-left: 3px solid #2196F3;
+    background-color: var(--secondary-color);
+    border-left: 3px solid var(--primary-color);
 }
 
 /* Table cell styling for better Apogée number display */
@@ -1745,16 +1750,16 @@ const apogeeStyles = `
     .apogee-number {
         font-size: 12px;
     }
-    
+
     .code-type-label {
         font-size: 9px;
     }
-    
+
     .apogee-badge {
         font-size: 10px;
         padding: 1px 6px;
     }
-    
+
     .search-input {
         min-width: 150px;
     }
@@ -1765,7 +1770,7 @@ const apogeeStyles = `
     font-family: 'Courier New', monospace;
     letter-spacing: 1px;
     padding: 10px 12px;
-    border: 2px solid #dee2e6;
+    border: 2px solid var(--border-color);
     border-radius: 6px;
     font-size: 16px;
     width: 100%;
@@ -1773,7 +1778,7 @@ const apogeeStyles = `
 }
 
 .student-code-input:focus {
-    border-color: #007bff;
+    border-color: var(--primary-color);
     box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
@@ -1783,7 +1788,7 @@ const apogeeStyles = `
 }
 
 .student-code-input.invalid {
-    border-color: #dc3545;
+    border-color: var(--error-color);
     background-color: #fff8f8;
 }
 
@@ -1810,7 +1815,7 @@ const apogeeStyles = `
 function updateRecentActivity(activities) {
     const activityBody = document.getElementById('recent-activity-body');
     activityBody.innerHTML = '';
-    
+
     if (activities.length === 0) {
         activityBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Aucune activité récente</td></tr>';
     } else {
@@ -1838,18 +1843,18 @@ console.log('Admin interface updated for Numéro d\'Apogée support');
 // Add the Apogée styles to the document
 const apogeeStyleSheet = document.createElement('style');
 apogeeStyleSheet.textContent = apogeeStyles;
-document.head.appendChild(apogeeStyleSheet);
+document.head.insertBefore(apogeeStyleSheet, document.querySelector('link[href*="css/app.css"]'));
 
 // Update available stations list
 function updateAvailableStationsList() {
     const container = document.getElementById('available-stations-list');
     const searchTerm = document.getElementById('station-search').value.toLowerCase();
-    
+
     container.innerHTML = '';
-    
+
     availableStations
-        .filter(station => 
-            station.case_number.includes(searchTerm) || 
+        .filter(station =>
+            station.case_number.includes(searchTerm) ||
             station.specialty.toLowerCase().includes(searchTerm)
         )
         .forEach(station => {
@@ -1871,21 +1876,21 @@ function addSelectedStudents() {
     console.log('Adding selected students...');
     const checkboxes = document.querySelectorAll('#available-students-list input[type="checkbox"]:checked');
     console.log('Found checked student checkboxes:', checkboxes.length);
-    
+
     checkboxes.forEach(checkbox => {
         const studentId = parseInt(checkbox.value);
         const student = availableStudents.find(s => s.id === studentId);
-        
+
         console.log(`Processing student ID ${studentId}:`, student);
-        
+
         if (student && !selectedStudents.find(s => s.id === studentId)) {
             selectedStudents.push(student);
             console.log(`Added student: ${student.name} (${student.student_code})`);
         }
-        
+
         checkbox.checked = false;
     });
-    
+
     console.log('Total selected students:', selectedStudents.length);
     updateSelectedStudentsList();
 }
@@ -1893,12 +1898,12 @@ function addSelectedStudents() {
 // Remove selected students from session
 function removeSelectedStudents() {
     const checkboxes = document.querySelectorAll('#selected-students-list input[type="checkbox"]:checked');
-    
+
     checkboxes.forEach(checkbox => {
         const studentId = parseInt(checkbox.value);
         selectedStudents = selectedStudents.filter(s => s.id !== studentId);
     });
-    
+
     updateSelectedStudentsList();
 }
 
@@ -1907,21 +1912,21 @@ function addSelectedStations() {
     console.log('Adding selected stations...');
     const checkboxes = document.querySelectorAll('#available-stations-list input[type="checkbox"]:checked');
     console.log('Found checked station checkboxes:', checkboxes.length);
-    
+
     checkboxes.forEach(checkbox => {
         const caseNumber = checkbox.value;
         const station = availableStations.find(s => s.case_number === caseNumber);
-        
+
         console.log(`Processing station ${caseNumber}:`, station);
-        
+
         if (station && !selectedStations.find(s => s.case_number === caseNumber)) {
             selectedStations.push(station);
             console.log(`Added station: ${station.case_number} - ${station.specialty}`);
         }
-        
+
         checkbox.checked = false;
     });
-    
+
     console.log('Total selected stations:', selectedStations.length);
     updateSelectedStationsList();
 }
@@ -1929,12 +1934,12 @@ function addSelectedStations() {
 // Remove selected stations from session
 function removeSelectedStations() {
     const checkboxes = document.querySelectorAll('#selected-stations-list input[type="checkbox"]:checked');
-    
+
     checkboxes.forEach(checkbox => {
         const caseNumber = checkbox.value;
         selectedStations = selectedStations.filter(s => s.case_number !== caseNumber);
     });
-    
+
     updateSelectedStationsList();
 }
 
@@ -1942,7 +1947,7 @@ function removeSelectedStations() {
 function updateSelectedStudentsList() {
     const container = document.getElementById('selected-students-list');
     container.innerHTML = '';
-    
+
     selectedStudents.forEach(student => {
         const item = document.createElement('div');
         item.className = 'selection-item';
@@ -1958,7 +1963,7 @@ function updateSelectedStudentsList() {
 function updateSelectedStationsList() {
     const container = document.getElementById('selected-stations-list');
     container.innerHTML = '';
-    
+
     selectedStations.forEach(station => {
         const item = document.createElement('div');
         item.className = 'selection-item';
@@ -1977,53 +1982,53 @@ function updateSelectedStationsList() {
 async function createSession(event) {
     event.preventDefault();
     event.stopPropagation(); // Prevent event bubbling
-    
+
     const form = event.target;
     const submitButton = form.querySelector('button[type="submit"]');
-    
+
     // Prevent double submission by disabling the submit button
     if (submitButton.disabled) {
         console.log('Form already being submitted, ignoring duplicate submission');
         return false;
     }
-    
+
     // Disable submit button to prevent double submission
     submitButton.disabled = true;
     const originalButtonText = submitButton.textContent;
     submitButton.textContent = 'Création en cours...';
-    
+
     const isEditMode = form.dataset.editMode === 'true';
     const sessionId = form.dataset.sessionId;
-    
+
     console.log(isEditMode ? 'Updating session...' : 'Creating session...');
-    
+
     try {
         const formData = new FormData(form);
-        
+
         // Validate required fields
         const sessionName = formData.get('session_name');
         const startTime = formData.get('start_time');
         const endTime = formData.get('end_time');
-        
+
         if (!sessionName || !startTime || !endTime) {
             alert('Veuillez remplir tous les champs obligatoires');
             return;
         }
-        
+
         if (selectedStudents.length === 0) {
             alert('Veuillez sélectionner au moins un étudiant');
             return;
         }
-        
+
         if (selectedStations.length === 0) {
             alert('Veuillez sélectionner au moins une station');
             return;
         }
-        
+
         // Format datetime for backend
         const startDateTime = new Date(startTime).toISOString();
         const endDateTime = new Date(endTime).toISOString();
-        
+
         const sessionData = {
             name: sessionName,
             description: formData.get('session_description') || '',
@@ -2032,9 +2037,9 @@ async function createSession(event) {
             participants: selectedStudents.map(s => s.id),
             stations: selectedStations.map(s => s.case_number)
         };
-        
+
         console.log('Session data to send:', sessionData);
-        
+
         const url = isEditMode ? `/admin/sessions/${sessionId}/edit` : '/admin/create-session';
         const response = await authenticatedFetch(url, {
             method: 'POST',
@@ -2043,9 +2048,9 @@ async function createSession(event) {
             },
             body: JSON.stringify(sessionData)
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             const message = isEditMode ? 'Session mise à jour avec succès!' : `Session créée avec succès! ID: ${result.session_id}`;
             alert(message);
@@ -2055,7 +2060,7 @@ async function createSession(event) {
             console.error('Error response:', result);
             alert(`Erreur: ${result.error || 'Erreur inconnue'}`);
         }
-        
+
     } catch (error) {
         console.error('Network or parsing error:', error);
         alert('Erreur de connexion lors de la création/modification de la session');
@@ -2064,7 +2069,7 @@ async function createSession(event) {
         submitButton.disabled = false;
         submitButton.textContent = originalButtonText;
     }
-    
+
     return false; // Prevent any default form submission
 }
 
@@ -2120,15 +2125,15 @@ const adminStyles = `
     cursor: pointer;
     font-size: 16px;
     font-weight: bold;
-    color: #666;
+    color: var(--text-light);
     transition: all 0.3s;
     border-bottom: 3px solid transparent;
 }
 
 .admin-nav-tabs .nav-tab.active {
     background: white;
-    color: #ff7e5f;
-    border-bottom-color: #ff7e5f;
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
 }
 
 .admin-nav-tabs .nav-tab:hover {
@@ -2206,9 +2211,9 @@ const adminStyles = `
 
 /* Badges */
 .participant-badge,
-.status-scheduled { background: #E3F2FD; color: #1565C0; }
-.status-active { background: #E8F5E8; color: #2E7D32; }
-.status-completed { background: #F3E5F5; color: #7B1FA2; }
+.status-scheduled { background: var(--secondary-color); color: var(--primary-dark); }
+.status-active { background: #E8F5E8; color: var(--success-color); }
+.status-completed { background: var(--secondary-color); color: var(--primary-dark); }
 .status-cancelled { background: #FFEBEE; color: #C62828; }
 
 /* Tables */
@@ -2231,7 +2236,7 @@ const adminStyles = `
 .activity-table th,
 .sessions-table th,
 .student-performance-table th {
-    background: linear-gradient(135deg, #ff7e5f, #feb47b);
+    background: var(--secondary-color);
     color: white;
     padding: 15px;
     text-align: left;
@@ -2248,7 +2253,7 @@ const adminStyles = `
 .activity-table tr:hover,
 .sessions-table tr:hover,
 .student-performance-table tr:hover {
-    background: #f8f9fa;
+    background: var(--background-light);
 }
 
 /* Responsive design */
@@ -2256,7 +2261,7 @@ const adminStyles = `
     .admin-nav-tabs {
         flex-direction: column;
     }
-    
+
     .overview-stats,
     .stations-stats,
     .students-stats,
@@ -2264,12 +2269,12 @@ const adminStyles = `
     .student-details-stats {
         grid-template-columns: 1fr;
     }
-    
+
     .participants-selection,
     .stations-selection {
         grid-template-columns: 1fr;
     }
-    
+
     .selection-controls {
         flex-direction: row;
         justify-content: center;
@@ -2280,7 +2285,7 @@ const adminStyles = `
 // Add the admin styles to the document
 const adminStyleSheet = document.createElement('style');
 adminStyleSheet.textContent = adminStyles;
-document.head.appendChild(adminStyleSheet);
+document.head.insertBefore(adminStyleSheet, document.querySelector('link[href*="css/app.css"]'));
 
 const debugStyles = `
 .selection-item {
@@ -2303,7 +2308,7 @@ const debugStyles = `
 
 .selection-item input[type="checkbox"]:checked + label {
     font-weight: bold;
-    color: #2196F3;
+    color: var(--primary-color);
 }
 
 /* Debug borders for troubleshooting */
@@ -2319,7 +2324,7 @@ const debugStyles = `
 // Add debug styles to document
 const debugStyleSheet = document.createElement('style');
 debugStyleSheet.textContent = debugStyles;
-document.head.appendChild(debugStyleSheet);
+document.head.insertBefore(debugStyleSheet, document.querySelector('link[href*="css/app.css"]'));
 
 // Add a debug function that can be called from console
 window.debugSessionCreation = function() {
@@ -2361,13 +2366,13 @@ const sessionDetailsStyles = `
     margin-bottom: 8px;
     background: white;
     border-radius: 4px;
-    border-left: 3px solid #2196F3;
+    border-left: 3px solid var(--primary-color);
 }
 
 .participant-item small,
 .station-item small {
     display: block;
-    color: #666;
+    color: var(--text-light);
     font-size: 12px;
     margin-top: 4px;
 }
@@ -2376,7 +2381,7 @@ const sessionDetailsStyles = `
 // Add session details styles
 const sessionStyleSheet = document.createElement('style');
 sessionStyleSheet.textContent = sessionDetailsStyles;
-document.head.appendChild(sessionStyleSheet);
+document.head.insertBefore(sessionStyleSheet, document.querySelector('link[href*="css/app.css"]'));
 
 // Enhanced competition session monitoring
 let competitionMonitoringInterval = null;
@@ -2385,12 +2390,12 @@ function startCompetitionMonitoring(sessionId) {
     if (competitionMonitoringInterval) {
         clearInterval(competitionMonitoringInterval);
     }
-    
+
     console.log('Starting competition monitoring for session:', sessionId);
-    
+
     // Initial load
     updateCompetitionMonitoring(sessionId);
-    
+
     // Set up periodic updates
     competitionMonitoringInterval = setInterval(() => {
         updateCompetitionMonitoring(sessionId);
@@ -2411,10 +2416,10 @@ async function updateCompetitionMonitoring(sessionId) {
         if (!response || !response.ok) {
             return;
         }
-        
+
         const data = await response.json();
         updateCompetitionMonitoringDisplay(data);
-        
+
     } catch (error) {
         console.error('Error updating competition monitoring:', error);
     }
@@ -2427,13 +2432,13 @@ function updateCompetitionMonitoringDisplay(data) {
         element.textContent = getStatusDisplay(data.session_status);
         element.className = `status-badge status-${data.session_status}`;
     });
-    
+
     // Update participant counts
     const participantElements = document.querySelectorAll(`[data-session-id="${data.session_id}"] .participant-count`);
     participantElements.forEach(element => {
         element.textContent = `${data.logged_in_count}/${data.total_participants}`;
     });
-    
+
     // If monitoring modal is open, update detailed view
     const monitoringModal = document.getElementById('competition-monitoring-modal');
     if (monitoringModal && !monitoringModal.classList.contains('hidden')) {
@@ -2444,13 +2449,13 @@ function updateCompetitionMonitoringDisplay(data) {
 function updateDetailedMonitoringView(data) {
     const participantsList = document.getElementById('monitoring-participants-list');
     if (!participantsList) return;
-    
+
     let html = '<div class="participants-monitoring-grid">';
-    
+
     data.participants.forEach(participant => {
         const statusClass = getParticipantStatusClass(participant.status);
         const progressWidth = participant.progress_percentage || 0;
-        
+
         html += `
             <div class="participant-card ${statusClass}">
                 <div class="participant-header">
@@ -2473,16 +2478,14 @@ function updateDetailedMonitoringView(data) {
                 </div>
                 <div class="participant-actions">
                     ${participant.status !== 'completed' ? `
-                        <button onclick="resetStudentProgress(${data.session_id}, ${participant.student_id})" 
-                                class="reset-button" title="Réinitialiser">
-                            🔄
-                        </button>
+                        <button onclick="resetStudentProgress(${data.session_id}, ${participant.student_id})"
+                                class="reset-button" title="Réinitialiser">Réinitialiser</button>
                     ` : ''}
                 </div>
             </div>
         `;
     });
-    
+
     html += '</div>';
     participantsList.innerHTML = html;
 }
@@ -2491,38 +2494,38 @@ function updateDetailedMonitoringView(data) {
 async function monitorCompetitionSession(sessionId) {
     try {
         console.log('Opening monitoring for competition session:', sessionId);
-        
+
         // Create monitoring modal if it doesn't exist
         let modal = document.getElementById('competition-monitoring-modal');
         if (!modal) {
             modal = createCompetitionMonitoringModal();
         }
-        
+
         // Load initial data
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/monitor`);
         if (!response.ok) {
             throw new Error('Failed to load monitoring data');
         }
-        
+
         const data = await response.json();
-        
+
         // Update modal content
         document.getElementById('monitoring-session-name').textContent = data.session_name;
         document.getElementById('monitoring-session-status').textContent = getStatusDisplay(data.session_status);
         document.getElementById('monitoring-session-status').className = `status-badge status-${data.session_status}`;
-        
+
         updateDetailedMonitoringView(data);
-        
+
         // Show modal
         modal.classList.remove('hidden');
         modal.classList.add('visible');
-        
+
         // Start real-time monitoring
         startCompetitionMonitoring(sessionId);
-        
+
         // Store session ID for control actions
         modal.dataset.sessionId = sessionId;
-        
+
     } catch (error) {
         console.error('Error opening competition monitoring:', error);
         alert('Erreur lors de l\'ouverture du monitoring');
@@ -2537,10 +2540,10 @@ function createCompetitionMonitoringModal() {
                     <h3>Monitoring Compétition - <span id="monitoring-session-name"></span></h3>
                     <div class="monitoring-controls">
                         <span id="monitoring-session-status" class="status-badge"></span>
-                        <button onclick="closeCompetitionMonitoring()" class="close-button">✕</button>
+                        <button onclick="closeCompetitionMonitoring()" class="close-button">Fermer</button>
                     </div>
                 </div>
-                
+
                 <div class="monitoring-actions">
                     <button onclick="forceStartCompetition()" class="force-start-button">
                         🚀 Démarrage forcé
@@ -2558,14 +2561,14 @@ function createCompetitionMonitoringModal() {
                         📊 Exporter
                     </button>
                 </div>
-                
+
                 <div id="monitoring-participants-list" class="monitoring-participants">
                     <!-- Participants will be loaded here -->
                 </div>
             </div>
         </div>
     `;
-    
+
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     return document.getElementById('competition-monitoring-modal');
 }
@@ -2576,7 +2579,7 @@ function closeCompetitionMonitoring() {
         modal.classList.remove('visible');
         modal.classList.add('hidden');
     }
-    
+
     stopCompetitionMonitoring();
 }
 
@@ -2584,30 +2587,30 @@ function closeCompetitionMonitoring() {
 async function forceStartCompetition() {
     const modal = document.getElementById('competition-monitoring-modal');
     const sessionId = modal?.dataset.sessionId;
-    
+
     if (!sessionId) {
         alert('ID de session non trouvé');
         return;
     }
-    
+
     if (!confirm('Êtes-vous sûr de vouloir forcer le démarrage de cette compétition ? Les étudiants non connectés seront exclus.')) {
         return;
     }
-    
+
     try {
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/force-start`, {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
             // Monitoring will update automatically
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error force starting competition:', error);
         alert('Erreur lors du démarrage forcé');
@@ -2617,29 +2620,29 @@ async function forceStartCompetition() {
 async function pauseCompetition() {
     const modal = document.getElementById('competition-monitoring-modal');
     const sessionId = modal?.dataset.sessionId;
-    
+
     if (!sessionId) {
         alert('ID de session non trouvé');
         return;
     }
-    
+
     if (!confirm('Êtes-vous sûr de vouloir mettre en pause cette compétition ?')) {
         return;
     }
-    
+
     try {
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/pause`, {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error pausing competition:', error);
         alert('Erreur lors de la mise en pause');
@@ -2649,29 +2652,29 @@ async function pauseCompetition() {
 async function resumeCompetition() {
     const modal = document.getElementById('competition-monitoring-modal');
     const sessionId = modal?.dataset.sessionId;
-    
+
     if (!sessionId) {
         alert('ID de session non trouvé');
         return;
     }
-    
+
     if (!confirm('Êtes-vous sûr de vouloir reprendre cette compétition ?')) {
         return;
     }
-    
+
     try {
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/resume`, {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error resuming competition:', error);
         alert('Erreur lors de la reprise');
@@ -2681,23 +2684,23 @@ async function resumeCompetition() {
 async function endCompetition() {
     const modal = document.getElementById('competition-monitoring-modal');
     const sessionId = modal?.dataset.sessionId;
-    
+
     if (!sessionId) {
         alert('ID de session non trouvé');
         return;
     }
-    
+
     if (!confirm('Êtes-vous sûr de vouloir terminer cette compétition ? Cette action est irréversible.')) {
         return;
     }
-    
+
     try {
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/end`, {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
             closeCompetitionMonitoring();
@@ -2705,7 +2708,7 @@ async function endCompetition() {
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error ending competition:', error);
         alert('Erreur lors de la finalisation');
@@ -2716,21 +2719,21 @@ async function resetStudentProgress(sessionId, studentId) {
     if (!confirm('Êtes-vous sûr de vouloir réinitialiser le progrès de cet étudiant ?')) {
         return;
     }
-    
+
     try {
         const response = await authenticatedFetch(`/admin/competition-sessions/${sessionId}/reset-student/${studentId}`, {
             method: 'POST'
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
             alert(result.message);
             // Monitoring will update automatically
         } else {
             alert(`Erreur: ${result.error}`);
         }
-        
+
     } catch (error) {
         console.error('Error resetting student progress:', error);
         alert('Erreur lors de la réinitialisation');
@@ -2740,12 +2743,12 @@ async function resetStudentProgress(sessionId, studentId) {
 function exportCompetitionResults() {
     const modal = document.getElementById('competition-monitoring-modal');
     const sessionId = modal?.dataset.sessionId;
-    
+
     if (!sessionId) {
         alert('ID de session non trouvé');
         return;
     }
-    
+
     // Create download link
     const downloadUrl = `/admin/competition-sessions/${sessionId}/export-results`;
     window.open(downloadUrl, '_blank');
@@ -2792,16 +2795,16 @@ function updateCompetitionSessionsTable(sessions) {
         console.error('Competition sessions table body not found');
         return;
     }
-    
+
     tableBody.innerHTML = '';
-    
+
     if (sessions.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="10" style="text-align: center;">Aucune session de compétition trouvée</td></tr>';
     } else {
         sessions.forEach(session => {
             const row = document.createElement('tr');
             row.dataset.sessionId = session.id;
-            
+
             row.innerHTML = `
                 <td>${session.name}</td>
                 <td>${session.start_time}</td>
@@ -2812,11 +2815,11 @@ function updateCompetitionSessionsTable(sessions) {
                 <td><span class="time-badge">${session.time_per_station}min</span></td>
                 <td><span class="status-badge status-${session.status}">${session.status_display}</span></td>
                 <td>
-                    <button class="monitor-button" onclick="monitorCompetitionSession(${session.id})" title="Monitoring">👁️</button>
+                    <button class="monitor-button" onclick="monitorCompetitionSession(${session.id})">Suivre la session</button>
                     <button class="view-button" onclick="viewCompetitionSessionDetails(${session.id})">Voir</button>
-                    ${session.status === 'scheduled' && session.can_start ? 
+                    ${session.status === 'scheduled' && session.can_start ?
                         `<button class="start-button" onclick="startCompetition(${session.id})">Démarrer</button>` : ''}
-                    ${session.status === 'scheduled' ? 
+                    ${session.status === 'scheduled' ?
                         `<button class="edit-button" onclick="editCompetitionSession(${session.id})">Modifier</button>` : ''}
                     <button class="delete-button" onclick="deleteCompetitionSession(${session.id})">Supprimer</button>
                 </td>
@@ -2885,16 +2888,16 @@ const monitoringStyles = `
 }
 
 .resume-button {
-    background: #4CAF50;
+    background: var(--success-color);
     color: white;
 }
 
 .resume-button:hover {
-    background: #45a049;
+    background: var(--success-color);
 }
 
 .end-button {
-    background: #F44336;
+    background: var(--error-color);
     color: white;
 }
 
@@ -2903,12 +2906,12 @@ const monitoringStyles = `
 }
 
 .export-button {
-    background: #2196F3;
+    background: var(--primary-color);
     color: white;
 }
 
 .export-button:hover {
-    background: #1976D2;
+    background: var(--primary-dark);
 }
 
 .monitor-button {
@@ -2923,7 +2926,7 @@ const monitoringStyles = `
 }
 
 .monitor-button:hover {
-    background: #7B1FA2;
+    background: var(--primary-dark);
 }
 
 .participants-monitoring-grid {
@@ -2948,17 +2951,17 @@ const monitoringStyles = `
 }
 
 .participant-card.status-active {
-    border-color: #4CAF50;
+    border-color: var(--success-color);
     background: #f8fff8;
 }
 
 .participant-card.status-completed {
-    border-color: #2196F3;
+    border-color: var(--primary-color);
     background: #f3f8ff;
 }
 
 .participant-card.status-logged-in {
-    border-color: #FF9800;
+    border-color: var(--warning-color);
     background: #fff8f0;
 }
 
@@ -2971,7 +2974,7 @@ const monitoringStyles = `
 
 .participant-header h4 {
     margin: 0;
-    color: #333;
+    color: var(--text-dark);
 }
 
 .participant-code {
@@ -2979,7 +2982,7 @@ const monitoringStyles = `
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 12px;
-    color: #666;
+    color: var(--text-light);
 }
 
 .participant-status {
@@ -3006,17 +3009,17 @@ const monitoringStyles = `
 
 .status-indicator.active {
     background: #E8F5E8;
-    color: #2E7D32;
+    color: var(--success-color);
 }
 
 .status-indicator.between_stations {
-    background: #E3F2FD;
-    color: #1565C0;
+    background: var(--secondary-color);
+    color: var(--primary-dark);
 }
 
 .status-indicator.completed {
-    background: #F3E5F5;
-    color: #7B1FA2;
+    background: var(--secondary-color);
+    color: var(--primary-dark);
 }
 
 .participant-progress {
@@ -3034,13 +3037,13 @@ const monitoringStyles = `
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(135deg, #4CAF50, #8BC34A);
+    background: var(--secondary-color);
     transition: width 0.3s ease;
 }
 
 .progress-text {
     font-size: 12px;
-    color: #666;
+    color: var(--text-light);
 }
 
 .participant-details {
@@ -3073,7 +3076,7 @@ const monitoringStyles = `
 }
 
 .close-button {
-    background: #f44336;
+    background: var(--error-color);
     color: white;
     border: none;
     padding: 8px 12px;
@@ -3090,5 +3093,5 @@ const monitoringStyles = `
 // Add monitoring styles to document
 const monitoringStyleSheet = document.createElement('style');
 monitoringStyleSheet.textContent = monitoringStyles;
-document.head.appendChild(monitoringStyleSheet);
-            
+document.head.insertBefore(monitoringStyleSheet, document.querySelector('link[href*="css/app.css"]'));
+

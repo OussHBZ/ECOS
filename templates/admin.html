@@ -1,58 +1,11 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interface Administrateur - ECOS FMPM</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon-32x32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon-16x16.png') }}">
-    <link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='images/favicon-192x192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v={{ app_version }}">
-</head>
-<body>
-    <!-- FMPM Header -->
-    <header class="fmpm-header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo-section">
-                    <img src="{{ url_for('static', filename='images/fmpm-logo.png') }}" alt="FMPM Logo" class="fmpm-logo">
-                    <div class="brand-text">
-                        <h1 class="brand-title">Interface Administrateur</h1>
-                        <p class="brand-subtitle">Gestion complète du système ECOS</p>
-                        <p class="university-name">Faculté de Médecine et de Pharmacie de Marrakech</p>
-                    </div>
-                </div>
-                <div class="header-actions">
-                    <a href="{{ url_for('index') }}" class="btn btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); return false; }">← Retour</a>
-                    <div class="user-info">
-                        <div class="user-name">Administrateur</div>
-                        <div class="user-role">Système ECOS</div>
-                    </div>
-                    <a href="{{ url_for('auth.logout') }}" class="btn logout-button">Déconnexion</a>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Navigation Tabs -->
-    <div class="nav-tabs-container">
-        <div class="container">
-            <div class="admin-nav-tabs">
-                <button class="nav-tab active" onclick="showAdminTab('overview-tab')">Vue d'ensemble</button>
-                <button class="nav-tab" onclick="showAdminTab('stations-tab')">Stations</button>
-                <button class="nav-tab" onclick="showAdminTab('students-tab')">Étudiants</button>
-                <button class="nav-tab" onclick="showAdminTab('teachers-tab')">Enseignants</button>
-                <button class="nav-tab" onclick="showAdminTab('competition-sessions-tab')">Sessions Compétition</button>
-            </div>
-        </div>
-    </div>
-
+{% extends "app_base.html" %}
+{% block title %}Administration · ECOS{% endblock %}
+{% block content %}
     <div class="main-content">
         <!-- Overview Tab -->
         <div id="overview-tab" class="admin-tab-content active">
             <div class="section-header">
-                <h2>Vue d'ensemble du système</h2>
+                <h1>Vue d'ensemble du système</h1>
             </div>
 
             <div class="stats-overview">
@@ -96,7 +49,7 @@
         <!-- Stations Tab -->
         <div id="stations-tab" class="admin-tab-content">
             <div class="section-header">
-                <h2>Gestion des Stations</h2>
+                <h1>Gestion des Stations</h1>
                 <div class="search-container">
                     <input type="text" id="admin-stations-search" placeholder="Rechercher stations..." class="search-input">
                     <button onclick="searchAdminStations()" class="btn btn-primary search-btn">Rechercher</button>
@@ -141,13 +94,13 @@
         <!-- Students Tab -->
         <div id="students-tab" class="admin-tab-content">
             <div class="section-header">
-                <h2>Gestion des Étudiants</h2>
+                <h1>Gestion des Étudiants</h1>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <div class="search-container">
                         <input type="text" id="admin-students-search" placeholder="Rechercher étudiants..." class="search-input">
                         <button onclick="searchAdminStudents()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
-                    <button onclick="openAddStudentModal()" class="btn btn-primary">+ Ajouter un étudiant</button>
+                    <button onclick="openAddStudentModal()" class="btn btn-primary">Ajouter un étudiant</button>
                     <button onclick="openImportModal('student')" class="btn btn-secondary" title="Format CSV/Excel&#10;Colonnes : apogee, name, password, ecos_type, level&#10;level obligatoire pour kine : licence ou master">↑ Importer CSV/Excel</button>
                 </div>
             </div>
@@ -192,13 +145,13 @@
         <!-- Teachers Tab -->
         <div id="teachers-tab" class="admin-tab-content">
             <div class="section-header">
-                <h2>Gestion des Enseignants</h2>
+                <h1>Gestion des Enseignants</h1>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <div class="search-container">
                         <input type="text" id="admin-teachers-search" placeholder="Rechercher enseignants..." class="search-input">
                         <button onclick="searchAdminTeachers()" class="btn btn-primary search-btn">Rechercher</button>
                     </div>
-                    <button onclick="openAddTeacherModal()" class="btn btn-primary">+ Ajouter un enseignant</button>
+                    <button onclick="openAddTeacherModal()" class="btn btn-primary">Ajouter un enseignant</button>
                     <button onclick="openImportModal('teacher')" class="btn btn-secondary" title="Format CSV/Excel&#10;Colonnes : email, name, password, ecos_type&#10;ecos_type : standard ou kine">↑ Importer CSV/Excel</button>
                 </div>
             </div>
@@ -231,7 +184,7 @@
         <!-- Competition Sessions Tab -->
         <div id="competition-sessions-tab" class="admin-tab-content">
             <div class="section-header">
-                <h2>Sessions de Compétition ECOS</h2>
+                <h1>Sessions de Compétition ECOS</h1>
                 <button onclick="openCreateCompetitionSessionModal()" class="btn btn-primary">
                     + Nouvelle Session de Compétition
                 </button>
@@ -278,7 +231,7 @@
     <!-- Add Student Modal -->
     <div id="add-student-modal" class="modal hidden">
         <div class="modal-content" style="max-width:480px;">
-            <span class="close-modal" onclick="closeModal('add-student-modal')">&times;</span>
+            <span class="close-modal" onclick="closeModal('add-student-modal')">Fermer</span>
             <h3>Ajouter un Étudiant</h3>
             <form id="add-student-form" onsubmit="submitAddStudent(event)">
                 <div class="form-group">
@@ -298,7 +251,7 @@
                     <select id="new-student-ecos-type" required onchange="toggleNewStudentLevel()">
                         <option value="">Choisir un type d’espace</option>
                         <option value="standard">ECOS standard</option>
-                        <option value="kine">ECOS Kiné</option>
+                        <option value="kine">KardioX</option>
                     </select>
                 </div>
                 <div class="form-group hidden" id="new-student-level-group">
@@ -317,7 +270,7 @@
                     <label for="new-student-class-name">Classe (facultative) :</label>
                     <input type="text" id="new-student-class-name" placeholder="Ex. L3 Kiné">
                 </div>
-                <div id="add-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+                <div id="add-student-error" style="color:var(--error-color);margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Créer</button>
                     <button type="button" onclick="closeModal('add-student-modal')" class="btn btn-secondary">Annuler</button>
@@ -329,14 +282,14 @@
     <!-- Reset Student Password Modal -->
     <div id="reset-student-password-modal" class="modal hidden">
         <div class="modal-content" style="max-width:400px;">
-            <span class="close-modal" onclick="closeModal('reset-student-password-modal')">&times;</span>
+            <span class="close-modal" onclick="closeModal('reset-student-password-modal')">Fermer</span>
             <h3>Réinitialiser le mot de passe</h3>
             <p id="reset-student-name-label" style="color:#555;margin-bottom:15px;"></p>
             <div class="form-group">
                 <label>Nouveau mot de passe :</label>
                 <input type="password" id="reset-student-password-input" placeholder="Min. 4 caractères" required>
             </div>
-            <div id="reset-student-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+            <div id="reset-student-error" style="color:var(--error-color);margin-bottom:10px;display:none;"></div>
             <div class="form-actions">
                 <button onclick="submitResetStudentPassword()" class="btn btn-primary">Enregistrer</button>
                 <button onclick="closeModal('reset-student-password-modal')" class="btn btn-secondary">Annuler</button>
@@ -347,7 +300,7 @@
     <!-- Add Teacher Modal -->
     <div id="add-teacher-modal" class="modal hidden">
         <div class="modal-content" style="max-width:480px;">
-            <span class="close-modal" onclick="closeModal('add-teacher-modal')">&times;</span>
+            <span class="close-modal" onclick="closeModal('add-teacher-modal')">Fermer</span>
             <h3>Ajouter un Enseignant</h3>
             <form id="add-teacher-form" onsubmit="submitAddTeacher(event)">
                 <div class="form-group">
@@ -364,9 +317,9 @@
                 </div>
                 <div class="form-group">
                     <label for="new-teacher-ecos-type">Affectation exclusive :</label>
-                    <select id="new-teacher-ecos-type" required><option value="standard">ECOS standard</option><option value="kine">ECOS Kiné</option></select>
+                    <select id="new-teacher-ecos-type" required><option value="standard">ECOS standard</option><option value="kine">KardioX</option></select>
                 </div>
-                <div id="add-teacher-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+                <div id="add-teacher-error" style="color:var(--error-color);margin-bottom:10px;display:none;"></div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Créer</button>
                     <button type="button" onclick="closeModal('add-teacher-modal')" class="btn btn-secondary">Annuler</button>
@@ -378,14 +331,14 @@
     <!-- Reset Teacher Password Modal -->
     <div id="reset-teacher-password-modal" class="modal hidden">
         <div class="modal-content" style="max-width:400px;">
-            <span class="close-modal" onclick="closeModal('reset-teacher-password-modal')">&times;</span>
+            <span class="close-modal" onclick="closeModal('reset-teacher-password-modal')">Fermer</span>
             <h3>Réinitialiser le mot de passe</h3>
             <p id="reset-teacher-name-label" style="color:#555;margin-bottom:15px;"></p>
             <div class="form-group">
                 <label>Nouveau mot de passe :</label>
                 <input type="password" id="reset-teacher-password-input" placeholder="Min. 4 caractères" required>
             </div>
-            <div id="reset-teacher-error" style="color:#dc3545;margin-bottom:10px;display:none;"></div>
+            <div id="reset-teacher-error" style="color:var(--error-color);margin-bottom:10px;display:none;"></div>
             <div class="form-actions">
                 <button onclick="submitResetTeacherPassword()" class="btn btn-primary">Enregistrer</button>
                 <button onclick="closeModal('reset-teacher-password-modal')" class="btn btn-secondary">Annuler</button>
@@ -396,13 +349,13 @@
     <!-- Import Users Modal -->
     <div id="import-users-modal" class="modal hidden">
         <div class="modal-content" style="max-width:580px;">
-            <span class="close-modal" onclick="closeModal('import-users-modal')">&times;</span>
+            <span class="close-modal" onclick="closeModal('import-users-modal')">Fermer</span>
             <h3 id="import-modal-title">Importer des utilisateurs</h3>
             <input type="hidden" id="import-user-type" value="student">
 
             <!-- Format instructions -->
-            <div style="background:#f0f4ff;border:1px solid #c7d4f5;border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px;">
-                <div style="font-weight:600;color:#2c4ecb;margin-bottom:8px;">📄 Format du fichier (CSV ou Excel)</div>
+            <div style="background:var(--secondary-color);border:1px solid var(--border-color);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px;">
+                <div style="font-weight:600;color:var(--primary-dark);margin-bottom:8px;">Format du fichier (CSV ou Excel)</div>
                 <ul style="margin:0 0 10px 16px;padding:0;color:#444;line-height:1.7;">
                     <li>La <strong>première ligne</strong> doit contenir les en-têtes des colonnes.</li>
                     <li>Chaque ligne suivante représente <strong>un utilisateur</strong>.</li>
@@ -413,14 +366,14 @@
                 <div id="import-format-hint" style="margin-bottom:10px;"></div>
                 <!-- Example table -->
                 <div style="font-weight:600;color:#444;margin-bottom:6px;">Exemple :</div>
-                <div style="overflow-x:auto;">
+                <div class="app-table-scroll">
                     <table id="import-example-table" style="width:100%;border-collapse:collapse;font-size:12px;font-family:monospace;">
                     </table>
                 </div>
                 <!-- Download sample -->
                 <div style="margin-top:10px;">
-                    <a id="download-sample-link" href="#" onclick="downloadSampleCSV(event)" style="font-size:12px;color:#2c4ecb;text-decoration:underline;">
-                        ⬇ Télécharger un fichier CSV exemple
+                    <a id="download-sample-link" href="#" onclick="downloadSampleCSV(event)" style="font-size:12px;color:var(--primary-dark);text-decoration:underline;">
+                        Télécharger un fichier CSV exemple
                     </a>
                 </div>
             </div>
@@ -440,7 +393,7 @@
     <!-- Create Competition Session Modal -->
     <div id="create-competition-session-modal" class="modal hidden">
         <div class="modal-content" style="max-width: 90%; max-height: 90%; overflow-y: auto;">
-            <span class="close-modal" onclick="closeCreateCompetitionSessionModal()">&times;</span>
+            <span class="close-modal" onclick="closeCreateCompetitionSessionModal()">Fermer</span>
             <h3>Créer une Nouvelle Session de Compétition</h3>
             <form id="create-competition-session-form">
                 <!-- Basic Information -->
@@ -502,12 +455,12 @@
                                 <!-- Available students will be loaded here -->
                             </div>
                         </div>
-                        
+
                         <div class="selection-controls">
                             <button type="button" onclick="addSelectedStudents()" class="btn btn-secondary">Ajouter →</button>
                             <button type="button" onclick="removeSelectedStudents()" class="btn btn-secondary">← Retirer</button>
                         </div>
-                        
+
                         <div>
                             <h5>Participants Sélectionnés</h5>
                             <div id="selected-students-list" class="selection-list">
@@ -529,12 +482,12 @@
                                 <!-- Available stations will be loaded here -->
                             </div>
                         </div>
-                        
+
                         <div class="selection-controls">
                             <button type="button" onclick="addSelectedStations()" class="btn btn-secondary">Ajouter →</button>
                             <button type="button" onclick="removeSelectedStations()" class="btn btn-secondary">← Retirer</button>
                         </div>
-                        
+
                         <div>
                             <h5>Banque de Stations</h5>
                             <div id="selected-stations-list" class="selection-list">
@@ -555,7 +508,7 @@
     <!-- Station Details Modal -->
     <div id="station-details-modal" class="modal hidden">
         <div class="modal-content">
-            <span class="close-modal">&times;</span>
+            <span class="close-modal">Fermer</span>
             <h3>Détails de la Station</h3>
             <div id="station-details-content"></div>
         </div>
@@ -564,9 +517,9 @@
     <!-- Student Details Modal -->
     <div id="student-details-modal" class="modal hidden">
         <div class="modal-content" style="max-width: 90%; max-height: 90%;">
-            <span class="close-modal">&times;</span>
+            <span class="close-modal">Fermer</span>
             <h3>Détails de l'Étudiant - <span id="student-details-name"></span></h3>
-            
+
             <div class="student-details-stats">
                 <div class="stat-card">
                     <div class="stat-number" id="student-total-consultations">-</div>
@@ -602,6 +555,7 @@
             </div>
         </div>
     </div>
+
 
     <script src="{{ url_for('static', filename='js/auth-utils.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}?v={{ app_version }}"></script>
@@ -649,8 +603,11 @@
                         '<td>' + t.created_at + '</td>' +
                         '<td>' + t.last_login + '</td>' +
                         '<td>' +
+                          '<button class="btn btn-secondary" onclick="editAccountProfile(\'teacher\',' + t.id + ')">Modifier le profil</button> ' +
+                          '<button class="btn btn-secondary" onclick="changeAccountStatus(\'teacher\',' + t.id + ',\'' + (t.account_status === 'suspended' ? 'reactivate' : 'suspend') + '\')">' + (t.account_status === 'suspended' ? 'Réactiver' : 'Suspendre') + '</button> ' +
+                          '<span>' + (t.account_status === 'suspended' ? 'Suspendu' : 'Actif') + '</span> ' +
                           '<button class="btn btn-secondary teacher-btn" style="font-size:12px;padding:4px 8px;" data-action="reset" data-id="' + t.id + '">Réinit. MdP</button> ' +
-                          '<button class="btn teacher-btn" style="background:#dc3545;color:#fff;font-size:12px;padding:4px 8px;" data-action="delete" data-id="' + t.id + '">Supprimer</button>' +
+                          (t.ecos_type === 'kine' ? '<button class="btn btn-secondary" onclick="editTeacherScope(' + t.id + ')">Étudiants suivis</button>' : '') +
                         '</td>' +
                         '</tr>';
                 });
@@ -668,7 +625,7 @@
             })
             .catch(function() {
                 document.getElementById('admin-teachers-table-body').innerHTML =
-                    '<tr><td colspan="6" style="text-align:center;color:#dc3545;">Erreur de chargement</td></tr>';
+                    '<tr><td colspan="6" style="text-align:center;color:var(--error-color);">Erreur de chargement</td></tr>';
             });
     }
 
@@ -723,7 +680,7 @@
             return;
         }
         if (payload.ecos_type === 'kine' && !['licence', 'master'].includes(payload.level)) {
-            errEl.textContent = 'Le niveau Licence ou Master est obligatoire pour un étudiant ECOS Kiné.';
+            errEl.textContent = 'Le niveau Licence ou Master est obligatoire pour un étudiant KardioX.';
             errEl.style.display = 'block';
             return;
         }
@@ -758,7 +715,7 @@
     function updateStudentEcosType(id) {
         var typeSelect = document.getElementById('student-ecos-type-' + id);
         var levelSelect = document.getElementById('student-level-' + id);
-        var errMessage = 'Le niveau Licence ou Master est obligatoire pour un étudiant ECOS Kiné.';
+        var errMessage = 'Le niveau Licence ou Master est obligatoire pour un étudiant KardioX.';
         if (typeSelect.value === 'kine' && !['licence', 'master'].includes(levelSelect.value)) {
             alert(errMessage);
             levelSelect.focus();
@@ -946,7 +903,7 @@
 
         // Build example table
         var tdStyle = 'border:1px solid #ccc;padding:4px 8px;';
-        var thStyle = tdStyle + 'background:#e8edff;font-weight:600;';
+        var thStyle = tdStyle + 'background:var(--secondary-color);font-weight:600;';
         var html = '<tr>';
         s.cols.forEach(function(c) { html += '<th style="' + thStyle + '">' + c + '</th>'; });
         html += '</tr>';
@@ -993,7 +950,7 @@
                     if (data.skipped_details && data.skipped_details.length)
                         html += '<br><small>' + data.skipped_details.join('<br>') + '</small>';
                     if (data.errors && data.errors.length)
-                        html += '<br><span style="color:#dc3545"><small>' + data.errors.join('<br>') + '</small></span>';
+                        html += '<br><span style="color:var(--error-color)"><small>' + data.errors.join('<br>') + '</small></span>';
                     resultEl.style.background = '#d4edda';
                     resultEl.innerHTML = html;
                     var type = document.getElementById('import-user-type').value;
@@ -1001,7 +958,7 @@
                     else loadAdminTeachers();
                 } else {
                     resultEl.style.background = '#f8d7da';
-                    resultEl.innerHTML = '<strong style="color:#dc3545">Erreur : ' + data.error + '</strong>';
+                    resultEl.innerHTML = '<strong style="color:var(--error-color)">Erreur : ' + data.error + '</strong>';
                 }
             });
     }
@@ -1013,5 +970,5 @@
         }
     });
     </script>
-</body>
-</html>
+
+{% endblock %}

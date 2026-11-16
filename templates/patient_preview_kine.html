@@ -1,0 +1,14 @@
+{% extends 'kine_base.html' %}
+{% block title %}Tester le patient virtuel{% endblock %}
+{% block content %}
+<section class="kine-card" data-patient-preview data-url="{{ url_for('kine.patient_preview', case_id=clinical_case.id) }}">
+    <h1>Tester le patient virtuel — {{ clinical_case.case_number }}</h1>
+    <p>Test facultatif du cas enregistré. Les échanges restent dans cet aperçu et ne créent aucune tentative ni évaluation étudiante.</p>
+    <label>Niveau de l’aperçu <select data-preview-level><option value="master">Master</option><option value="licence">Licence</option></select></label>
+    <button type="button" class="btn btn-secondary" data-preview-reset>Recommencer</button>
+    <div aria-live="polite" data-preview-messages></div>
+    <form data-preview-form><label>Message <input name="message" maxlength="1200" required autocomplete="off"></label><button class="btn btn-primary">Envoyer</button></form>
+    <p><a href="{{ url_for('kine.case_item', case_id=clinical_case.id) }}">Retour au cas</a></p>
+</section>
+{% endblock %}
+{% block kine_scripts %}<script src="{{ url_for('static', filename='js/kine-preview.js') }}" defer></script>{% endblock %}
